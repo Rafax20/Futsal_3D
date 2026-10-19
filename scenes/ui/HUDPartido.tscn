@@ -1,6 +1,7 @@
-[gd_scene load_steps=16 format=3 uid="uid://b2hudpartidofutsal01"]
+[gd_scene load_steps=17 format=3 uid="uid://b2hudpartidofutsal01"]
 
 [ext_resource type="Script" path="res://scripts/ui/HUDPartido.gd" id="1_hud_script"]
+[ext_resource type="Script" path="res://scripts/ui/TouchControls.gd" id="2_touch_controls_script"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_joystick_base"]
 bg_color = Color(0.0823529, 0.121569, 0.180392, 0.5)
@@ -164,6 +165,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+script = ExtResource("2_touch_controls_script")
 
 [node name="JoystickBase" type="Panel" parent="MargenControles"]
 layout_mode = 1
@@ -201,6 +203,18 @@ grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
 
+[node name="LabelGestoActivo" type="Label" parent="MargenControles/BotonesAccion"]
+visible = false
+layout_mode = 0
+offset_left = 10.0
+offset_top = -48.0
+offset_right = 290.0
+offset_bottom = -24.0
+theme_override_colors/font_color = Color(1, 0.95, 0.35, 1)
+theme_override_font_sizes/font_size = 13
+text = "▲ VASELINA"
+horizontal_alignment = 1
+
 [node name="BotonSprint" type="Button" parent="MargenControles/BotonesAccion"]
 layout_mode = 0
 offset_left = 12.0
@@ -208,10 +222,10 @@ offset_top = 35.0
 offset_right = 84.0
 offset_bottom = 107.0
 focus_mode = 0
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 10
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_sprint")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_sprint")
-text = "SPRINT"
+text = "ESPRINTAR"
 
 [node name="BotonHueco" type="Button" parent="MargenControles/BotonesAccion"]
 layout_mode = 0
@@ -220,7 +234,7 @@ offset_top = 10.0
 offset_right = 174.0
 offset_bottom = 86.0
 focus_mode = 0
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 10
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_hueco")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hueco")
 text = "HUECO"
@@ -232,10 +246,26 @@ offset_top = 98.0
 offset_right = 166.0
 offset_bottom = 184.0
 focus_mode = 0
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_pase")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pase")
 text = "PASE"
+
+[node name="FlechaUpPase" type="Label" parent="MargenControles/BotonesAccion/BotonPase"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -28.0
+offset_top = 4.0
+offset_right = 28.0
+offset_bottom = 20.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.85, 0.95, 1, 0.8)
+theme_override_font_sizes/font_size = 9
+text = "▲ ELEV"
+horizontal_alignment = 1
 
 [node name="BotonTiro" type="Button" parent="MargenControles/BotonesAccion"]
 layout_mode = 0
@@ -244,10 +274,45 @@ offset_top = 45.0
 offset_right = 276.0
 offset_bottom = 141.0
 focus_mode = 0
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_tiro")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_tiro")
 text = "TIRO"
+
+[node name="FlechaUpTiro" type="Label" parent="MargenControles/BotonesAccion/BotonTiro"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -34.0
+offset_top = 5.0
+offset_right = 34.0
+offset_bottom = 21.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.92, 0.75, 0.85)
+theme_override_font_sizes/font_size = 9
+text = "▲ VASELINA"
+horizontal_alignment = 1
+
+[node name="FlechaDownTiro" type="Label" parent="MargenControles/BotonesAccion/BotonTiro"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -36.0
+offset_top = -20.0
+offset_right = 36.0
+offset_bottom = -4.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.85, 0.95, 1, 0.85)
+theme_override_font_sizes/font_size = 9
+text = "▼ COLOCADO"
+horizontal_alignment = 1
 
 [node name="BarraPotencia" type="ProgressBar" parent="MargenControles"]
 visible = false
@@ -274,9 +339,9 @@ show_percentage = false
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -210.0
+offset_left = -285.0
 offset_top = 12.0
-offset_right = 210.0
+offset_right = 285.0
 offset_bottom = 62.0
 grow_horizontal = 2
 
@@ -286,7 +351,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_marcador_panel")
 
 [node name="ContenedorMarcador" type="HBoxContainer" parent="MarcadorSuperior/PanelContenedor"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 8
 alignment = 1
 
 [node name="EscudoLocal" type="ColorRect" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
@@ -301,11 +366,23 @@ theme_override_colors/font_color = Color(1, 0.45, 0.45, 1)
 theme_override_font_sizes/font_size = 14
 text = "RFC"
 
+[node name="LabelFaltasLocal" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.65, 0.25, 1)
+theme_override_font_sizes/font_size = 12
+text = "F:0"
+
 [node name="LabelGoles" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 20
 text = "0 - 0"
+
+[node name="LabelFaltasVis" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.65, 0.25, 1)
+theme_override_font_sizes/font_size = 12
+text = "F:0"
 
 [node name="LabelVis" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
 layout_mode = 2
@@ -322,11 +399,24 @@ color = Color(0.95, 0.85, 0.1, 1)
 [node name="Separador" type="VSeparator" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
 layout_mode = 2
 
+[node name="LabelPeriodo" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "1T"
+
 [node name="LabelTiempo" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
 theme_override_font_sizes/font_size = 16
-text = "03:00"
+text = "20:00"
+
+[node name="LabelCuenta4s" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
+theme_override_font_sizes/font_size = 14
+text = "[4.0s]"
 
 [node name="PanelFichaJugador" type="PanelContainer" parent="."]
 anchors_preset = 7
@@ -370,6 +460,20 @@ theme_override_font_sizes/font_size = 15
 text = "¡SAQUE DE BANDA!"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="BotonTiempoMuerto" type="Button" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -152.0
+offset_top = 15.0
+offset_right = -78.0
+offset_bottom = 55.0
+grow_horizontal = 0
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_pausa")
+text = "⏱ T.M."
 
 [node name="BotonPausa" type="Button" parent="."]
 anchors_preset = 1

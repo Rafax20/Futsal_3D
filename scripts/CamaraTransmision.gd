@@ -80,9 +80,20 @@ func _obtener_punto_foco() -> Vector3:
 			if not balones.is_empty():
 				_nodo_balon = balones[0] as Node3D
 	
+	var foco_base: Vector3 = Vector3.ZERO
 	if _nodo_balon != null and is_instance_valid(_nodo_balon):
-		return _nodo_balon.global_position
+		foco_base = _nodo_balon.global_position
 	elif _nodo_jugador != null and is_instance_valid(_nodo_jugador):
-		return _nodo_jugador.global_position
+		foco_base = _nodo_jugador.global_position
 	
-	return Vector3.ZERO
+	# Prioridad de encuadre para el compañero en desmarque "Pasa y Corre" (es_opcion_de_pase == true)
+	if get_tree() != null:
+		var locales: Array[Node] = get_tree().get_nodes_in_group("equipo_local")
+		for n: Node in locales:
+			if n != null and is_instance_valid(n) and "es_opcion_de_pase" in n and bool(n.es_opcion_de_pase):
+				var corredor: Node3D = n as Node3D
+				if corredor:
+					foco_base = foco_base.lerp(corredor.global_position, 0.22)
+					break
+	
+	return foco_base

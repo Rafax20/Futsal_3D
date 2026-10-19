@@ -1,1 +1,61 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="124" height="124" x="2" y="2" fill="#363d52" stroke="#212532" stroke-width="4" rx="14"/><g fill="#fff" transform="translate(12.322 12.322)scale(.101)"><path d="M105 673v33q407 354 814 0v-33z"/><path fill="#478cbf" d="m105 673 152 14q12 1 15 14l4 67 132 10 8-61q2-11 15-15h162q13 4 15 15l8 61 132-10 4-67q3-13 15-14l152-14V427q30-39 56-81-35-59-83-108-43 20-82 47-40-37-88-64 7-51 8-102-59-28-123-42-26 43-46 89-49-7-98 0-20-46-46-89-64 14-123 42 1 51 8 102-48 27-88 64-39-27-82-47-48 49-83 108 26 42 56 81zm0 33v39c0 276 813 276 814 0v-39l-134 12-5 69q-2 10-14 13l-162 11q-12 0-16-11l-10-65H446l-10 65q-4 11-16 11l-162-11q-12-3-14-13l-5-69z"/><path d="M483 600c0 34 58 34 58 0v-86c0-34-58-34-58 0z"/><circle cx="725" cy="526" r="90"/><circle cx="299" cy="526" r="90"/></g><g fill="#414042" transform="translate(12.322 12.322)scale(.101)"><circle cx="307" cy="532" r="60"/><circle cx="717" cy="532" r="60"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="courtBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f2547"/>
+      <stop offset="50%" stop-color="#1d5496"/>
+      <stop offset="100%" stop-color="#0b182e"/>
+    </linearGradient>
+    <radialGradient id="ballLit" cx="36%" cy="30%" r="68%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="65%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#94a3b8"/>
+    </radialGradient>
+    <linearGradient id="goldRim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#facc15"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Base Rounded App Icon Background (Indoor Futsal Court) -->
+  <rect x="6" y="6" width="244" height="244" rx="48" fill="url(#courtBg)" stroke="url(#goldRim)" stroke-width="6"/>
+
+  <!-- Futsal Court Silhouette Lines -->
+  <g stroke="#ffffff" stroke-opacity="0.22" stroke-width="3" fill="none">
+    <rect x="26" y="46" width="204" height="164" rx="8"/>
+    <line x1="128" y1="46" x2="128" y2="210"/>
+    <circle cx="128" cy="128" r="42"/>
+    <path d="M 26,88 A 40,40 0 0,1 66,128 A 40,40 0 0,1 26,168"/>
+    <path d="M 230,88 A 40,40 0 0,0 190,128 A 40,40 0 0,0 230,168"/>
+  </g>
+
+  <!-- Dynamic Speed Accents (RFC Red & ASF Yellow) -->
+  <polygon points="34,194 98,154 78,214" fill="#d92626" opacity="0.85"/>
+  <polygon points="222,62 158,102 178,42" fill="#f2d91a" opacity="0.85"/>
+
+  <!-- 3D Low-Poly Futsal Ball Shadow -->
+  <ellipse cx="128" cy="196" rx="52" ry="12" fill="#050b14" opacity="0.55"/>
+
+  <!-- 3D Low-Poly Futsal Ball Sphere -->
+  <circle cx="128" cy="124" r="66" fill="url(#ballLit)" stroke="#0f172a" stroke-width="5"/>
+
+  <!-- Low-Poly Facet Lines -->
+  <g stroke="#334155" stroke-width="3.5" stroke-linejoin="round" fill="none">
+    <line x1="128" y1="90" x2="128" y2="58"/>
+    <line x1="160" y1="113" x2="190" y2="100"/>
+    <line x1="148" y1="150" x2="174" y2="172"/>
+    <line x1="108" y1="150" x2="82" y2="172"/>
+    <line x1="96" y1="113" x2="66" y2="100"/>
+    <polygon points="128,74 176,105 158,162 98,162 80,105" stroke="#64748b" stroke-width="1.8" opacity="0.65"/>
+  </g>
+
+  <!-- Center Low-Poly Pentagon & Outer Panels -->
+  <polygon points="128,90 160,113 148,150 108,150 96,113" fill="#0f172a" stroke="#facc15" stroke-width="2"/>
+  <polygon points="116,59 140,59 128,74" fill="#d92626"/>
+  <polygon points="184,88 193,112 176,105" fill="#0f172a"/>
+  <polygon points="178,164 158,182 158,162" fill="#f2d91a"/>
+  <polygon points="78,164 98,182 98,162" fill="#d92626"/>
+  <polygon points="72,88 63,112 80,105" fill="#0f172a"/>
+
+  <!-- Specular Low-Poly Highlight -->
+  <polygon points="104,76 126,68 118,86 98,88" fill="#ffffff" opacity="0.75"/>
+</svg>

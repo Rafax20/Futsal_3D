@@ -1,4 +1,4 @@
-[gd_scene load_steps=36 format=3 uid="uid://b7v2cancha3dfutsal01"]
+[gd_scene load_steps=40 format=3 uid="uid://b7v2cancha3dfutsal01"]
 
 [ext_resource type="Script" path="res://scripts/CamaraTransmision.gd" id="1_camara_script"]
 [ext_resource type="PackedScene" path="res://scenes/Balon3D.tscn" id="2_balon3d_scene"]
@@ -62,6 +62,30 @@ material = SubResource("StandardMaterial3D_lineas")
 top_radius = 0.15
 bottom_radius = 0.15
 height = 0.006
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_doble_penal"]
+material = SubResource("StandardMaterial3D_lineas")
+top_radius = 0.12
+bottom_radius = 0.12
+height = 0.006
+
+[sub_resource type="TorusMesh" id="TorusMesh_circulo_central"]
+material = SubResource("StandardMaterial3D_lineas")
+inner_radius = 2.96
+outer_radius = 3.04
+rings = 48
+ring_segments = 8
+
+[sub_resource type="TorusMesh" id="TorusMesh_cuadrante_esquina"]
+material = SubResource("StandardMaterial3D_lineas")
+inner_radius = 0.21
+outer_radius = 0.28
+rings = 24
+ring_segments = 8
+
+[sub_resource type="BoxMesh" id="BoxMesh_marca_5m"]
+material = SubResource("StandardMaterial3D_lineas")
+size = Vector3(0.08, 0.006, 0.45)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_postes"]
 albedo_color = Color(0.95, 0.95, 0.95, 1)
@@ -193,6 +217,10 @@ mesh = SubResource("BoxMesh_linea_meta")
 [node name="LineaCentral" type="MeshInstance3D" parent="LineasCancha"]
 mesh = SubResource("BoxMesh_linea_meta")
 
+[node name="CirculoCentral" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 0.05, 0, 0, 0, 1, 0, 0, 0)
+mesh = SubResource("TorusMesh_circulo_central")
+
 [node name="PuntoCentral" type="MeshInstance3D" parent="LineasCancha"]
 mesh = SubResource("CylinderMesh_punto")
 
@@ -212,6 +240,14 @@ mesh = SubResource("BoxMesh_linea_penal_lateral")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14, 0, 0)
 mesh = SubResource("CylinderMesh_punto")
 
+[node name="SegundoPuntoPenalIzq" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0, 0)
+mesh = SubResource("CylinderMesh_doble_penal")
+
+[node name="MarcaArqueroPenalIzq" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0, 0)
+mesh = SubResource("BoxMesh_marca_5m")
+
 [node name="AreaPenalDerFrontal" type="MeshInstance3D" parent="LineasCancha"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0, 0)
 mesh = SubResource("BoxMesh_linea_penal_frontal")
@@ -227,6 +263,47 @@ mesh = SubResource("BoxMesh_linea_penal_lateral")
 [node name="PuntoPenalDer" type="MeshInstance3D" parent="LineasCancha"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0, 0)
 mesh = SubResource("CylinderMesh_punto")
+
+[node name="SegundoPuntoPenalDer" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 0)
+mesh = SubResource("CylinderMesh_doble_penal")
+
+[node name="MarcaArqueroPenalDer" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0, 0)
+mesh = SubResource("BoxMesh_marca_5m")
+
+[node name="CuadranteEsquinaNO" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 0.05, 0, 0, 0, 1, -19.75, 0, -9.75)
+mesh = SubResource("TorusMesh_cuadrante_esquina")
+
+[node name="CuadranteEsquinaSO" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 0.05, 0, 0, 0, 1, -19.75, 0, 9.75)
+mesh = SubResource("TorusMesh_cuadrante_esquina")
+
+[node name="CuadranteEsquinaNE" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 0.05, 0, 0, 0, 1, 19.75, 0, -9.75)
+mesh = SubResource("TorusMesh_cuadrante_esquina")
+
+[node name="CuadranteEsquinaSE" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 0.05, 0, 0, 0, 1, 19.75, 0, 9.75)
+mesh = SubResource("TorusMesh_cuadrante_esquina")
+
+[node name="ZonaCambioLocalIni" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, -10)
+mesh = SubResource("BoxMesh_marca_5m")
+
+[node name="ZonaCambioLocalFin" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 0, -10)
+mesh = SubResource("BoxMesh_marca_5m")
+
+[node name="ZonaCambioVisIni" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, -10)
+mesh = SubResource("BoxMesh_marca_5m")
+
+[node name="ZonaCambioVisFin" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, -10)
+mesh = SubResource("BoxMesh_marca_5m")
+
 
 [node name="PorteriaIzquierda" type="CSGCombiner3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, 0)
@@ -556,7 +633,7 @@ vel_movimiento = 80.0
 control_balon = 80.0
 
 [node name="Local_AlaIzq" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6, 0, -6.5)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -0.8, 0, -3.15)
 dorsal = 7
 posicion_tactica = "ALA_IZQ"
 vel_movimiento = 85.0
@@ -564,7 +641,7 @@ vision_pase = 84.0
 control_balon = 85.0
 
 [node name="Local_AlaDer" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6, 0, 6.5)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.8, 0, 3.25)
 dorsal = 8
 posicion_tactica = "ALA_DER"
 vel_movimiento = 84.0
@@ -572,7 +649,7 @@ vision_pase = 86.0
 control_balon = 84.0
 
 [node name="Local_Pivot" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
-transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -1.8, 0, 0)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -0.5, 0, 0)
 posicion_tactica = "PIVOT"
 es_controlado = true
 vel_movimiento = 82.0
@@ -599,7 +676,7 @@ vel_movimiento = 80.0
 control_balon = 79.0
 
 [node name="Vis_AlaIzq" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6, 0, -6.5)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6, 0, -6.2)
 equipo = 1
 dorsal = 11
 posicion_tactica = "ALA_IZQ"
@@ -608,7 +685,7 @@ vision_pase = 83.0
 control_balon = 84.0
 
 [node name="Vis_AlaDer" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6, 0, 6.5)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6, 0, 6.2)
 equipo = 1
 dorsal = 9
 posicion_tactica = "ALA_DER"
@@ -617,7 +694,7 @@ vision_pase = 85.0
 control_balon = 83.0
 
 [node name="Vis_Pivot" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
-transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 1.8, 0, 0)
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 3.6, 0, 0)
 equipo = 1
 posicion_tactica = "PIVOT"
 vel_movimiento = 82.0

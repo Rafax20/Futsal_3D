@@ -9,13 +9,36 @@ extends Node3D
 @onready var area_gol_izq: Area3D = $AreaGolIzquierda
 @onready var area_gol_der: Area3D = $AreaGolDerecha
 @onready var gestor: GestorPartido = $GestorPartido
+@onready var contenedor_jugadores: Node3D = $Jugadores
 
 
 func _ready() -> void:
+	_inicializar_uniformes_equipos()
 	if area_gol_izq:
 		area_gol_izq.body_entered.connect(_on_gol_arco_izquierdo)
 	if area_gol_der:
 		area_gol_der.body_entered.connect(_on_gol_arco_derecho)
+
+
+## Verifica y asigna la paleta de materiales StandardMaterial3D a los 10 jugadores en cancha:
+## - Equipo Local (RFC): Camiseta Roja (#D92626), short Negro (#1A1F2E) | Arquero: Verde Esmeralda (#19BF40)
+## - Equipo Visitante (ASF): Camiseta Amarilla (#F2D91A), short Azul Marino (#14243B) | Arquero: Naranja Coral (#F27319)
+func _inicializar_uniformes_equipos() -> void:
+	if contenedor_jugadores == null:
+		return
+	
+	for nodo: Node in contenedor_jugadores.get_children():
+		var jugador: Jugador3D = nodo as Jugador3D
+		if jugador == null:
+			continue
+		
+		var id_equipo: int = int(jugador.equipo)
+		if jugador.name.begins_with("Vis_"):
+			id_equipo = 1
+		elif jugador.name.begins_with("Local_"):
+			id_equipo = 0
+		
+		jugador.aplicar_uniforme_equipo(id_equipo)
 
 
 func _physics_process(_delta: float) -> void:
@@ -104,6 +127,10 @@ func _on_gol_arco_izquierdo(body: Node3D) -> void:
 		return
 	if body != balon:
 		return
+	if balon.esta_siendo_conducido() and balon.portador_actual is Jugador3D:
+		var portador: Jugador3D = balon.portador_actual as Jugador3D
+		if portador and (portador.posicion_tactica == "PORTERO" or portador.tiene_balon_en_manos):
+			return
 	
 	var nombre_vis: String = str(Futsal_3D.obtener_info_equipo(false).get("nombre", "VISITANTE")).to_upper()
 	_emitir_anuncio("¡¡GOOOOL DE %s!!" % nombre_vis)
@@ -118,6 +145,10 @@ func _on_gol_arco_derecho(body: Node3D) -> void:
 		return
 	if body != balon:
 		return
+	if balon.esta_siendo_conducido() and balon.portador_actual is Jugador3D:
+		var portador: Jugador3D = balon.portador_actual as Jugador3D
+		if portador and (portador.posicion_tactica == "PORTERO" or portador.tiene_balon_en_manos):
+			return
 	
 	var nombre_loc: String = str(Futsal_3D.obtener_info_equipo(true).get("nombre", "LOCAL")).to_upper()
 	_emitir_anuncio("¡¡GOOOOL DE %s!!" % nombre_loc)
