@@ -1,0 +1,641 @@
+[gd_scene load_steps=36 format=3 uid="uid://b7v2cancha3dfutsal01"]
+
+[ext_resource type="Script" path="res://scripts/CamaraTransmision.gd" id="1_camara_script"]
+[ext_resource type="PackedScene" path="res://scenes/Balon3D.tscn" id="2_balon3d_scene"]
+[ext_resource type="PackedScene" path="res://scenes/Jugador3D.tscn" id="3_jugador3d_scene"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HUDPartido.tscn" id="4_hud_scene"]
+[ext_resource type="Script" path="res://scripts/Cancha3D.gd" id="5_cancha_script"]
+[ext_resource type="Script" path="res://scripts/core/GestorPartido.gd" id="6_gestor_script"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_detector_gol"]
+size = Vector3(1.3, 2.25, 3.65)
+
+[sub_resource type="Environment" id="Environment_cancha"]
+background_mode = 1
+background_color = Color(0.0823529, 0.101961, 0.137255, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.72, 0.76, 0.82, 1)
+ambient_light_energy = 0.65
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_suelo"]
+size = Vector3(56, 0.5, 34)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_piso_azul"]
+albedo_color = Color(0.129412, 0.360784, 0.658824, 1)
+roughness = 0.45
+
+[sub_resource type="BoxMesh" id="BoxMesh_suelo"]
+material = SubResource("StandardMaterial3D_piso_azul")
+size = Vector3(40, 0.5, 20)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_exterior"]
+albedo_color = Color(0.109804, 0.137255, 0.184314, 1)
+roughness = 0.7
+
+[sub_resource type="BoxMesh" id="BoxMesh_exterior"]
+material = SubResource("StandardMaterial3D_exterior")
+size = Vector3(56, 0.48, 34)
+
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lineas"]
+albedo_color = Color(0.96, 0.96, 0.96, 0.95)
+roughness = 0.3
+
+[sub_resource type="BoxMesh" id="BoxMesh_linea_lateral"]
+material = SubResource("StandardMaterial3D_lineas")
+size = Vector3(40, 0.005, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_linea_meta"]
+material = SubResource("StandardMaterial3D_lineas")
+size = Vector3(0.08, 0.005, 20)
+
+[sub_resource type="BoxMesh" id="BoxMesh_linea_penal_frontal"]
+material = SubResource("StandardMaterial3D_lineas")
+size = Vector3(0.08, 0.005, 6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_linea_penal_lateral"]
+material = SubResource("StandardMaterial3D_lineas")
+size = Vector3(6, 0.005, 0.08)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_punto"]
+material = SubResource("StandardMaterial3D_lineas")
+top_radius = 0.15
+bottom_radius = 0.15
+height = 0.006
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_postes"]
+albedo_color = Color(0.95, 0.95, 0.95, 1)
+roughness = 0.3
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_red"]
+transparency = 1
+cull_mode = 2
+albedo_color = Color(0.85, 0.85, 0.85, 0.35)
+roughness = 0.8
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pared_longitudinal"]
+size = Vector3(56, 6, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pared_transversal"]
+size = Vector3(1, 6, 28)
+
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vallas"]
+albedo_color = Color(0.09, 0.13, 0.22, 1)
+roughness = 0.3
+
+[sub_resource type="BoxMesh" id="BoxMesh_valla_larga"]
+material = SubResource("StandardMaterial3D_vallas")
+size = Vector3(42, 0.9, 0.12)
+
+[sub_resource type="BoxMesh" id="BoxMesh_valla_media"]
+material = SubResource("StandardMaterial3D_vallas")
+size = Vector3(18, 0.9, 0.12)
+
+[sub_resource type="BoxMesh" id="BoxMesh_valla_corta"]
+material = SubResource("StandardMaterial3D_vallas")
+size = Vector3(0.12, 0.9, 8.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gradas"]
+albedo_color = Color(0.24, 0.27, 0.32, 1)
+roughness = 0.65
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cubierta_banquillo"]
+transparency = 1
+albedo_color = Color(0.72, 0.86, 0.98, 0.35)
+roughness = 0.1
+
+[sub_resource type="BoxMesh" id="BoxMesh_cubierta_banquillo"]
+material = SubResource("StandardMaterial3D_cubierta_banquillo")
+size = Vector3(5, 0.05, 1.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_marco_banquillo"]
+albedo_color = Color(0.15, 0.18, 0.22, 1)
+roughness = 0.5
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_asiento_local"]
+albedo_color = Color(0.85, 0.15, 0.15, 1)
+roughness = 0.4
+
+[sub_resource type="BoxMesh" id="BoxMesh_asiento_local"]
+material = SubResource("StandardMaterial3D_asiento_local")
+size = Vector3(0.5, 0.45, 0.45)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_asiento_vis"]
+albedo_color = Color(0.15, 0.45, 0.85, 1)
+roughness = 0.4
+
+[sub_resource type="BoxMesh" id="BoxMesh_asiento_vis"]
+material = SubResource("StandardMaterial3D_asiento_vis")
+size = Vector3(0.5, 0.45, 0.45)
+
+[node name="Cancha3D" type="Node3D"]
+script = ExtResource("5_cancha_script")
+
+[node name="GestorPartido" type="Node" parent="."]
+script = ExtResource("6_gestor_script")
+
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_cancha")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 20, 10)
+light_color = Color(0.98, 0.97, 0.95, 1)
+light_energy = 1.15
+shadow_enabled = true
+directional_shadow_max_distance = 60.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.743145, 0.669131, 0, -0.669131, 0.743145, 0, 21, 23)
+fov = 50.0
+current = true
+script = ExtResource("1_camara_script")
+ruta_balon = NodePath("../Balon3D")
+ruta_jugador_activo = NodePath("../Jugadores/Local_Pivot")
+altura_camara = 21.0
+distancia_z = 23.0
+inclinacion_grados = -42.0
+factor_suavizado = 4.5
+
+[node name="Suelo" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Suelo"]
+shape = SubResource("BoxShape3D_suelo")
+
+[node name="PisoAzul" type="MeshInstance3D" parent="Suelo"]
+mesh = SubResource("BoxMesh_suelo")
+
+[node name="PabellonExterior" type="MeshInstance3D" parent="Suelo"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.01, 0)
+mesh = SubResource("BoxMesh_exterior")
+
+[node name="LineasCancha" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.003, 0)
+
+[node name="BandaNorte" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -10)
+mesh = SubResource("BoxMesh_linea_lateral")
+
+[node name="BandaSur" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 10)
+mesh = SubResource("BoxMesh_linea_lateral")
+
+[node name="MetaIzquierda" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, 0)
+mesh = SubResource("BoxMesh_linea_meta")
+
+[node name="MetaDerecha" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 0)
+mesh = SubResource("BoxMesh_linea_meta")
+
+[node name="LineaCentral" type="MeshInstance3D" parent="LineasCancha"]
+mesh = SubResource("BoxMesh_linea_meta")
+
+[node name="PuntoCentral" type="MeshInstance3D" parent="LineasCancha"]
+mesh = SubResource("CylinderMesh_punto")
+
+[node name="AreaPenalIzqFrontal" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14, 0, 0)
+mesh = SubResource("BoxMesh_linea_penal_frontal")
+
+[node name="AreaPenalIzqNorte" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -17, 0, -3)
+mesh = SubResource("BoxMesh_linea_penal_lateral")
+
+[node name="AreaPenalIzqSur" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -17, 0, 3)
+mesh = SubResource("BoxMesh_linea_penal_lateral")
+
+[node name="PuntoPenalIzq" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14, 0, 0)
+mesh = SubResource("CylinderMesh_punto")
+
+[node name="AreaPenalDerFrontal" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0, 0)
+mesh = SubResource("BoxMesh_linea_penal_frontal")
+
+[node name="AreaPenalDerNorte" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17, 0, -3)
+mesh = SubResource("BoxMesh_linea_penal_lateral")
+
+[node name="AreaPenalDerSur" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17, 0, 3)
+mesh = SubResource("BoxMesh_linea_penal_lateral")
+
+[node name="PuntoPenalDer" type="MeshInstance3D" parent="LineasCancha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0, 0)
+mesh = SubResource("CylinderMesh_punto")
+
+[node name="PorteriaIzquierda" type="CSGCombiner3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, 0)
+use_collision = true
+
+[node name="PosteNorte" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -1.85)
+size = Vector3(0.1, 2.2, 0.1)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="PosteSur" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 1.85)
+size = Vector3(0.1, 2.2, 0.1)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="Travesaño" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
+size = Vector3(0.1, 0.1, 3.8)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="LargueroFondoNorte" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 2.2, -1.85)
+size = Vector3(1.1, 0.08, 0.08)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="LargueroFondoSur" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 2.2, 1.85)
+size = Vector3(1.1, 0.08, 0.08)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="TravesañoFondo" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 2.2, 0)
+size = Vector3(0.08, 0.08, 3.78)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="BaseFondoNorte" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 0.04, -1.85)
+size = Vector3(1.1, 0.08, 0.08)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="BaseFondoSur" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 0.04, 1.85)
+size = Vector3(1.1, 0.08, 0.08)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="BaseFondo" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 0.04, 0)
+size = Vector3(0.08, 0.08, 3.78)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="RedFondo" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.08, 1.1, 0)
+size = Vector3(0.02, 2.16, 3.66)
+material = SubResource("StandardMaterial3D_red")
+
+[node name="RedLateralNorte" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 1.1, -1.83)
+size = Vector3(1.08, 2.16, 0.02)
+material = SubResource("StandardMaterial3D_red")
+
+[node name="RedLateralSur" type="CSGBox3D" parent="PorteriaIzquierda"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 1.1, 1.83)
+size = Vector3(1.08, 2.16, 0.02)
+material = SubResource("StandardMaterial3D_red")
+
+[node name="PorteriaDerecha" type="CSGCombiner3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 0)
+use_collision = true
+
+[node name="PosteNorte" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -1.85)
+size = Vector3(0.1, 2.2, 0.1)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="PosteSur" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 1.85)
+size = Vector3(0.1, 2.2, 0.1)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="Travesaño" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
+size = Vector3(0.1, 0.1, 3.8)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="LargueroFondoNorte" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 2.2, -1.85)
+size = Vector3(1.1, 0.08, 0.08)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="LargueroFondoSur" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 2.2, 1.85)
+size = Vector3(1.1, 0.08, 0.08)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="TravesañoFondo" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 2.2, 0)
+size = Vector3(0.08, 0.08, 3.78)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="BaseFondoNorte" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 0.04, -1.85)
+size = Vector3(1.1, 0.08, 0.08)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="BaseFondoSur" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 0.04, 1.85)
+size = Vector3(1.1, 0.08, 0.08)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="BaseFondo" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 0.04, 0)
+size = Vector3(0.08, 0.08, 3.78)
+material = SubResource("StandardMaterial3D_postes")
+
+[node name="RedFondo" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08, 1.1, 0)
+size = Vector3(0.02, 2.16, 3.66)
+material = SubResource("StandardMaterial3D_red")
+
+[node name="RedLateralNorte" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 1.1, -1.83)
+size = Vector3(1.08, 2.16, 0.02)
+material = SubResource("StandardMaterial3D_red")
+
+[node name="RedLateralSur" type="CSGBox3D" parent="PorteriaDerecha"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 1.1, 1.83)
+size = Vector3(1.08, 2.16, 0.02)
+material = SubResource("StandardMaterial3D_red")
+
+[node name="ParedesInvisibles" type="StaticBody3D" parent="."]
+
+[node name="ParedNorte" type="CollisionShape3D" parent="ParedesInvisibles"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, -13)
+shape = SubResource("BoxShape3D_pared_longitudinal")
+
+[node name="ParedSur" type="CollisionShape3D" parent="ParedesInvisibles"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 13)
+shape = SubResource("BoxShape3D_pared_longitudinal")
+
+[node name="ParedOeste" type="CollisionShape3D" parent="ParedesInvisibles"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24.5, 3, 0)
+shape = SubResource("BoxShape3D_pared_transversal")
+
+[node name="ParedEste" type="CollisionShape3D" parent="ParedesInvisibles"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24.5, 3, 0)
+shape = SubResource("BoxShape3D_pared_transversal")
+
+
+[node name="EstadioEntorno" type="Node3D" parent="."]
+
+[node name="VallasPublicitarias" type="Node3D" parent="EstadioEntorno"]
+
+[node name="VallaNorte" type="MeshInstance3D" parent="EstadioEntorno/VallasPublicitarias"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, -10.5)
+mesh = SubResource("BoxMesh_valla_larga")
+
+[node name="VallaSurIzq" type="MeshInstance3D" parent="EstadioEntorno/VallasPublicitarias"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11, 0.45, 10.5)
+mesh = SubResource("BoxMesh_valla_media")
+
+[node name="VallaSurDer" type="MeshInstance3D" parent="EstadioEntorno/VallasPublicitarias"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11, 0.45, 10.5)
+mesh = SubResource("BoxMesh_valla_media")
+
+[node name="VallaFondoIzqNorte" type="MeshInstance3D" parent="EstadioEntorno/VallasPublicitarias"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.5, 0.45, -5.75)
+mesh = SubResource("BoxMesh_valla_corta")
+
+[node name="VallaFondoIzqSur" type="MeshInstance3D" parent="EstadioEntorno/VallasPublicitarias"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.5, 0.45, 5.75)
+mesh = SubResource("BoxMesh_valla_corta")
+
+[node name="VallaFondoDerNorte" type="MeshInstance3D" parent="EstadioEntorno/VallasPublicitarias"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.5, 0.45, -5.75)
+mesh = SubResource("BoxMesh_valla_corta")
+
+[node name="VallaFondoDerSur" type="MeshInstance3D" parent="EstadioEntorno/VallasPublicitarias"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.5, 0.45, 5.75)
+mesh = SubResource("BoxMesh_valla_corta")
+
+[node name="Banquillos" type="Node3D" parent="EstadioEntorno"]
+
+[node name="BanquilloLocal" type="Node3D" parent="EstadioEntorno/Banquillos"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, -11.8)
+
+[node name="Plataforma" type="CSGBox3D" parent="EstadioEntorno/Banquillos/BanquilloLocal"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+size = Vector3(4.8, 0.1, 1.7)
+material = SubResource("StandardMaterial3D_marco_banquillo")
+
+[node name="ParedTrasera" type="CSGBox3D" parent="EstadioEntorno/Banquillos/BanquilloLocal"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, -0.8)
+size = Vector3(4.8, 1.8, 0.08)
+material = SubResource("StandardMaterial3D_marco_banquillo")
+
+[node name="Cubierta" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloLocal"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.85, 0)
+mesh = SubResource("BoxMesh_cubierta_banquillo")
+
+[node name="Asiento1" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloLocal"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_local")
+
+[node name="Asiento2" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloLocal"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.8, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_local")
+
+[node name="Asiento3" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloLocal"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_local")
+
+[node name="Asiento4" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloLocal"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_local")
+
+[node name="Asiento5" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloLocal"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_local")
+
+[node name="BanquilloVisitante" type="Node3D" parent="EstadioEntorno/Banquillos"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, -11.8)
+
+[node name="Plataforma" type="CSGBox3D" parent="EstadioEntorno/Banquillos/BanquilloVisitante"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+size = Vector3(4.8, 0.1, 1.7)
+material = SubResource("StandardMaterial3D_marco_banquillo")
+
+[node name="ParedTrasera" type="CSGBox3D" parent="EstadioEntorno/Banquillos/BanquilloVisitante"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, -0.8)
+size = Vector3(4.8, 1.8, 0.08)
+material = SubResource("StandardMaterial3D_marco_banquillo")
+
+[node name="Cubierta" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloVisitante"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.85, 0)
+mesh = SubResource("BoxMesh_cubierta_banquillo")
+
+[node name="Asiento1" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloVisitante"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_vis")
+
+[node name="Asiento2" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloVisitante"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.8, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_vis")
+
+[node name="Asiento3" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloVisitante"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_vis")
+
+[node name="Asiento4" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloVisitante"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_vis")
+
+[node name="Asiento5" type="MeshInstance3D" parent="EstadioEntorno/Banquillos/BanquilloVisitante"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0.32, -0.3)
+mesh = SubResource("BoxMesh_asiento_vis")
+
+[node name="Gradas" type="Node3D" parent="EstadioEntorno"]
+
+[node name="GradaNorteNivel1" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, -14.2)
+size = Vector3(46, 0.8, 2.5)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="GradaNorteNivel2" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, -16.7)
+size = Vector3(46, 1.6, 2.5)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="GradaNorteNivel3" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, -19.2)
+size = Vector3(46, 2.4, 2.5)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="GradaSurNivel1" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 13.5)
+size = Vector3(46, 0.8, 2.5)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="GradaSurNivel2" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 16)
+size = Vector3(46, 1.6, 2.5)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="GradaSurNivel3" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 18.5)
+size = Vector3(46, 2.4, 2.5)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="GradaOesteNivel1" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.5, 0.5, 0)
+size = Vector3(2.5, 1, 24)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="GradaOesteNivel2" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -26, 1, 0)
+size = Vector3(2.5, 2, 24)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="GradaEsteNivel1" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 23.5, 0.5, 0)
+size = Vector3(2.5, 1, 24)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="GradaEsteNivel2" type="CSGBox3D" parent="EstadioEntorno/Gradas"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26, 1, 0)
+size = Vector3(2.5, 2, 24)
+material = SubResource("StandardMaterial3D_gradas")
+
+[node name="Balon3D" parent="." instance=ExtResource("2_balon3d_scene")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+
+[node name="Jugadores" type="Node3D" parent="."]
+
+[node name="Local_Portero" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -18.5, 0, 0)
+dorsal = 1
+posicion_tactica = "PORTERO"
+defensa_recuperacion = 86.0
+control_balon = 76.0
+
+[node name="Local_Cierre" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -12, 0, 0)
+dorsal = 4
+posicion_tactica = "CIERRE"
+defensa_recuperacion = 87.0
+vel_movimiento = 80.0
+control_balon = 80.0
+
+[node name="Local_AlaIzq" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6, 0, -6.5)
+dorsal = 7
+posicion_tactica = "ALA_IZQ"
+vel_movimiento = 85.0
+vision_pase = 84.0
+control_balon = 85.0
+
+[node name="Local_AlaDer" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6, 0, 6.5)
+dorsal = 8
+posicion_tactica = "ALA_DER"
+vel_movimiento = 84.0
+vision_pase = 86.0
+control_balon = 84.0
+
+[node name="Local_Pivot" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -1.8, 0, 0)
+posicion_tactica = "PIVOT"
+es_controlado = true
+vel_movimiento = 82.0
+potencia_tiro = 88.0
+precision_tiro = 85.0
+control_balon = 88.0
+vision_pase = 80.0
+
+[node name="Vis_Portero" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 18.5, 0, 0)
+equipo = 1
+dorsal = 1
+posicion_tactica = "PORTERO"
+defensa_recuperacion = 85.0
+control_balon = 75.0
+
+[node name="Vis_Cierre" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 12, 0, 0)
+equipo = 1
+dorsal = 3
+posicion_tactica = "CIERRE"
+defensa_recuperacion = 86.0
+vel_movimiento = 80.0
+control_balon = 79.0
+
+[node name="Vis_AlaIzq" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6, 0, -6.5)
+equipo = 1
+dorsal = 11
+posicion_tactica = "ALA_IZQ"
+vel_movimiento = 87.0
+vision_pase = 83.0
+control_balon = 84.0
+
+[node name="Vis_AlaDer" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6, 0, 6.5)
+equipo = 1
+dorsal = 9
+posicion_tactica = "ALA_DER"
+vel_movimiento = 85.0
+vision_pase = 85.0
+control_balon = 83.0
+
+[node name="Vis_Pivot" parent="Jugadores" instance=ExtResource("3_jugador3d_scene")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 1.8, 0, 0)
+equipo = 1
+posicion_tactica = "PIVOT"
+vel_movimiento = 82.0
+potencia_tiro = 86.0
+precision_tiro = 83.0
+control_balon = 85.0
+
+[node name="HUDPartido" parent="." instance=ExtResource("4_hud_scene")]
+
+[node name="AreaGolIzquierda" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.6, 1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="AreaGolIzquierda"]
+shape = SubResource("BoxShape3D_detector_gol")
+
+[node name="AreaGolDerecha" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.6, 1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="AreaGolDerecha"]
+shape = SubResource("BoxShape3D_detector_gol")
+

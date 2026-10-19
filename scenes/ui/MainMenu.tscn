@@ -1,0 +1,496 @@
+[gd_scene load_steps=15 format=3 uid="uid://dfmainmenufutsal01"]
+
+[ext_resource type="Script" path="res://scripts/ui/MainMenu.gd" id="1_menu_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tarjeta_destacada"]
+bg_color = Color(0.0823529, 0.133333, 0.219608, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.2, 0.65, 0.95, 0.8)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+content_margin_left = 28.0
+content_margin_top = 24.0
+content_margin_right = 28.0
+content_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tarjeta_secundaria"]
+bg_color = Color(0.0705882, 0.0980392, 0.152941, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.25, 0.35, 0.5, 0.6)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 20.0
+content_margin_top = 18.0
+content_margin_right = 20.0
+content_margin_bottom = 18.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_jugar"]
+bg_color = Color(0.12, 0.75, 0.45, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.5, 1, 0.7, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_accion"]
+bg_color = Color(0.12, 0.2, 0.32, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.55, 0.8, 0.7)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge_proximamente"]
+bg_color = Color(0.85, 0.65, 0.12, 0.25)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.75, 0.2, 0.8)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 8.0
+content_margin_top = 2.0
+content_margin_right = 8.0
+content_margin_bottom = 2.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge_destacado"]
+bg_color = Color(0.15, 0.6, 0.95, 0.3)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.75, 1, 0.8)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 10.0
+content_margin_top = 3.0
+content_margin_right = 10.0
+content_margin_bottom = 3.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pills_economia"]
+bg_color = Color(0.06, 0.08, 0.13, 0.8)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.25, 0.35, 0.5, 0.6)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+content_margin_left = 14.0
+content_margin_top = 6.0
+content_margin_right = 14.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_avatar"]
+bg_color = Color(0.18, 0.45, 0.85, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.8)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal"]
+bg_color = Color(0.08, 0.11, 0.16, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.55, 0.9, 0.8)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+content_margin_left = 28.0
+content_margin_top = 24.0
+content_margin_right = 28.0
+content_margin_bottom = 24.0
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_menu_script")
+
+[node name="Fondo" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0470588, 0.0627451, 0.0941176, 1)
+
+[node name="MargenSuperior" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 80.0
+grow_horizontal = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 30
+
+[node name="BarraSuperior" type="HBoxContainer" parent="MargenSuperior"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="ContenedorPerfil" type="HBoxContainer" parent="MargenSuperior/BarraSuperior"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Avatar" type="Panel" parent="MargenSuperior/BarraSuperior/ContenedorPerfil"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_avatar")
+
+[node name="LabelAvatar" type="Label" parent="MargenSuperior/BarraSuperior/ContenedorPerfil/Avatar"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -10.0
+offset_top = -11.0
+offset_right = 10.0
+offset_bottom = 11.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 14
+text = "DT"
+horizontal_alignment = 1
+
+[node name="VBoxUsuario" type="VBoxContainer" parent="MargenSuperior/BarraSuperior/ContenedorPerfil"]
+layout_mode = 2
+alignment = 1
+
+[node name="NombreDT" type="Label" parent="MargenSuperior/BarraSuperior/ContenedorPerfil/VBoxUsuario"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "DT CAMPEÓN"
+
+[node name="NivelDT" type="Label" parent="MargenSuperior/BarraSuperior/ContenedorPerfil/VBoxUsuario"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.75, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "NIVEL 18 • PRO LEAGUE"
+
+[node name="Espacio" type="Control" parent="MargenSuperior/BarraSuperior"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ContenedorEconomia" type="HBoxContainer" parent="MargenSuperior/BarraSuperior"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="PanelMonedas" type="PanelContainer" parent="MargenSuperior/BarraSuperior/ContenedorEconomia"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_pills_economia")
+
+[node name="HBox" type="HBoxContainer" parent="MargenSuperior/BarraSuperior/ContenedorEconomia/PanelMonedas"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="IconoMonedas" type="Label" parent="MargenSuperior/BarraSuperior/ContenedorEconomia/PanelMonedas/HBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "🪙"
+
+[node name="LabelMonedas" type="Label" parent="MargenSuperior/BarraSuperior/ContenedorEconomia/PanelMonedas/HBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.88, 0.35, 1)
+theme_override_font_sizes/font_size = 13
+text = "15,400"
+
+[node name="PanelGemas" type="PanelContainer" parent="MargenSuperior/BarraSuperior/ContenedorEconomia"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_pills_economia")
+
+[node name="HBox" type="HBoxContainer" parent="MargenSuperior/BarraSuperior/ContenedorEconomia/PanelGemas"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="IconoGemas" type="Label" parent="MargenSuperior/BarraSuperior/ContenedorEconomia/PanelGemas/HBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "💎"
+
+[node name="LabelGemas" type="Label" parent="MargenSuperior/BarraSuperior/ContenedorEconomia/PanelGemas/HBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "750"
+
+[node name="MargenPrincipal" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 80.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 30
+
+[node name="MosaicoContenedor" type="HBoxContainer" parent="MargenPrincipal"]
+layout_mode = 2
+theme_override_constants/separation = 22
+
+[node name="TarjetaPartidoRapido" type="PanelContainer" parent="MargenPrincipal/MosaicoContenedor"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.15
+theme_override_styles/panel = SubResource("StyleBoxFlat_tarjeta_destacada")
+
+[node name="VBox" type="VBoxContainer" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="HBoxHeader" type="HBoxContainer" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox"]
+layout_mode = 2
+
+[node name="BadgeDestacado" type="PanelContainer" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox/HBoxHeader"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge_destacado")
+
+[node name="LabelBadge" type="Label" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox/HBoxHeader/BadgeDestacado"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "★ MODO PRINCIPAL"
+
+[node name="Titulo" type="Label" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 28
+text = "PARTIDO RÁPIDO"
+
+[node name="Subtitulo" type="Label" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.8, 0.92, 1)
+theme_override_font_sizes/font_size = 14
+text = "5 vs 5 • Duelo contra CPU en Pista Azul 3D"
+
+[node name="EspacioMedio" type="Control" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="DetallePartido" type="Label" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.65, 0.78, 1)
+theme_override_font_sizes/font_size = 12
+text = "⏱ 3 minutos reglamentarios • Física de medio pique"
+
+[node name="BotonJugar" type="Button" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.02, 0.15, 0.08, 1)
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_jugar")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_jugar")
+text = "¡JUGAR PARTIDO AHORA!"
+
+[node name="BotonAccesoRapido" type="Button" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido"]
+visible = false
+layout_mode = 2
+
+[node name="ColumnaSecundaria" type="VBoxContainer" parent="MargenPrincipal/MosaicoContenedor"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 18
+
+[node name="TarjetaAlineacion" type="PanelContainer" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_tarjeta_secundaria")
+
+[node name="VBox" type="VBoxContainer" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/TarjetaAlineacion"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Titulo" type="Label" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/TarjetaAlineacion/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "MI EQUIPO & TÁCTICA"
+
+[node name="Desc" type="Label" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/TarjetaAlineacion/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.65, 0.72, 0.85, 1)
+theme_override_font_sizes/font_size = 12
+text = "Formación: 1-2-1 (Rombo) • 5 Titulares preparados"
+
+[node name="Espacio" type="Control" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/TarjetaAlineacion/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BotonAlineacion" type="Button" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/TarjetaAlineacion/VBox"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_accion")
+text = "VER ALINEACIÓN 1-2-1"
+
+[node name="FilaInferior" type="HBoxContainer" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 18
+
+[node name="TarjetaTienda" type="PanelContainer" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_tarjeta_secundaria")
+
+[node name="VBox" type="VBoxContainer" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaTienda"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Titulo" type="Label" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaTienda/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "TIENDA"
+
+[node name="Desc" type="Label" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaTienda/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.7, 0.8, 1)
+theme_override_font_sizes/font_size = 11
+text = "Balones y equipaciones"
+
+[node name="Espacio" type="Control" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaTienda/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BotonTienda" type="Button" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaTienda/VBox"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_accion")
+text = "ENTRAR"
+
+[node name="TarjetaOnline" type="PanelContainer" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_tarjeta_secundaria")
+
+[node name="VBox" type="VBoxContainer" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaOnline"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="BadgeProximamente" type="PanelContainer" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaOnline/VBox"]
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge_proximamente")
+
+[node name="LabelBadge" type="Label" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaOnline/VBox/BadgeProximamente"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 9
+text = "PRÓXIMAMENTE"
+
+[node name="Titulo" type="Label" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaOnline/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "EN LÍNEA"
+
+[node name="Desc" type="Label" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaOnline/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.7, 0.8, 1)
+theme_override_font_sizes/font_size = 11
+text = "Partidos PvP 5v5"
+
+[node name="Espacio" type="Control" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaOnline/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BotonOnline" type="Button" parent="MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaOnline/VBox"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_accion")
+text = "DETALLES"
+
+[node name="ModalInfo" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.7)
+
+[node name="PanelModal" type="PanelContainer" parent="ModalInfo"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -160.0
+offset_right = 220.0
+offset_bottom = 160.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_modal")
+
+[node name="VBox" type="VBoxContainer" parent="ModalInfo/PanelModal"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="TituloModal" type="Label" parent="ModalInfo/PanelModal/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.25, 0.75, 1, 1)
+theme_override_font_sizes/font_size = 17
+text = "INFORMACIÓN"
+horizontal_alignment = 1
+
+[node name="DescModal" type="Label" parent="ModalInfo/PanelModal/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.85, 0.9, 0.95, 1)
+theme_override_font_sizes/font_size = 13
+text = "Descripción"
+autowrap_mode = 3
+
+[node name="BotonCerrarModal" type="Button" parent="ModalInfo/PanelModal/VBox"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "ENTENDIDO"

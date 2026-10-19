@@ -1,0 +1,126 @@
+[gd_scene load_steps=5 format=3 uid="uid://d1splashscreen01"]
+
+[ext_resource type="Script" path="res://scripts/ui/Splash.gd" id="1_splash_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_bg"]
+bg_color = Color(0.1, 0.13, 0.18, 0.9)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_fill"]
+bg_color = Color(0.18, 0.72, 0.96, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge"]
+bg_color = Color(0.08, 0.12, 0.2, 0.7)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.5, 0.85, 0.6)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+content_margin_left = 28.0
+content_margin_top = 16.0
+content_margin_right = 28.0
+content_margin_bottom = 16.0
+
+[node name="Splash" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_splash_script")
+
+[node name="Fondo" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.054902, 0.0705882, 0.105882, 1)
+
+[node name="Centro" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="Centro"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="PanelBadge" type="PanelContainer" parent="Centro/VBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge")
+
+[node name="VBoxTitulos" type="VBoxContainer" parent="Centro/VBox/PanelBadge"]
+layout_mode = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="Titulo" type="Label" parent="Centro/VBox/PanelBadge/VBoxTitulos"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_shadow_color = Color(0.08, 0.35, 0.8, 0.7)
+theme_override_constants/shadow_offset_x = 0
+theme_override_constants/shadow_offset_y = 3
+theme_override_font_sizes/font_size = 40
+text = "⚽ FUTSAL PRO 3D"
+horizontal_alignment = 1
+
+[node name="Subtitulo" type="Label" parent="Centro/VBox/PanelBadge/VBoxTitulos"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.82, 0.28, 1)
+theme_override_font_sizes/font_size = 14
+text = "MOBILE TOURNAMENT EDITION"
+horizontal_alignment = 1
+
+[node name="Espaciador" type="Control" parent="Centro/VBox"]
+custom_minimum_size = Vector2(0, 16)
+layout_mode = 2
+
+[node name="BarraProgreso" type="ProgressBar" parent="Centro/VBox"]
+custom_minimum_size = Vector2(380, 8)
+layout_mode = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_progress_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_progress_fill")
+show_percentage = false
+
+[node name="LabelEstado" type="Label" parent="Centro/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.65, 0.72, 0.82, 1)
+theme_override_font_sizes/font_size = 13
+text = "Iniciando motor de físicas Jolt 3D..."
+horizontal_alignment = 1
+
+[node name="MargenPie" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -45.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/margin_bottom = 15
+
+[node name="LabelPie" type="Label" parent="MargenPie"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.38, 0.44, 0.54, 1)
+theme_override_font_sizes/font_size = 11
+text = "v1.0.0 • Godot 4 Compatibility (GLES3) • Futsal 3D Low-Poly"
+horizontal_alignment = 1

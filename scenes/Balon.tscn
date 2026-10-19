@@ -1,0 +1,36 @@
+[gd_scene load_steps=6 format=3 uid="uid://dfbalon2dfutsal1"]
+
+[ext_resource type="Script" path="res://scripts/Balon.gd" id="1_balon_script"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_balon"]
+friction = 0.25
+bounce = 0.35
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_balon"]
+radius = 10.0
+
+[sub_resource type="Gradient" id="Gradient_balon"]
+offsets = PackedFloat32Array(0, 0.75, 0.82, 0.92, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0.886275, 0.909804, 0.941176, 1, 0.117647, 0.160784, 0.231373, 1, 0.117647, 0.160784, 0.231373, 1, 0, 0, 0, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_balon"]
+gradient = SubResource("Gradient_balon")
+width = 20
+height = 20
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(0.5, 0)
+
+[node name="Balon" type="RigidBody2D"]
+gravity_scale = 0.0
+continuous_cd = 2
+physics_material_override = SubResource("PhysicsMaterial_balon")
+linear_damp = 1.2
+angular_damp = 2.0
+script = ExtResource("1_balon_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = SubResource("GradientTexture2D_balon")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_balon")

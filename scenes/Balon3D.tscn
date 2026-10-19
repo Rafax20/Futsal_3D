@@ -1,0 +1,35 @@
+[gd_scene format=3 uid="uid://ct4xo3metcjum"]
+
+[ext_resource type="Script" path="res://scripts/Balon3D.gd" id="1_balon3d_script"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_balon"]
+friction = 0.45
+bounce = 0.32
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_balon"]
+radius = 0.22
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_balon"]
+albedo_color = Color(0.96, 0.96, 0.96, 1)
+roughness = 0.35
+
+[sub_resource type="SphereMesh" id="SphereMesh_balon"]
+material = SubResource("StandardMaterial3D_balon")
+radius = 0.22
+height = 0.44
+radial_segments = 16
+rings = 8
+
+[node name="Balon3D" type="RigidBody3D" groups=["balon"]]
+mass = 0.43
+physics_material_override = SubResource("PhysicsMaterial_balon")
+continuous_cd = true
+linear_damp = 0.9
+angular_damp = 1.4
+script = ExtResource("1_balon3d_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape3D_balon")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_balon")

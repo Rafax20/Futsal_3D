@@ -1,0 +1,208 @@
+{
+	"base_datos": "Futsal_3D",
+	"version": "1.0",
+	"equipos": {
+		"LOCAL": {
+			"id": "LOCAL",
+			"nombre": "Real Fútsal CF",
+			"siglas": "RFC",
+			"color_primario": "#D92626",
+			"color_secundario": "#F2C94C",
+			"color_short": "#1A1F2E",
+			"color_arquero": "#19BF40",
+			"arquero_titular_id": "GK_01"
+		},
+		"VISITANTE": {
+			"id": "VISITANTE",
+			"nombre": "Atlético Solar FS",
+			"siglas": "ASF",
+			"color_primario": "#F2D91A",
+			"color_secundario": "#1F4E8C",
+			"color_short": "#14243B",
+			"color_arquero": "#F27319",
+			"arquero_titular_id": "GK_02"
+		}
+	},
+	"arqueros": [
+		{
+			"id": "GK_01",
+			"nombre": "T. Courtois",
+			"equipo_id": "LOCAL",
+			"dorsal": 1,
+			"posicion_tactica": "PORTERO",
+			"ovr": 84,
+			"ritmo": 64,
+			"gk_estirada": 85,
+			"gk_reflejos": 86,
+			"gk_manejo": 82,
+			"gk_posicionamiento": 84,
+			"gk_saque": 80
+		},
+		{
+			"id": "GK_02",
+			"nombre": "E. Martínez",
+			"equipo_id": "VISITANTE",
+			"dorsal": 1,
+			"posicion_tactica": "PORTERO",
+			"ovr": 83,
+			"ritmo": 66,
+			"gk_estirada": 84,
+			"gk_reflejos": 85,
+			"gk_manejo": 80,
+			"gk_posicionamiento": 82,
+			"gk_saque": 83
+		},
+		{
+			"id": "GK_03",
+			"nombre": "J. Oblak",
+			"equipo_id": "RESERVA",
+			"dorsal": 13,
+			"posicion_tactica": "PORTERO",
+			"ovr": 85,
+			"ritmo": 62,
+			"gk_estirada": 83,
+			"gk_reflejos": 87,
+			"gk_manejo": 86,
+			"gk_posicionamiento": 86,
+			"gk_saque": 77
+		},
+		{
+			"id": "GK_04",
+			"nombre": "M. Ter Stegen",
+			"equipo_id": "RESERVA",
+			"dorsal": 12,
+			"posicion_tactica": "PORTERO",
+			"ovr": 82,
+			"ritmo": 65,
+			"gk_estirada": 81,
+			"gk_reflejos": 84,
+			"gk_manejo": 79,
+			"gk_posicionamiento": 81,
+			"gk_saque": 88
+		},
+		{
+			"id": "GK_05",
+			"nombre": "G. Donnarumma",
+			"equipo_id": "RESERVA",
+			"dorsal": 99,
+			"posicion_tactica": "PORTERO",
+			"ovr": 83,
+			"ritmo": 67,
+			"gk_estirada": 86,
+			"gk_reflejos": 86,
+			"gk_manejo": 78,
+			"gk_posicionamiento": 80,
+			"gk_saque": 76
+		}
+	],
+	"jugadores_campo": {
+		"LOCAL": [
+			{
+				"id": "LOC_CIERRE",
+				"nombre": "C. Araujo",
+				"dorsal": 4,
+				"posicion_tactica": "CIERRE",
+				"ovr": 82,
+				"ritmo": 79,
+				"tiro": 74,
+				"pase": 80,
+				"regate": 78,
+				"defensa": 87,
+				"fisico": 85
+			},
+			{
+				"id": "LOC_ALA_IZQ",
+				"nombre": "L. Díaz",
+				"dorsal": 7,
+				"posicion_tactica": "ALA_IZQ",
+				"ovr": 84,
+				"ritmo": 89,
+				"tiro": 81,
+				"pase": 83,
+				"regate": 87,
+				"defensa": 68,
+				"fisico": 76
+			},
+			{
+				"id": "LOC_ALA_DER",
+				"nombre": "F. Valverde",
+				"dorsal": 8,
+				"posicion_tactica": "ALA_DER",
+				"ovr": 85,
+				"ritmo": 86,
+				"tiro": 84,
+				"pase": 86,
+				"regate": 84,
+				"defensa": 78,
+				"fisico": 84
+			},
+			{
+				"id": "LOC_PIVOT",
+				"nombre": "J. Álvarez",
+				"dorsal": 10,
+				"posicion_tactica": "PIVOT",
+				"ovr": 86,
+				"ritmo": 85,
+				"tiro": 89,
+				"pase": 81,
+				"regate": 87,
+				"defensa": 70,
+				"fisico": 82
+			}
+		],
+		"VISITANTE": [
+			{
+				"id": "VIS_CIERRE",
+				"nombre": "R. Dias",
+				"dorsal": 3,
+				"posicion_tactica": "CIERRE",
+				"ovr": 82,
+				"ritmo": 77,
+				"tiro": 72,
+				"pase": 79,
+				"regate": 76,
+				"defensa": 86,
+				"fisico": 86
+			},
+			{
+				"id": "VIS_ALA_IZQ",
+				"nombre": "R. Leão",
+				"dorsal": 11,
+				"posicion_tactica": "ALA_IZQ",
+				"ovr": 84,
+				"ritmo": 88,
+				"tiro": 80,
+				"pase": 81,
+				"regate": 86,
+				"defensa": 65,
+				"fisico": 80
+			},
+			{
+				"id": "VIS_ALA_DER",
+				"nombre": "B. Silva",
+				"dorsal": 9,
+				"posicion_tactica": "ALA_DER",
+				"ovr": 84,
+				"ritmo": 83,
+				"tiro": 81,
+				"pase": 87,
+				"regate": 88,
+				"defensa": 72,
+				"fisico": 74
+			},
+			{
+				"id": "VIS_PIVOT",
+				"nombre": "L. Martínez",
+				"dorsal": 10,
+				"posicion_tactica": "PIVOT",
+				"ovr": 85,
+				"ritmo": 83,
+				"tiro": 88,
+				"pase": 79,
+				"regate": 85,
+				"defensa": 69,
+				"fisico": 83
+			}
+		]
+	}
+}

@@ -1,0 +1,9 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+.godot/
+*.translation
+*.apk
+*.aab
+*.pck

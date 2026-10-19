@@ -1,0 +1,439 @@
+[gd_scene load_steps=16 format=3 uid="uid://b2hudpartidofutsal01"]
+
+[ext_resource type="Script" path="res://scripts/ui/HUDPartido.gd" id="1_hud_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_joystick_base"]
+bg_color = Color(0.0823529, 0.121569, 0.180392, 0.5)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.55, 0.85, 0.5)
+corner_radius_top_left = 80
+corner_radius_top_right = 80
+corner_radius_bottom_right = 80
+corner_radius_bottom_left = 80
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pomo"]
+bg_color = Color(0.18, 0.65, 0.95, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.9)
+corner_radius_top_left = 32
+corner_radius_top_right = 32
+corner_radius_bottom_right = 32
+corner_radius_bottom_left = 32
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_tiro"]
+bg_color = Color(0.92, 0.22, 0.22, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.6, 0.6, 0.8)
+corner_radius_top_left = 48
+corner_radius_top_right = 48
+corner_radius_bottom_right = 48
+corner_radius_bottom_left = 48
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pase"]
+bg_color = Color(0.15, 0.6, 0.9, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.6, 0.85, 1, 0.8)
+corner_radius_top_left = 43
+corner_radius_top_right = 43
+corner_radius_bottom_right = 43
+corner_radius_bottom_left = 43
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hueco"]
+bg_color = Color(0.12, 0.76, 0.42, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.6, 1, 0.75, 0.8)
+corner_radius_top_left = 38
+corner_radius_top_right = 38
+corner_radius_bottom_right = 38
+corner_radius_bottom_left = 38
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_sprint"]
+bg_color = Color(0.95, 0.72, 0.12, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.9, 0.6, 0.8)
+corner_radius_top_left = 36
+corner_radius_top_right = 36
+corner_radius_bottom_right = 36
+corner_radius_bottom_left = 36
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_marcador_panel"]
+bg_color = Color(0.06, 0.08, 0.12, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.35, 0.5, 0.75)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 16.0
+content_margin_top = 6.0
+content_margin_right = 16.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pausa"]
+bg_color = Color(0.12, 0.16, 0.24, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.45, 0.65, 0.8)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner_anuncio"]
+bg_color = Color(0.06, 0.09, 0.15, 0.88)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.3, 0.6, 0.95, 0.85)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_barra_bg"]
+bg_color = Color(0.06, 0.08, 0.12, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.35, 0.5, 0.8)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_barra_fill"]
+bg_color = Color(0.2, 0.85, 0.4, 0.95)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal_pausa"]
+bg_color = Color(0.08, 0.11, 0.16, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.3, 0.5, 0.8, 0.9)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+content_margin_left = 24.0
+content_margin_top = 20.0
+content_margin_right = 24.0
+content_margin_bottom = 20.0
+
+[node name="HUDPartido" type="CanvasLayer"]
+script = ExtResource("1_hud_script")
+
+[node name="MargenControles" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="JoystickBase" type="Panel" parent="MargenControles"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 50.0
+offset_top = -210.0
+offset_right = 210.0
+offset_bottom = -50.0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_joystick_base")
+
+[node name="Pomo" type="Panel" parent="MargenControles/JoystickBase"]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 48.0
+offset_right = 112.0
+offset_bottom = 112.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_pomo")
+
+[node name="BotonesAccion" type="Control" parent="MargenControles"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -340.0
+offset_top = -225.0
+offset_right = -20.0
+offset_bottom = -25.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="BotonSprint" type="Button" parent="MargenControles/BotonesAccion"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 35.0
+offset_right = 84.0
+offset_bottom = 107.0
+focus_mode = 0
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_sprint")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_sprint")
+text = "SPRINT"
+
+[node name="BotonHueco" type="Button" parent="MargenControles/BotonesAccion"]
+layout_mode = 0
+offset_left = 98.0
+offset_top = 10.0
+offset_right = 174.0
+offset_bottom = 86.0
+focus_mode = 0
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_hueco")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hueco")
+text = "HUECO"
+
+[node name="BotonPase" type="Button" parent="MargenControles/BotonesAccion"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 98.0
+offset_right = 166.0
+offset_bottom = 184.0
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_pase")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pase")
+text = "PASE"
+
+[node name="BotonTiro" type="Button" parent="MargenControles/BotonesAccion"]
+layout_mode = 0
+offset_left = 180.0
+offset_top = 45.0
+offset_right = 276.0
+offset_bottom = 141.0
+focus_mode = 0
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_tiro")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_tiro")
+text = "TIRO"
+
+[node name="BarraPotencia" type="ProgressBar" parent="MargenControles"]
+visible = false
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -340.0
+offset_top = -248.0
+offset_right = -45.0
+offset_bottom = -234.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_barra_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_barra_fill")
+max_value = 1.0
+show_percentage = false
+
+
+[node name="MarcadorSuperior" type="MarginContainer" parent="."]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -210.0
+offset_top = 12.0
+offset_right = 210.0
+offset_bottom = 62.0
+grow_horizontal = 2
+
+[node name="PanelContenedor" type="PanelContainer" parent="MarcadorSuperior"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_marcador_panel")
+
+[node name="ContenedorMarcador" type="HBoxContainer" parent="MarcadorSuperior/PanelContenedor"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="EscudoLocal" type="ColorRect" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+custom_minimum_size = Vector2(16, 20)
+layout_mode = 2
+size_flags_vertical = 4
+color = Color(0.85, 0.15, 0.15, 1)
+
+[node name="LabelLocal" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.45, 0.45, 1)
+theme_override_font_sizes/font_size = 14
+text = "RFC"
+
+[node name="LabelGoles" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "0 - 0"
+
+[node name="LabelVis" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.35, 1)
+theme_override_font_sizes/font_size = 14
+text = "ASF"
+
+[node name="EscudoVis" type="ColorRect" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+custom_minimum_size = Vector2(16, 20)
+layout_mode = 2
+size_flags_vertical = 4
+color = Color(0.95, 0.85, 0.1, 1)
+
+[node name="Separador" type="VSeparator" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+layout_mode = 2
+
+[node name="LabelTiempo" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 16
+text = "03:00"
+
+[node name="PanelFichaJugador" type="PanelContainer" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -165.0
+offset_top = -52.0
+offset_right = 165.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_marcador_panel")
+
+[node name="LabelJugadorActivo" type="Label" parent="PanelFichaJugador"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.92, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "#10 J. Álvarez [RFC] • OVR 86"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BannerAnuncio" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -190.0
+offset_top = 75.0
+offset_right = 190.0
+offset_bottom = 118.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_banner_anuncio")
+
+[node name="LabelAnuncio" type="Label" parent="BannerAnuncio"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.95, 0.4, 1)
+theme_override_font_sizes/font_size = 15
+text = "¡SAQUE DE BANDA!"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BotonPausa" type="Button" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -70.0
+offset_top = 15.0
+offset_right = -20.0
+offset_bottom = 55.0
+grow_horizontal = 0
+focus_mode = 0
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_pausa")
+text = "⏸"
+
+[node name="MenuPausaModal" type="ColorRect" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="PanelModal" type="PanelContainer" parent="MenuPausaModal"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = -140.0
+offset_right = 160.0
+offset_bottom = 140.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_modal_pausa")
+
+[node name="VBoxBotones" type="VBoxContainer" parent="MenuPausaModal/PanelModal"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="TituloPausa" type="Label" parent="MenuPausaModal/PanelModal/VBoxBotones"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "PARTIDO EN PAUSA"
+horizontal_alignment = 1
+
+[node name="BotonContinuar" type="Button" parent="MenuPausaModal/PanelModal/VBoxBotones"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "CONTINUAR"
+
+[node name="BotonReiniciar" type="Button" parent="MenuPausaModal/PanelModal/VBoxBotones"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "REINICIAR"
+
+[node name="BotonSalir" type="Button" parent="MenuPausaModal/PanelModal/VBoxBotones"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "MENÚ PRINCIPAL"
