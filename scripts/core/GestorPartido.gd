@@ -466,6 +466,19 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3) -> void:
 		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, pos_tl, equipo_favorecido)
 
 
+## Sanciona la Regla Oficial de Futsal de Cesión al Portero:
+## Si el portero toca el balón con las manos tras un pase intencional con el pie de un compañero,
+## el árbitro señala Tiro Libre Indirecto a favor del rival sobre la línea del área de 6 metros.
+func sancionar_cesion_portero_manos(equipo_infractor: int, pos_infraccion: Vector3) -> void:
+	if estado != EstadoPartido.EN_JUEGO:
+		return
+	var equipo_favorecido: int = 1 if equipo_infractor == 0 else 0
+	var x_linea_area: float = -14.0 if equipo_infractor == 0 else 14.0
+	var z_linea_area: float = clampf(pos_infraccion.z, -3.2, 3.2)
+	_emitir_anuncio_hud("¡CESIÓN AL PORTERO (MANOS)! TIRO LIBRE INDIRECTO")
+	iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, Vector3(x_linea_area, 0.25, z_linea_area), equipo_favorecido)
+
+
 func iniciar_doble_penalti(equipo_ejecutor: int, num_falta: int = 6) -> void:
 	if _balon == null:
 		_conectar_balon()

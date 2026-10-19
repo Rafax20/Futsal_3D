@@ -117,6 +117,19 @@ outer_radius = 0.56
 rings = 16
 ring_segments = 8
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flecha_guia"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.35, 0.88, 1, 0.65)
+
+[sub_resource type="BoxMesh" id="BoxMesh_flecha_cuerpo"]
+material = SubResource("StandardMaterial3D_flecha_guia")
+size = Vector3(0.18, 0.014, 0.72)
+
+[sub_resource type="PrismMesh" id="PrismMesh_flecha_punta"]
+material = SubResource("StandardMaterial3D_flecha_guia")
+size = Vector3(0.48, 0.46, 0.014)
+
 [sub_resource type="BoxShape3D" id="BoxShape3D_control_balon"]
 size = Vector3(0.95, 0.55, 0.85)
 
@@ -243,6 +256,18 @@ pixel_size = 0.0042
 text = "J. Álvarez (86)"
 font_size = 44
 outline_size = 10
+
+[node name="FlechaGuiaPase" type="Node3D" parent="."]
+visible = false
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.028, 0)
+
+[node name="CuerpoFlecha" type="MeshInstance3D" parent="FlechaGuiaPase"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.92)
+mesh = SubResource("BoxMesh_flecha_cuerpo")
+
+[node name="PuntaFlecha" type="MeshInstance3D" parent="FlechaGuiaPase"]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, -1.46)
+mesh = SubResource("PrismMesh_flecha_punta")
 
 [node name="ControlBalonArea" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.28, -0.68)

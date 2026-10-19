@@ -130,8 +130,12 @@ enum TipoPase {
 @onready var media_izq_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaIzq/MediaIzq") as MeshInstance3D
 @onready var media_der_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaDer/MediaDer") as MeshInstance3D
 @onready var indicador_control: MeshInstance3D = $Visual/IndicadorControl
+@onready var flecha_guia_pase: Node3D = get_node_or_null("FlechaGuiaPase") as Node3D
+@onready var cuerpo_flecha_mesh: MeshInstance3D = get_node_or_null("FlechaGuiaPase/CuerpoFlecha") as MeshInstance3D
+@onready var punta_flecha_mesh: MeshInstance3D = get_node_or_null("FlechaGuiaPase/PuntaFlecha") as MeshInstance3D
 @onready var control_balon_area: Area3D = $ControlBalonArea
 @onready var punto_conduccion: Marker3D = $PuntoConduccion
+var _mat_flecha_guia: StandardMaterial3D = null
 
 # Estado de máquina de estados y dinámica
 var _estado: EstadoJugador = EstadoJugador.LIBRE
@@ -197,11 +201,26 @@ func _ready() -> void:
 	if indicador_control:
 		indicador_control.visible = es_controlado
 	
+	_inicializar_flecha_guia_pase()
 	_cargar_ficha_futsal_3d()
 	_asignar_grupos()
 	_conectar_sensores_balon()
 	_actualizar_colores_uniforme()
 	call_deferred("_configurar_excepcion_colision_balon")
+
+
+func _inicializar_flecha_guia_pase() -> void:
+	if flecha_guia_pase == null:
+		return
+	_mat_flecha_guia = StandardMaterial3D.new()
+	_mat_flecha_guia.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_mat_flecha_guia.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_mat_flecha_guia.albedo_color = Color(0.35, 0.88, 1.0, 0.58)
+	if cuerpo_flecha_mesh:
+		cuerpo_flecha_mesh.material_override = _mat_flecha_guia
+	if punta_flecha_mesh:
+		punta_flecha_mesh.material_override = _mat_flecha_guia
+	flecha_guia_pase.visible = es_controlado
 
 
 ## Fuerza la actualización de equipo, ficha de datos, grupos y materiales 3D del uniforme
@@ -471,14 +490,18 @@ func _physics_process(delta: float) -> void:
 		global_position.y = 0.0
 		velocity.y = 0.0
 	
-	# Aislar posición del arquero con balón en manos fuera de la línea de gol (impide autogol accidental)
-	var gk_bloqueado_con_balon: bool = (posicion_tactica == "PORTERO" and (tiene_balon_en_manos or tiene_posesion or _estado == EstadoJugador.ESTADO_PORTERO_MANOS))
-	if gk_bloqueado_con_balon:
+	# Aislar posición del arquero con balón fuera de la línea de gol (impide autogol accidental)
+	var gk_bloqueado_con_manos: bool = (posicion_tactica == "PORTERO" and (tiene_balon_en_manos or _estado == EstadoJugador.ESTADO_PORTERO_MANOS))
+	if gk_bloqueado_con_manos:
 		if equipo == Equipo.LOCAL:
 			global_position.x = clampf(global_position.x, -18.2, -14.5)
 		else:
 			global_position.x = clampf(global_position.x, 14.5, 18.2)
 		global_position.z = clampf(global_position.z, -2.8, 2.8)
+	elif posicion_tactica == "PORTERO" and tiene_posesion:
+		# Si el arquero controla el balón con los pies (tras cesión de compañero), mantener margen de seguridad frente a su línea de meta
+		global_position.x = clampf(global_position.x, -18.3, 18.3)
+		global_position.z = clampf(global_position.z, -9.8, 9.8)
 	else:
 		global_position.x = clampf(global_position.x, -20.2, 20.2)
 		global_position.z = clampf(global_position.z, -11.9, 10.5)
@@ -511,7 +534,7 @@ func _physics_process(delta: float) -> void:
 	if _en_posicion_saque:
 		global_position = _pos_anclaje_saque
 		velocity = Vector3.ZERO
-	elif gk_bloqueado_con_balon:
+	elif gk_bloqueado_con_manos:
 		velocity = Vector3.ZERO
 	else:
 		move_and_slide()
@@ -520,7 +543,68 @@ func _physics_process(delta: float) -> void:
 	_chequear_proximidad_balon()
 	
 	_gestionar_conduccion_y_robos(delta)
+	_actualizar_flecha_guia_pase(delta)
 	_animar_extremidades(delta)
+
+
+## Actualiza la Flecha Guía de Pase y Apuntamiento en el plano XZ bajo los pies del jugador controlado:
+## - Se orienta dinámicamente hacia la dirección del joystick.
+## - Si detecta un compañero viable en el cono de visión, resalta su color/longitud y se orienta hacia el receptor previsto.
+func _actualizar_flecha_guia_pase(delta: float) -> void:
+	if flecha_guia_pase == null:
+		return
+	
+	if not es_controlado or _en_entrada or _congelado:
+		flecha_guia_pase.visible = false
+		return
+	
+	flecha_guia_pase.visible = true
+	
+	var dir_frente: Vector3 = -global_transform.basis.z
+	dir_frente.y = 0.0
+	if dir_frente.length_squared() < 0.001:
+		dir_frente = Vector3(1.0 if equipo == Equipo.LOCAL else -1.0, 0.0, 0.0)
+	else:
+		dir_frente = dir_frente.normalized()
+	
+	var dir_apuntado: Vector3 = _direccion_deseada if _direccion_deseada.length_squared() > 0.01 else dir_frente
+	dir_apuntado.y = 0.0
+	dir_apuntado = dir_apuntado.normalized() if dir_apuntado.length_squared() > 0.001 else dir_frente
+	
+	var receptor_viable: Jugador3D = null
+	if tiene_posesion or _en_posicion_saque:
+		var candidato: Jugador3D = _buscar_mejor_receptor(dir_apuntado)
+		if candidato != null:
+			var hacia_cand: Vector3 = candidato.global_position - global_position
+			hacia_cand.y = 0.0
+			if hacia_cand.length_squared() > 0.04:
+				var dir_cand: Vector3 = hacia_cand.normalized()
+				if dir_apuntado.dot(dir_cand) >= 0.28:
+					receptor_viable = candidato
+	
+	if receptor_viable != null:
+		var dir_receptor: Vector3 = receptor_viable.global_position - global_position
+		dir_receptor.y = 0.0
+		dir_receptor = dir_receptor.normalized() if dir_receptor.length_squared() > 0.001 else dir_apuntado
+		var angulo_receptor: float = atan2(-dir_receptor.x, -dir_receptor.z)
+		flecha_guia_pase.global_rotation = Vector3(
+			0.0,
+			lerp_angle(flecha_guia_pase.global_rotation.y, angulo_receptor, clampf(18.0 * delta, 0.0, 1.0)),
+			0.0
+		)
+		flecha_guia_pase.scale = flecha_guia_pase.scale.lerp(Vector3(1.15, 1.0, 1.26), clampf(14.0 * delta, 0.0, 1.0))
+		if _mat_flecha_guia != null:
+			_mat_flecha_guia.albedo_color = Color(0.22, 1.0, 0.56, 0.90)
+	else:
+		var angulo_joy: float = atan2(-dir_apuntado.x, -dir_apuntado.z)
+		flecha_guia_pase.global_rotation = Vector3(
+			0.0,
+			lerp_angle(flecha_guia_pase.global_rotation.y, angulo_joy, clampf(20.0 * delta, 0.0, 1.0)),
+			0.0
+		)
+		flecha_guia_pase.scale = flecha_guia_pase.scale.lerp(Vector3(1.0, 1.0, 1.0), clampf(14.0 * delta, 0.0, 1.0))
+		if _mat_flecha_guia != null:
+			_mat_flecha_guia.albedo_color = Color(0.35, 0.88, 1.0, 0.58)
 
 
 ## Desplaza al jugador trotando desde el banquillo hacia su posición inicial durante el estado ENTRADA
@@ -553,8 +637,8 @@ func _on_control_balon_area_body_entered(body: Node3D) -> void:
 		if not puede_tomar_balon():
 			return
 		if not balon.esta_siendo_conducido() and not balon.esta_fuera_de_juego:
-			if posicion_tactica == "PORTERO" and _esta_en_area_propia(balon.global_position):
-				atrapar_con_manos(balon)
+			if posicion_tactica == "PORTERO":
+				Portero.procesar_recepcion(self, balon)
 			else:
 				tomar_posesion(balon)
 		elif balon.portador_actual != self:
@@ -591,8 +675,8 @@ func _chequear_proximidad_balon() -> void:
 		var dist: float = global_position.distance_to(balon.global_position)
 		var radio_captura: float = 1.15 if (es_controlado and balon.ultimo_toque_equipo == int(equipo)) else 0.95
 		if dist < radio_captura:
-			if posicion_tactica == "PORTERO" and _esta_en_area_propia(balon.global_position):
-				atrapar_con_manos(balon)
+			if posicion_tactica == "PORTERO":
+				Portero.procesar_recepcion(self, balon)
 			else:
 				tomar_posesion(balon)
 
@@ -615,11 +699,17 @@ func tomar_posesion(balon: Balon3D) -> void:
 
 
 ## El portero atrapa con las manos (ESTADO_PORTERO_MANOS):
+## Verifica primero la Regla de Cesión al Portero (si fue pase con el pie de un compañero, sanciona Tiro Libre Indirecto).
 ## Congela de inmediato toda traslación física (velocity = Vector3.ZERO), aísla la posición respecto al arco
 ## y habilita únicamente rotación con el joystick para apuntar el saque con la mano.
 func atrapar_con_manos(balon: Balon3D) -> void:
 	if balon == null:
 		return
+	
+	# Regla Futsal: Si el balón proviene de cesión intencional con el pie de un compañero, sancionar Tiro Libre Indirecto
+	if Portero.verificar_y_sancionar_cesion_manos(self, balon):
+		return
+	
 	_balon_referencia = balon
 	tiene_posesion = true
 	tiene_balon_en_manos = true
@@ -875,20 +965,24 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 	_t_bloqueo_recaptura = 0.4
 	
 	if tipo_tiro == TipoTiro.COLOCADO:
-		# SWIPE DOWN -> TIRO COLOCADO CON EFECTO MAGNUS:
-		# Apuntamos inicialmente más abierto y aplicamos spin en Y para que la fuerza de Magnus cierre la curva hacia el segundo palo
+		# SWIPE DOWN -> TIRO COLOCADO CON CURVA BALÍSTICA NATURAL HACIA EL SEGUNDO POSTE:
+		# 1. Vector inicial dirigido hacia el poste opuesto con ligera apertura inicial.
+		# 2. Fuerza lateral moderada con decaimiento exponencial (F_magnus * e^(-lambda * t)) que cierra al poste sin girar en círculos.
 		var signo_curva: float = 1.0 if z_colocado >= 0.0 else -1.0
-		var z_apertura: float = z_colocado - signo_curva * 1.35
-		var elevacion_colocado: float = lerpf(0.35, 1.15, clampf(potencia, 0.0, 0.90))
-		var destino_apertura: Vector3 = Vector3(arco_x, elevacion_colocado, z_apertura)
-		var dir_apertura: Vector3 = (destino_apertura - pos_origen_tiro).normalized()
+		var z_apertura: float = z_colocado - signo_curva * 0.68
+		var elevacion_colocado: float = lerpf(0.32, 1.05, clampf(potencia, 0.0, 0.90))
+		var destino_poste_lejano: Vector3 = Vector3(arco_x, elevacion_colocado, z_apertura)
+		var dir_tiro: Vector3 = (destino_poste_lejano - pos_origen_tiro).normalized()
 		
-		# Menor velocidad lineal (~78%) pero rosca pronunciada hacia el ángulo
-		var fuerza_colocado: float = (10.5 + (potencia_tiro / 99.0) * 5.0 + (potencia * 12.0)) * 0.78
-		var impulso_colocado: Vector3 = dir_apertura * fuerza_colocado + Vector3(0.0, 0.75 + potencia * 0.45, 0.0)
-		var sentido_avance: float = 1.0 if equipo == Equipo.LOCAL else -1.0
-		var giro_magnus_y: float = -signo_curva * sentido_avance * (14.5 + (precision_tiro / 99.0) * 6.0)
-		_balon_referencia.liberar_con_efecto_magnus(impulso_colocado, Vector3(0.0, giro_magnus_y, 0.0), int(equipo))
+		var fuerza_colocado: float = (11.2 + (potencia_tiro / 99.0) * 5.0 + (potencia * 12.5)) * 0.86
+		var impulso_colocado: Vector3 = dir_tiro * fuerza_colocado + Vector3(0.0, 0.68 + potencia * 0.42, 0.0)
+		
+		var dir_plana_avance: Vector3 = Vector3(dir_tiro.x, 0.0, dir_tiro.z).normalized()
+		var dir_perp_a_poste: Vector3 = Vector3(0.0, 0.0, signo_curva)
+		# Componente puramente perpendicular al eje inicial de avance en el plano XZ
+		dir_perp_a_poste = (dir_perp_a_poste - dir_plana_avance * dir_perp_a_poste.dot(dir_plana_avance)).normalized()
+		var magnitud_curva: float = 2.35 + (precision_tiro / 99.0) * 0.85
+		_balon_referencia.liberar_con_efecto_magnus(impulso_colocado, dir_perp_a_poste * magnitud_curva, int(equipo))
 		if equipo == Equipo.LOCAL:
 			_emitir_anuncio_hud("¡TIRO COLOCADO CON ROSCA!")
 	elif tipo_tiro == TipoTiro.VASELINA:
@@ -902,7 +996,7 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 		var fuerza_horiz_vas: float = clampf(dist_arco * 0.68 + 3.2 + potencia * 3.0, 6.2, 13.5)
 		var fuerza_vert_vas: float = clampf(4.8 + potencia * 2.1, 4.8, 6.9)
 		var impulso_vaselina: Vector3 = dir_plana_vas * fuerza_horiz_vas + Vector3(0.0, fuerza_vert_vas, 0.0)
-		_balon_referencia.liberar(impulso_vaselina, int(equipo))
+		_balon_referencia.liberar(impulso_vaselina, int(equipo), false)
 		if equipo == Equipo.LOCAL:
 			_emitir_anuncio_hud("¡VASELINA / PICADITA!")
 	else:
@@ -915,7 +1009,7 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 		var vector_tiro: Vector3 = (destino_tiro - pos_origen_tiro).normalized()
 		var fuerza_total: float = 10.5 + (potencia_tiro / 99.0) * 5.5 + (potencia * 15.5)
 		var impulso_final: Vector3 = vector_tiro * fuerza_total + Vector3(0.0, 0.65 + potencia * 0.55, 0.0)
-		_balon_referencia.liberar(impulso_final, int(equipo))
+		_balon_referencia.liberar(impulso_final, int(equipo), false)
 	
 	if era_portero_local:
 		cambiar_a_mas_cercano_al_balon(false)
@@ -925,11 +1019,13 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 ## - TipoPase.RASO: Pase raso firme directo al pie.
 ## - TipoPase.ELEVADO (Swipe Up): Pase bombeado / sombrerito por el aire para superar piernas estiradas de defensores.
 ## - Activa automáticamente la mecánica "Pasa y Corre" (Give-and-Go / DESMARQUE_OFENSIVO) en el pasador.
+## - Registra si es cesión con el pie de un jugador de campo (Regla Futsal: el portero no puede agarrarla con las manos).
 func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> void:
 	if not tiene_posesion or _balon_referencia == null:
 		return
 	
 	var era_saque_mano: bool = tiene_balon_en_manos
+	var es_pase_pie_campo: bool = (not era_saque_mano and posicion_tactica != "PORTERO")
 	var era_controlado_local: bool = (equipo == Equipo.LOCAL and es_controlado and posicion_tactica != "PORTERO")
 	var dir_intencion_joystick: Vector3 = _direccion_deseada
 	
@@ -976,7 +1072,7 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 		
 		soltar_posesion()
 		_t_bloqueo_recaptura = 0.4
-		_balon_referencia.liberar(dir_pase * fuerza_pase + Vector3(0.0, impulso_vertical, 0.0), int(equipo))
+		_balon_referencia.liberar(dir_pase * fuerza_pase + Vector3(0.0, impulso_vertical, 0.0), int(equipo), es_pase_pie_campo)
 		
 		# Activar mecánica "Pasa y Corre" (Give-and-Go) antes de transferir el control al receptor
 		if era_controlado_local and mejor_companero.posicion_tactica != "PORTERO":
@@ -996,7 +1092,7 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 			_balon_referencia.global_position = global_position + Vector3(0.0, 0.25, 0.0)
 		soltar_posesion()
 		_t_bloqueo_recaptura = 0.4
-		_balon_referencia.liberar(dir_defecto * fuerza_def + Vector3(0.0, imp_vert_def, 0.0), int(equipo))
+		_balon_referencia.liberar(dir_defecto * fuerza_def + Vector3(0.0, imp_vert_def, 0.0), int(equipo), es_pase_pie_campo)
 		if posicion_tactica == "PORTERO" and equipo == Equipo.LOCAL and es_controlado:
 			cambiar_a_mas_cercano_al_balon(false)
 
@@ -1110,12 +1206,13 @@ func _calcular_trayectoria_pasa_y_corre(dir_intencion: Vector3) -> Vector3:
 ## 1) Proyecta P_llegada = P_companero + (v_companero * t_trayectoria).
 ## 2) Lanza múltiples rayos de colisión (PhysicsRayQueryParameters3D) hacia posiciones candidatas en el tercio ofensivo.
 ## 3) Descarta trayectorias que intersecten con las áreas de intercepción de defensores rivales.
-## 4) Selecciona el punto óptimo para rematar de primera o encarar al arquero en 1 contra 1.
+## 4) Ejecuta un impulso físico limpio (apply_central_impulse) con desaceleración orgánica de rodadura, sin frenazos artificiales.
 func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
 	if not tiene_posesion or _balon_referencia == null:
 		return
 	
 	var era_saque_mano: bool = tiene_balon_en_manos
+	var es_pase_pie_campo: bool = (not era_saque_mano and posicion_tactica != "PORTERO")
 	var era_controlado_local: bool = (equipo == Equipo.LOCAL and es_controlado and posicion_tactica != "PORTERO")
 	var dir_intencion_joystick: Vector3 = _direccion_deseada
 	
@@ -1150,8 +1247,9 @@ func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
 		var dist_hueco: float = vector_hacia_hueco.length()
 		var dir_hueco: Vector3 = vector_hacia_hueco.rotated(Vector3.UP, desvio_angulo).normalized() if dist_hueco > 0.1 else avance_ofensivo
 		
-		# Fuerza inicial calibrada para la curva de desaceleración de liberar_al_hueco()
-		var fuerza: float = clampf(dist_hueco * 1.45 + 4.2 + potencia * 4.5, 9.2, 22.0)
+		# Impulso limpio y físicamente calculado: el balón llega al hueco rodando a velocidad interceptable (4.5 a 7 m/s)
+		var vel_llegada_hueco: float = 4.5 + clampf(potencia, 0.0, 1.0) * 2.5
+		var fuerza: float = _balon_referencia.calcular_impulso_rodado(dist_hueco, vel_llegada_hueco)
 		
 		_en_posicion_saque = false
 		if era_saque_mano:
@@ -1162,7 +1260,7 @@ func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
 		
 		soltar_posesion()
 		_t_bloqueo_recaptura = 0.4
-		_balon_referencia.liberar_al_hueco(dir_hueco * fuerza + Vector3(0.0, 0.12, 0.0), p_destino, int(equipo))
+		_balon_referencia.liberar_al_hueco(dir_hueco * fuerza + Vector3(0.0, 0.10, 0.0), p_destino, int(equipo), es_pase_pie_campo)
 		
 		# Activar "Pasa y Corre" en el pasador y ordenar al receptor atacar el hueco filtrado
 		if era_controlado_local:
@@ -1693,16 +1791,13 @@ func _comportamiento_portero(_delta: float, pos_balon: Vector3, balon: Balon3D) 
 					_emitir_anuncio_hud("¡ATAJADA CON EL PIE DE %s!" % nombre_jugador.to_upper())
 		return
 	
-	# 3. RECEPCIÓN DE PASE ATRÁS O BALÓN SUELTO EN EL ÁREA
+	# 3. RECEPCIÓN DE PASE ATRÁS (CESIÓN CON EL PIE) O BALÓN SUELTO EN EL ÁREA
 	var dentro_area_propia: bool = _esta_en_area_propia(pos_balon)
 	if not balon.esta_siendo_conducido() and balon.sacador_autorizado == null and (dentro_area_propia or (es_pase_companero and dist_al_balon < 6.0 and abs(pos_balon.x - linea_meta_x) < 8.0)):
 		_direccion_deseada = (pos_balon - global_position).normalized()
 		sprint_activo = dist_al_balon > 1.5
 		if dist_al_balon < 1.05 and puede_tomar_balon():
-			if dentro_area_propia and not es_pase_companero:
-				atrapar_con_manos(balon)
-			else:
-				tomar_posesion(balon)
+			Portero.procesar_recepcion(self, balon)
 		return
 	
 	# 4. POSICIONAMIENTO ANGULAR EN ARCO (IDLE_ARQUERO)
@@ -2156,7 +2251,7 @@ func _calcular_separacion() -> Vector3:
 func _aplicar_movimiento(delta: float) -> void:
 	# 1. BLOQUEO TOTAL DE TRASLACIÓN DEL PORTERO CON BALÓN EN MANOS (SOLUCIÓN AL AUTOGOL ILÓGICO):
 	# Cuando el arquero tiene el balón en manos, velocity = Vector3.ZERO y el joystick SOLO rota su orientación visual.
-	if tiene_balon_en_manos or _estado == EstadoJugador.ESTADO_PORTERO_MANOS or (posicion_tactica == "PORTERO" and tiene_posesion):
+	if tiene_balon_en_manos or _estado == EstadoJugador.ESTADO_PORTERO_MANOS:
 		velocity = Vector3.ZERO
 		var dir_campo_x: float = 1.0 if equipo == Equipo.LOCAL else -1.0
 		var angulo_base_campo: float = atan2(-dir_campo_x, 0.0)

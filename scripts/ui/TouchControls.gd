@@ -59,9 +59,10 @@ var _modo_defensivo_actual: bool = false
 # Estado multitáctil del Joystick
 var _tocando_joystick: bool = false
 var _joystick_touch_id: int = -1
-var _radio_maximo_joystick: float = 65.0
+var _radio_maximo_joystick: float = 78.0
 var _centro_joystick: Vector2 = Vector2.ZERO
 var _direccion_joystick_actual: Vector2 = Vector2.ZERO
+@export var margen_tactil_boton_px: float = 18.0
 
 # Estado multitáctil y Swipe/Flick en botones de acción
 var _tiro_touch_id: int = -1
@@ -248,26 +249,26 @@ func _aplicar_modo_hud(nuevo_modo: int) -> void:
 
 
 func _inicializar_estilos_botones() -> void:
-	# Estilos de Ataque (Posesión)
-	_style_pase_ataque = _crear_estilo_circular(Color(0.15, 0.60, 0.92, 0.92), Color(0.60, 0.85, 1.0, 0.85), 43)
-	_style_hueco_ataque = _crear_estilo_circular(Color(0.12, 0.76, 0.42, 0.92), Color(0.60, 1.0, 0.75, 0.85), 38)
-	_style_tiro_ataque = _crear_estilo_circular(Color(0.92, 0.22, 0.22, 0.92), Color(1.0, 0.62, 0.62, 0.85), 48)
-	_style_sprint_ataque = _crear_estilo_circular(Color(0.95, 0.72, 0.12, 0.92), Color(1.0, 0.90, 0.60, 0.85), 36)
+	# Estilos de Ataque (Posesión) con escala móvil ampliada (+30%: radios 56, 50, 62, 48)
+	_style_pase_ataque = _crear_estilo_circular(Color(0.15, 0.60, 0.92, 0.92), Color(0.60, 0.85, 1.0, 0.88), 56)
+	_style_hueco_ataque = _crear_estilo_circular(Color(0.12, 0.76, 0.42, 0.92), Color(0.60, 1.0, 0.75, 0.88), 50)
+	_style_tiro_ataque = _crear_estilo_circular(Color(0.92, 0.22, 0.22, 0.92), Color(1.0, 0.62, 0.62, 0.88), 62)
+	_style_sprint_ataque = _crear_estilo_circular(Color(0.95, 0.72, 0.12, 0.92), Color(1.0, 0.90, 0.60, 0.88), 48)
 	
 	# Estilos de Defensa (Sin Balón - Colores diferenciados tácticos)
-	_style_pase_defensa = _crear_estilo_circular(Color(0.20, 0.42, 0.82, 0.92), Color(0.62, 0.80, 1.0, 0.85), 43)
-	_style_hueco_defensa = _crear_estilo_circular(Color(0.56, 0.24, 0.78, 0.92), Color(0.84, 0.65, 1.0, 0.85), 38)
-	_style_tiro_defensa = _crear_estilo_circular(Color(0.90, 0.40, 0.10, 0.92), Color(1.0, 0.74, 0.48, 0.85), 48)
-	_style_sprint_defensa = _crear_estilo_circular(Color(0.10, 0.66, 0.60, 0.92), Color(0.55, 0.95, 0.88, 0.85), 36)
+	_style_pase_defensa = _crear_estilo_circular(Color(0.20, 0.42, 0.82, 0.92), Color(0.62, 0.80, 1.0, 0.88), 56)
+	_style_hueco_defensa = _crear_estilo_circular(Color(0.56, 0.24, 0.78, 0.92), Color(0.84, 0.65, 1.0, 0.88), 50)
+	_style_tiro_defensa = _crear_estilo_circular(Color(0.90, 0.40, 0.10, 0.92), Color(1.0, 0.74, 0.48, 0.88), 62)
+	_style_sprint_defensa = _crear_estilo_circular(Color(0.10, 0.66, 0.60, 0.92), Color(0.55, 0.95, 0.88, 0.88), 48)
 
 
 func _crear_estilo_circular(bg: Color, borde: Color, radio: int) -> StyleBoxFlat:
 	var sb: StyleBoxFlat = StyleBoxFlat.new()
 	sb.bg_color = bg
-	sb.border_width_left = 2
-	sb.border_width_top = 2
-	sb.border_width_right = 2
-	sb.border_width_bottom = 2
+	sb.border_width_left = 3
+	sb.border_width_top = 3
+	sb.border_width_right = 3
+	sb.border_width_bottom = 3
 	sb.border_color = borde
 	sb.corner_radius_top_left = radio
 	sb.corner_radius_top_right = radio
@@ -299,30 +300,25 @@ func _input(event: InputEvent) -> void:
 			# 1. ¿Tocó el Joystick Virtual?
 			if joystick_base:
 				var pos_local_joy: Vector2 = joystick_base.get_global_transform().affine_inverse() * touch.position
-				if pos_local_joy.distance_to(_centro_joystick) <= _radio_maximo_joystick * 1.5:
+				if pos_local_joy.distance_to(_centro_joystick) <= _radio_maximo_joystick * 1.55:
 					_tocando_joystick = true
 					_joystick_touch_id = touch.index
 					_actualizar_pomo(pos_local_joy)
 					return
 			
-			# 2. ¿Tocó Botón 3 (TIRO / ENTRADA)?
-			if _punto_en_boton(btn_tiro, touch.position):
+			# 2. Selección ergonómica del botón de acción más cercano dentro del área táctil ampliada
+			var boton_tocado: Button = _detectar_boton_tocado(touch.position)
+			if boton_tocado == btn_tiro:
 				_iniciar_toque_tiro(touch.index, touch.position)
 				return
-			
-			# 3. ¿Tocó Botón 1 (PASE / CAMBIAR)?
-			if _punto_en_boton(btn_pase, touch.position):
+			elif boton_tocado == btn_pase:
 				_iniciar_toque_pase(touch.index, touch.position)
 				return
-			
-			# 4. ¿Tocó Botón 2 (HUECO / PRESIÓN 2° DEF)?
-			if _punto_en_boton(btn_hueco, touch.position):
+			elif boton_tocado == btn_hueco:
 				_hueco_touch_id = touch.index
 				_on_hueco_down()
 				return
-			
-			# 5. ¿Tocó Botón 4 (ESPRINTAR / ESPRINTAR + PRESIÓN)?
-			if _punto_en_boton(btn_sprint, touch.position):
+			elif boton_tocado == btn_sprint:
 				_sprint_touch_id = touch.index
 				_on_sprint_down()
 				return
@@ -358,14 +354,15 @@ func _input(event: InputEvent) -> void:
 			if mb.pressed:
 				if joystick_base:
 					var pos_local_joy: Vector2 = joystick_base.get_global_transform().affine_inverse() * mb.position
-					if pos_local_joy.distance_to(_centro_joystick) <= _radio_maximo_joystick * 1.5:
+					if pos_local_joy.distance_to(_centro_joystick) <= _radio_maximo_joystick * 1.55:
 						_tocando_joystick = true
 						_actualizar_pomo(pos_local_joy)
 						return
-				if _tiro_touch_id == -1 and _punto_en_boton(btn_tiro, mb.position):
+				var boton_mouse: Button = _detectar_boton_tocado(mb.position)
+				if _tiro_touch_id == -1 and boton_mouse == btn_tiro:
 					_tiro_mouse_activo = true
 					_iniciar_toque_tiro(-10, mb.position)
-				elif _pase_touch_id == -1 and _punto_en_boton(btn_pase, mb.position):
+				elif _pase_touch_id == -1 and boton_mouse == btn_pase:
 					_pase_mouse_activo = true
 					_iniciar_toque_pase(-11, mb.position)
 			else:
@@ -389,10 +386,31 @@ func _input(event: InputEvent) -> void:
 			_actualizar_swipe_pase(mm.position)
 
 
+## Detecta qué botón fue presionado usando un área circular ampliada (+margen_tactil_boton_px)
+## y priorizando el centro más cercano para evitar toques erróneos en pantallas táctiles densas.
+func _detectar_boton_tocado(pos_global: Vector2) -> Button:
+	var botones: Array[Button] = [btn_tiro, btn_pase, btn_hueco, btn_sprint]
+	var mejor_boton: Button = null
+	var menor_dist_norm: float = 999.0
+	
+	for b: Button in botones:
+		if b == null or not b.visible:
+			continue
+		var rect: Rect2 = b.get_global_rect()
+		var centro: Vector2 = rect.get_center()
+		var radio_efectivo: float = (maxf(rect.size.x, rect.size.y) * 0.5) + margen_tactil_boton_px
+		var dist: float = pos_global.distance_to(centro)
+		if dist <= radio_efectivo:
+			var dist_norm: float = dist / maxf(1.0, radio_efectivo)
+			if dist_norm < menor_dist_norm:
+				menor_dist_norm = dist_norm
+				mejor_boton = b
+	
+	return mejor_boton
+
+
 func _punto_en_boton(boton: Button, pos_global: Vector2) -> bool:
-	if boton == null or not boton.visible:
-		return false
-	return boton.get_global_rect().grow(6.0).has_point(pos_global)
+	return _detectar_boton_tocado(pos_global) == boton
 
 
 ## Inicia toque en Botón TIRO (Ataque: carga potencia y escucha Swipe Up/Down | Defensa: Entrada inmediata)

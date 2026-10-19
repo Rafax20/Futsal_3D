@@ -1,78 +1,78 @@
-[gd_scene format=3 uid="uid://5m1krnmfpdpg"]
+[gd_scene load_steps=10 format=3 uid="uid://c8touchcontrolsfutsal01"]
 
 [ext_resource type="Script" path="res://scripts/ui/TouchControls.gd" id="1_touch_controls_script"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_joystick_base"]
-bg_color = Color(0.0823529, 0.121569, 0.180392, 0.5)
+bg_color = Color(0.0823529, 0.121569, 0.180392, 0.52)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.35, 0.55, 0.85, 0.5)
-corner_radius_top_left = 80
-corner_radius_top_right = 80
-corner_radius_bottom_right = 80
-corner_radius_bottom_left = 80
+border_color = Color(0.35, 0.55, 0.85, 0.55)
+corner_radius_top_left = 96
+corner_radius_top_right = 96
+corner_radius_bottom_right = 96
+corner_radius_bottom_left = 96
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pomo"]
-bg_color = Color(0.18, 0.65, 0.95, 0.85)
+bg_color = Color(0.18, 0.65, 0.95, 0.88)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(1, 1, 1, 0.9)
-corner_radius_top_left = 32
-corner_radius_top_right = 32
-corner_radius_bottom_right = 32
-corner_radius_bottom_left = 32
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_tiro"]
-bg_color = Color(0.92, 0.22, 0.22, 0.92)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(1, 0.6, 0.6, 0.8)
-corner_radius_top_left = 48
-corner_radius_top_right = 48
-corner_radius_bottom_right = 48
-corner_radius_bottom_left = 48
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pase"]
-bg_color = Color(0.15, 0.6, 0.9, 0.92)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.6, 0.85, 1, 0.8)
-corner_radius_top_left = 43
-corner_radius_top_right = 43
-corner_radius_bottom_right = 43
-corner_radius_bottom_left = 43
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hueco"]
-bg_color = Color(0.12, 0.76, 0.42, 0.92)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.6, 1, 0.75, 0.8)
+border_color = Color(1, 1, 1, 0.92)
 corner_radius_top_left = 38
 corner_radius_top_right = 38
 corner_radius_bottom_right = 38
 corner_radius_bottom_left = 38
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_tiro"]
+bg_color = Color(0.92, 0.22, 0.22, 0.92)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.62, 0.62, 0.88)
+corner_radius_top_left = 62
+corner_radius_top_right = 62
+corner_radius_bottom_right = 62
+corner_radius_bottom_left = 62
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_pase"]
+bg_color = Color(0.15, 0.6, 0.92, 0.92)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.6, 0.85, 1, 0.88)
+corner_radius_top_left = 56
+corner_radius_top_right = 56
+corner_radius_bottom_right = 56
+corner_radius_bottom_left = 56
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hueco"]
+bg_color = Color(0.12, 0.76, 0.42, 0.92)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.6, 1, 0.75, 0.88)
+corner_radius_top_left = 50
+corner_radius_top_right = 50
+corner_radius_bottom_right = 50
+corner_radius_bottom_left = 50
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_sprint"]
 bg_color = Color(0.95, 0.72, 0.12, 0.92)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(1, 0.9, 0.6, 0.8)
-corner_radius_top_left = 36
-corner_radius_top_right = 36
-corner_radius_bottom_right = 36
-corner_radius_bottom_left = 36
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.9, 0.6, 0.88)
+corner_radius_top_left = 48
+corner_radius_top_right = 48
+corner_radius_bottom_right = 48
+corner_radius_bottom_left = 48
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_barra_bg"]
 bg_color = Color(0.06, 0.08, 0.12, 0.85)
@@ -108,19 +108,19 @@ layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 50.0
-offset_top = -210.0
-offset_right = 210.0
-offset_bottom = -50.0
+offset_left = 44.0
+offset_top = -236.0
+offset_right = 236.0
+offset_bottom = -44.0
 grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_joystick_base")
 
 [node name="Pomo" type="Panel" parent="JoystickBase"]
 layout_mode = 0
-offset_left = 48.0
-offset_top = 48.0
-offset_right = 112.0
-offset_bottom = 112.0
+offset_left = 58.0
+offset_top = 58.0
+offset_right = 134.0
+offset_bottom = 134.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_pomo")
 
@@ -131,10 +131,10 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -340.0
-offset_top = -225.0
+offset_left = -435.0
+offset_top = -305.0
 offset_right = -20.0
-offset_bottom = -25.0
+offset_bottom = -20.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
@@ -142,47 +142,47 @@ mouse_filter = 2
 [node name="LabelGestoActivo" type="Label" parent="BotonesAccion"]
 visible = false
 layout_mode = 0
-offset_left = 10.0
-offset_top = -48.0
-offset_right = 290.0
-offset_bottom = -24.0
+offset_left = 40.0
+offset_top = -50.0
+offset_right = 395.0
+offset_bottom = -22.0
 theme_override_colors/font_color = Color(1, 0.95, 0.35, 1)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 15
 text = "▲ VASELINA"
 horizontal_alignment = 1
 
 [node name="BotonSprint" type="Button" parent="BotonesAccion"]
 layout_mode = 0
 offset_left = 12.0
-offset_top = 35.0
-offset_right = 84.0
-offset_bottom = 107.0
+offset_top = 104.0
+offset_right = 108.0
+offset_bottom = 200.0
 focus_mode = 0
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 12
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_sprint")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_sprint")
 text = "ESPRINTAR"
 
 [node name="BotonHueco" type="Button" parent="BotonesAccion"]
 layout_mode = 0
-offset_left = 98.0
-offset_top = 10.0
-offset_right = 174.0
-offset_bottom = 86.0
+offset_left = 152.0
+offset_top = 12.0
+offset_right = 252.0
+offset_bottom = 112.0
 focus_mode = 0
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_hueco")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_hueco")
 text = "HUECO"
 
 [node name="BotonPase" type="Button" parent="BotonesAccion"]
 layout_mode = 0
-offset_left = 80.0
-offset_top = 98.0
-offset_right = 166.0
-offset_bottom = 184.0
+offset_left = 132.0
+offset_top = 148.0
+offset_right = 244.0
+offset_bottom = 260.0
 focus_mode = 0
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_pase")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_pase")
 text = "PASE"
@@ -192,25 +192,25 @@ layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -28.0
-offset_top = 4.0
-offset_right = 28.0
-offset_bottom = 20.0
+offset_left = -36.0
+offset_top = 6.0
+offset_right = 36.0
+offset_bottom = 24.0
 grow_horizontal = 2
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.85, 0.95, 1, 0.8)
-theme_override_font_sizes/font_size = 9
-text = "▲ ELEV"
+theme_override_colors/font_color = Color(0.88, 0.96, 1, 0.88)
+theme_override_font_sizes/font_size = 10
+text = "▲ ELEVADO"
 horizontal_alignment = 1
 
 [node name="BotonTiro" type="Button" parent="BotonesAccion"]
 layout_mode = 0
-offset_left = 180.0
-offset_top = 45.0
-offset_right = 276.0
-offset_bottom = 141.0
+offset_left = 276.0
+offset_top = 44.0
+offset_right = 400.0
+offset_bottom = 168.0
 focus_mode = 0
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 16
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_tiro")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_tiro")
 text = "TIRO"
@@ -220,14 +220,14 @@ layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -34.0
-offset_top = 5.0
-offset_right = 34.0
-offset_bottom = 21.0
+offset_left = -42.0
+offset_top = 7.0
+offset_right = 42.0
+offset_bottom = 25.0
 grow_horizontal = 2
 mouse_filter = 2
-theme_override_colors/font_color = Color(1, 0.92, 0.75, 0.85)
-theme_override_font_sizes/font_size = 9
+theme_override_colors/font_color = Color(1, 0.94, 0.78, 0.88)
+theme_override_font_sizes/font_size = 10
 text = "▲ VASELINA"
 horizontal_alignment = 1
 
@@ -238,15 +238,15 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -36.0
-offset_top = -20.0
-offset_right = 36.0
-offset_bottom = -4.0
+offset_left = -44.0
+offset_top = -25.0
+offset_right = 44.0
+offset_bottom = -7.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.85, 0.95, 1, 0.85)
-theme_override_font_sizes/font_size = 9
+theme_override_colors/font_color = Color(0.88, 0.96, 1, 0.88)
+theme_override_font_sizes/font_size = 10
 text = "▼ COLOCADO"
 horizontal_alignment = 1
 
@@ -258,10 +258,10 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -340.0
-offset_top = -248.0
-offset_right = -45.0
-offset_bottom = -234.0
+offset_left = -400.0
+offset_top = -326.0
+offset_right = -40.0
+offset_bottom = -310.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
