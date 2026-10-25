@@ -24,7 +24,8 @@ enum ModoHUD {
 	ATAQUE = 0,
 	DEFENSA = 1,
 	SAQUE_PIE = 2,
-	SAQUE_MANO = 3
+	SAQUE_MANO = 3,
+	TIRO_LIBRE = 4
 }
 
 @export var ruta_jugador: NodePath = ^"../../Jugadores/Local_Pivot"
@@ -41,6 +42,10 @@ enum ModoHUD {
 @onready var btn_tiro: Button = $BotonesAccion/BotonTiro
 @onready var btn_sprint: Button = $BotonesAccion/BotonSprint
 
+# Referencias a Tiro Libre Swipe
+@onready var contenedor_tiro_libre: Control = get_node_or_null("ContenedorTiroLibre")
+@onready var btn_pase_corto: Button = get_node_or_null("ContenedorTiroLibre/BotonPaseCorto") as Button
+
 # Indicadores sutiles de flechas Swipe (definidos en escena .tscn)
 @onready var label_flecha_tiro_up: Label = get_node_or_null("BotonesAccion/BotonTiro/FlechaUpTiro") as Label
 @onready var label_flecha_tiro_down: Label = get_node_or_null("BotonesAccion/BotonTiro/FlechaDownTiro") as Label
@@ -55,6 +60,16 @@ var _jugador_referencia: Jugador3D = null
 var _gestor_partido: GestorPartido = null
 var _modo_actual: int = -1
 var _modo_defensivo_actual: bool = false
+
+# Estado de Tiro Libre y Trazo Táctil (Swipe)
+var _modo_tiro_libre_activo: bool = false
+var _capturando_swipe_tiro_libre: bool = false
+var _swipe_touch_id: int = -1
+var _swipe_puntos: PackedVector2Array = PackedVector2Array()
+var _swipe_tiempo_inicio: float = 0.0
+var _color_halo_swipe: Color = Color(0.18, 0.68, 1.0, 0.45)
+var _color_linea_swipe: Color = Color(0.95, 0.98, 1.0, 0.95)
+var _color_punta_swipe: Color = Color(1.0, 0.88, 0.25, 1.0)
 
 # Estado multitáctil del Joystick
 var _tocando_joystick: bool = false
@@ -101,6 +116,9 @@ func _ready() -> void:
 	_conectar_botones_respaldo()
 	_conectar_gestor_partido()
 	
+	if btn_pase_corto and not btn_pase_corto.pressed.is_connected(_on_btn_pase_corto_pressed):
+		btn_pase_corto.pressed.connect(_on_btn_pase_corto_pressed)
+	
 	if joystick_base:
 		_centro_joystick = joystick_base.size * 0.5
 		_resetear_joystick()
@@ -108,8 +126,21 @@ func _ready() -> void:
 		barra_potencia.visible = false
 	if label_gesto_activo:
 		label_gesto_activo.visible = false
+	if contenedor_tiro_libre:
+		contenedor_tiro_libre.visible = false
 	
 	_aplicar_modo_hud(ModoHUD.ATAQUE)
+
+
+func _draw() -> void:
+	if _modo_tiro_libre_activo and _swipe_puntos.size() >= 2:
+		# Dibujar halo exterior translúcido
+		draw_polyline(_swipe_puntos, _color_halo_swipe, 10.0, true)
+		# Dibujar línea central neón
+		draw_polyline(_swipe_puntos, _color_linea_swipe, 4.0, true)
+		# Indicador de punta en el extremo actual del trazo
+		var pt_punta: Vector2 = _swipe_puntos[-1]
+		draw_circle(pt_punta, 6.5, _color_punta_swipe)
 
 
 func _process(delta: float) -> void:
@@ -136,6 +167,11 @@ func _conectar_gestor_partido() -> void:
 
 
 func _on_posesion_cambiada(en_ataque_local: bool, _equipo_poseedor: int) -> void:
+	if _gestor_partido != null and _gestor_partido.es_tiro_libre_activo():
+		if _gestor_partido.obtener_equipo_sacador() == 0:
+			_aplicar_modo_hud(ModoHUD.TIRO_LIBRE)
+			return
+	
 	var jugador: Jugador3D = obtener_jugador_activo()
 	var en_saque_centro: bool = (_gestor_partido != null and _gestor_partido.es_saque_centro_activo())
 	
@@ -152,6 +188,11 @@ func _on_posesion_cambiada(en_ataque_local: bool, _equipo_poseedor: int) -> void
 func _sincronizar_estado_contexto_hud() -> void:
 	if _gestor_partido == null:
 		_conectar_gestor_partido()
+	
+	if _gestor_partido != null and _gestor_partido.es_tiro_libre_activo():
+		if _gestor_partido.obtener_equipo_sacador() == 0:
+			_aplicar_modo_hud(ModoHUD.TIRO_LIBRE)
+			return
 	
 	var jugador: Jugador3D = obtener_jugador_activo()
 	var en_saque_centro: bool = (_gestor_partido != null and _gestor_partido.es_saque_centro_activo())
@@ -246,6 +287,32 @@ func _aplicar_modo_hud(nuevo_modo: int) -> void:
 			_asignar_estilo_boton(btn_hueco, _style_hueco_ataque)
 			_asignar_estilo_boton(btn_tiro, _style_tiro_ataque)
 			_asignar_estilo_boton(btn_sprint, _style_sprint_ataque)
+		
+		ModoHUD.TIRO_LIBRE:
+			_modo_tiro_libre_activo = true
+			if joystick_base: joystick_base.visible = false
+			if btn_pase: btn_pase.visible = false
+			if btn_hueco: btn_hueco.visible = false
+			if btn_tiro: btn_tiro.visible = false
+			if btn_sprint: btn_sprint.visible = false
+			if barra_potencia: barra_potencia.visible = false
+			if label_gesto_activo: label_gesto_activo.visible = false
+			if label_flecha_tiro_up: label_flecha_tiro_up.visible = false
+			if label_flecha_tiro_down: label_flecha_tiro_down.visible = false
+			if label_flecha_pase_up: label_flecha_pase_up.visible = false
+			if contenedor_tiro_libre: contenedor_tiro_libre.visible = true
+	
+	if nuevo_modo != ModoHUD.TIRO_LIBRE:
+		_modo_tiro_libre_activo = false
+		_capturando_swipe_tiro_libre = false
+		_swipe_puntos.clear()
+		queue_redraw()
+		if contenedor_tiro_libre: contenedor_tiro_libre.visible = false
+		if joystick_base: joystick_base.visible = true
+		if btn_pase: btn_pase.visible = true
+		if btn_hueco: btn_hueco.visible = true
+		if btn_tiro: btn_tiro.visible = true
+		if btn_sprint: btn_sprint.visible = true
 
 
 func _inicializar_estilos_botones() -> void:
@@ -291,6 +358,11 @@ func _asignar_estilo_boton(boton: Button, estilo: StyleBoxFlat) -> void:
 
 func _input(event: InputEvent) -> void:
 	if not visible:
+		return
+	
+	# Si está activo el modo Tiro Libre, capturar exclusivamente el trazo táctil (Swipe) y botón Pase Corto
+	if _modo_tiro_libre_activo:
+		_manejar_input_swipe_tiro_libre(event)
 		return
 	
 	# A. Eventos Táctiles Nativos (Android / Pantallas Multitouch)
@@ -604,6 +676,9 @@ func _procesar_carga_potencia(delta: float) -> void:
 
 
 func _procesar_input_teclado() -> void:
+	if _modo_tiro_libre_activo:
+		return
+	
 	var espacio_presionado: bool = Input.is_key_pressed(KEY_SPACE)
 	var x_presionado: bool = Input.is_key_pressed(KEY_X)
 	var c_presionado: bool = Input.is_key_pressed(KEY_C)
@@ -691,3 +766,208 @@ func obtener_jugador_activo() -> Jugador3D:
 			return _jugador_referencia
 	
 	return null
+
+
+# ==============================================================================
+# 5. DISPARO POR TRAZO TÁCTIL (SWIPE) ESTILO EFOOTBALL Y PASE CORTO
+# ==============================================================================
+
+func _manejar_input_swipe_tiro_libre(event: InputEvent) -> void:
+	# A. Eventos ScreenTouch (Android / Pantallas Táctiles)
+	if event is InputEventScreenTouch:
+		var touch: InputEventScreenTouch = event
+		if touch.pressed:
+			if _es_posicion_en_boton_pase_corto(touch.position):
+				_on_btn_pase_corto_pressed()
+				return
+			_iniciar_swipe_tiro_libre(touch.index, touch.position)
+		else:
+			if touch.index == _swipe_touch_id:
+				_finalizar_swipe_tiro_libre()
+	
+	elif event is InputEventScreenDrag:
+		var drag: InputEventScreenDrag = event
+		if drag.index == _swipe_touch_id:
+			_actualizar_swipe_tiro_libre(drag.position)
+	
+	# B. Eventos de Mouse (Pruebas en Editor / PC)
+	elif event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			if mb.pressed:
+				if _es_posicion_en_boton_pase_corto(mb.position):
+					_on_btn_pase_corto_pressed()
+					return
+				_iniciar_swipe_tiro_libre(-99, mb.position)
+			else:
+				if _swipe_touch_id == -99:
+					_finalizar_swipe_tiro_libre()
+	
+	elif event is InputEventMouseMotion:
+		var mm: InputEventMouseMotion = event
+		if _swipe_touch_id == -99 and _capturando_swipe_tiro_libre:
+			_actualizar_swipe_tiro_libre(mm.position)
+
+
+func _es_posicion_en_boton_pase_corto(pos_pantalla: Vector2) -> bool:
+	if btn_pase_corto and btn_pase_corto.is_visible_in_tree():
+		return btn_pase_corto.get_global_rect().has_point(pos_pantalla)
+	return false
+
+
+func _iniciar_swipe_tiro_libre(touch_id: int, pos: Vector2) -> void:
+	_swipe_touch_id = touch_id
+	_capturando_swipe_tiro_libre = true
+	_swipe_puntos.clear()
+	_swipe_puntos.append(pos)
+	_swipe_tiempo_inicio = Time.get_ticks_msec() / 1000.0
+	queue_redraw()
+
+
+func _actualizar_swipe_tiro_libre(pos: Vector2) -> void:
+	if not _capturando_swipe_tiro_libre:
+		return
+	if _swipe_puntos.is_empty() or pos.distance_to(_swipe_puntos[-1]) >= 4.0:
+		_swipe_puntos.append(pos)
+		queue_redraw()
+
+
+func _finalizar_swipe_tiro_libre() -> void:
+	if not _capturando_swipe_tiro_libre:
+		return
+	_capturando_swipe_tiro_libre = false
+	_swipe_touch_id = -1
+	
+	if _swipe_puntos.size() < 2:
+		_swipe_puntos.clear()
+		queue_redraw()
+		return
+	
+	var p0: Vector2 = _swipe_puntos[0]
+	var p1: Vector2 = _swipe_puntos[-1]
+	var delta_vec: Vector2 = p1 - p0
+	var len_total: float = delta_vec.length()
+	
+	# Umbral mínimo de trazo (35px) para evitar disparos accidentales
+	if len_total < 35.0:
+		_swipe_puntos.clear()
+		queue_redraw()
+		return
+	
+	_procesar_calculo_disparo_swipe(p0, p1, delta_vec)
+
+
+func _procesar_calculo_disparo_swipe(p0: Vector2, p1: Vector2, delta_vec: Vector2) -> void:
+	var duracion: float = maxf(0.04, (Time.get_ticks_msec() / 1000.0) - _swipe_tiempo_inicio)
+	
+	# 1. Longitud total acumulada del trazo para medir velocidad con precisión
+	var longitud_acumulada: float = 0.0
+	for i: int in range(1, _swipe_puntos.size()):
+		longitud_acumulada += _swipe_puntos[i].distance_to(_swipe_puntos[i - 1])
+	
+	# 2. Velocidad del trazo -> Potencia del disparo
+	var vel_swipe_px_s: float = longitud_acumulada / duracion
+	var pot_norm: float = clampf((vel_swipe_px_s - 450.0) / 1950.0, 0.35, 1.0)
+	var rapidez_tiro: float = lerpf(12.5, 26.5, pot_norm)
+	
+	# 3. Dirección y Elevación
+	# En coordenadas de pantalla, hacia arriba es -Y (hacia la portería rival)
+	var view_rect: Rect2 = get_viewport_rect()
+	var factor_x: float = clampf(delta_vec.x / (view_rect.size.x * 0.35), -1.0, 1.0)
+	var dist_y: float = maxf(30.0, -delta_vec.y)
+	var factor_y: float = clampf(dist_y / (view_rect.size.y * 0.42), 0.1, 1.0)
+	
+	# Elevación 3D (poste transversal a 2.0m en futsal):
+	# Trazo corto: raso/bajo (0.28m); medio: media altura (1.2m); largo: a la escuadra (1.95m); excesivo: fuera (2.3m)
+	var elevacion_y: float = lerpf(0.28, 2.30, factor_y)
+	
+	# Desviación horizontal respecto al centro de la portería (postes en ±1.85m):
+	var z_desviacion: float = factor_x * 2.35
+	
+	# 4. Curvatura del trazo -> Comba / Efecto Magnus
+	# Medimos la máxima desviación perpendicular respecto a la recta secante P0 -> P1
+	var cuerda_len: float = delta_vec.length()
+	var norm_cuerda: Vector2 = Vector2(-delta_vec.y, delta_vec.x) / cuerda_len
+	var max_dist_perp: float = 0.0
+	for p: Vector2 in _swipe_puntos:
+		var d_perp: float = (p - p0).dot(norm_cuerda)
+		if abs(d_perp) > abs(max_dist_perp):
+			max_dist_perp = d_perp
+	
+	var ratio_curva: float = max_dist_perp / cuerda_len
+	var comba: float = 0.0
+	if abs(ratio_curva) > 0.05:
+		# Curvatura detectada (positiva: comba a la derecha; negativa: comba a la izquierda)
+		comba = clampf(ratio_curva * 3.4, -1.0, 1.0)
+	
+	_ejecutar_disparo_tiro_libre(elevacion_y, z_desviacion, rapidez_tiro, comba)
+	
+	# Limpieza visual del trazo con fade out suave
+	var tw: Tween = create_tween()
+	tw.tween_interval(0.25)
+	tw.tween_callback(func():
+		_swipe_puntos.clear()
+		queue_redraw()
+	)
+
+
+func _ejecutar_disparo_tiro_libre(elevacion_y: float, z_objetivo: float, rapidez_tiro: float, comba: float) -> void:
+	var balon: Balon3D = null
+	if _gestor_partido:
+		balon = _gestor_partido.obtener_balon()
+	if balon == null:
+		var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
+		if not balones.is_empty():
+			balon = balones[0] as Balon3D
+	
+	if balon == null:
+		return
+	
+	var sacador: Jugador3D = null
+	if _gestor_partido:
+		sacador = _gestor_partido.obtener_sacador_actual()
+	if sacador == null:
+		sacador = obtener_jugador_activo()
+	
+	var pos_b: Vector3 = balon.global_position
+	var pos_arco: Vector3 = Vector3(20.0, elevacion_y, z_objetivo)
+	var dir_tiro: Vector3 = (pos_arco - pos_b).normalized()
+	
+	# Si se detectó comba, ajustar ligeramente la dirección inicial hacia el lado contrario
+	# para que el balón esquive la barrera y curve hacia la portería (rosca clásica eFootball)
+	if abs(comba) > 0.08:
+		var vec_lat: Vector3 = Vector3(-dir_tiro.z, 0.0, dir_tiro.x).normalized()
+		dir_tiro = (dir_tiro - vec_lat * (comba * 0.16)).normalized()
+	
+	var impulso: Vector3 = dir_tiro * (rapidez_tiro * balon.mass)
+	
+	if sacador and is_instance_valid(sacador):
+		sacador._en_posicion_saque = false
+		sacador._t_anim_patada = 0.35
+		sacador.soltar_posesion()
+		sacador.rotation.y = atan2(-dir_tiro.x, -dir_tiro.z)
+		sacador.velocity = Vector3.ZERO
+	
+	if abs(comba) > 0.05:
+		balon.liberar_tiro_libre_swipe(impulso, comba, 0)
+	else:
+		balon.liberar(impulso, 0, false)
+	
+	_aplicar_modo_hud(ModoHUD.ATAQUE)
+
+
+func _on_btn_pase_corto_pressed() -> void:
+	if not _modo_tiro_libre_activo:
+		return
+	
+	var sacador: Jugador3D = null
+	if _gestor_partido:
+		sacador = _gestor_partido.obtener_sacador_actual()
+	if sacador == null:
+		sacador = obtener_jugador_activo()
+	
+	if sacador and is_instance_valid(sacador):
+		sacador.accion_pase_presionada(0.50, Jugador3D.TipoPase.RASO)
+	
+	_aplicar_modo_hud(ModoHUD.ATAQUE)
+

@@ -27,6 +27,7 @@ signal cuenta_regresiva_4s_actualizada(segundos_restantes: float, activa: bool)
 signal posesion_cambiada(en_ataque_local: bool, equipo_poseedor: int)
 
 @export var distancia_reglamentaria: float = 4.0
+@export var distancia_barrera_futsal: float = 5.0
 @export var radio_circulo_central: float = 3.0
 @export var margen_distancia: float = 0.3
 @export var t_pausa_saque: float = 0.65
@@ -34,6 +35,9 @@ signal posesion_cambiada(en_ataque_local: bool, equipo_poseedor: int)
 @export var t_timeout_saque: float = 4.0
 @export var t_duracion_entrada: float = 2.4
 @export var t_duracion_tiempo_muerto: float = 3.5
+
+var _defensores_barrera_tl: Array[Jugador3D] = []
+var _posiciones_barrera_tl: Array[Vector3] = []
 
 var estado: EstadoPartido = EstadoPartido.ENTRADA_EQUIPOS
 var _balon: Balon3D = null
@@ -75,6 +79,31 @@ func _cambiar_estado(nuevo_estado: EstadoPartido) -> void:
 ## Retorna true si el equipo local (usuario) está en modo ataque/posesión para el HUD táctil
 func es_ataque_local() -> bool:
 	return _en_ataque_local_actual
+
+
+## Retorna true si hay un tiro libre o doble penalti en curso
+func es_tiro_libre_activo() -> bool:
+	return estado == EstadoPartido.TIRO_LIBRE or estado == EstadoPartido.DOBLE_PENALTI
+
+
+## Retorna el equipo ejecutor de la reanudación actual (0: Local, 1: Visitante)
+func obtener_equipo_sacador() -> int:
+	return _equipo_sacador
+
+
+## Retorna la posición del balón fijada para la reanudación actual
+func obtener_pos_saque() -> Vector3:
+	return _pos_saque
+
+
+## Retorna el jugador que ejecuta la reanudación
+func obtener_sacador_actual() -> Jugador3D:
+	return _sacador_actual
+
+
+## Retorna la referencia al balón de juego
+func obtener_balon() -> Balon3D:
+	return _balon
 
 
 ## Evalúa en tiempo real si el equipo local está en fase ofensiva (Ataque) o defensiva (Sin Balón) y emite señal al HUD
@@ -156,9 +185,11 @@ func _physics_process(delta: float) -> void:
 		if not _sacador_actual._en_posicion_saque:
 			_sacador_actual.fijar_en_saque(true, _sacador_actual._pos_anclaje_saque)
 	
-	# Aplicar continuamente la barrera reglamentaria (4m o pasillo libre en Doble Penalti)
+	# Aplicar continuamente la barrera reglamentaria (5m en Tiro Libre, pasillo libre en Doble Penalti, o 4m estándar)
 	if estado == EstadoPartido.DOBLE_PENALTI:
 		_mantener_despeje_doble_penalti()
+	elif estado == EstadoPartido.TIRO_LIBRE:
+		_mantener_barrera_tiro_libre()
 	else:
 		_aplicar_regla_4m(false)
 	
@@ -399,6 +430,12 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int)
 		elif tipo == EstadoPartido.SAQUE_META:
 			dir_hacia_campo = Vector3(1.0 if equipo_sacador == 0 else -1.0, 0.0, 0.0)
 			pos_anclaje = Vector3(_pos_saque.x, 0.0, _pos_saque.z)
+		elif tipo == EstadoPartido.TIRO_LIBRE:
+			var pos_arco_rival: Vector3 = Vector3(20.0 if equipo_sacador == 0 else -20.0, 0.0, 0.0)
+			dir_hacia_campo = (pos_arco_rival - _pos_saque).normalized()
+			if dir_hacia_campo.length_squared() < 0.01:
+				dir_hacia_campo = Vector3(1.0 if equipo_sacador == 0 else -1.0, 0.0, 0.0)
+			pos_anclaje = _pos_saque - dir_hacia_campo * 0.65
 		else:
 			pos_anclaje = _pos_saque - dir_hacia_campo * 0.62
 		
@@ -432,7 +469,10 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int)
 	
 	_esperando_toque = true
 	_timer_timeout = t_timeout_saque
-	_aplicar_regla_4m(true)
+	if tipo == EstadoPartido.TIRO_LIBRE:
+		_configurar_barrera_y_posicionamiento_tiro_libre(equipo_sacador, _pos_saque)
+	else:
+		_aplicar_regla_4m(true)
 	
 	await get_tree().create_timer(t_pausa_saque).timeout
 	
@@ -462,7 +502,7 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3) -> void:
 		iniciar_doble_penalti(equipo_favorecido, total_faltas)
 	else:
 		_emitir_anuncio_hud("¡FALTA! (%d/5 ACUMULADAS) - TIRO LIBRE" % total_faltas)
-		var pos_tl: Vector3 = Vector3(clampf(pos_falta.x, -13.5, 13.5), 0.25, clampf(pos_falta.z, -8.5, 8.5))
+		var pos_tl: Vector3 = Vector3(clampf(pos_falta.x, -14.0, 14.0), 0.25, clampf(pos_falta.z, -8.5, 8.5))
 		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, pos_tl, equipo_favorecido)
 
 
@@ -725,6 +765,8 @@ func _finalizar_reanudacion() -> void:
 				if j._congelado:
 					j.set_congelado(false)
 		
+		_defensores_barrera_tl.clear()
+		_posiciones_barrera_tl.clear()
 		_sacador_actual = null
 		_cambiar_estado(EstadoPartido.EN_JUEGO)
 
@@ -883,4 +925,132 @@ func _emitir_anuncio_hud(texto: String) -> void:
 	var hud: HUDPartido = get_tree().get_first_node_in_group("hud_partido") as HUDPartido
 	if hud and is_instance_valid(hud):
 		hud.mostrar_anuncio(texto)
+
+
+## Configura la barrera rival a exactamente 5.0m del balón según las reglas oficiales de Futsal:
+## - Si la distancia al arco es menor a 12 m: barrera de 3 defensores.
+## - Si la distancia al arco es mayor o igual a 12 m: barrera de 2 defensores.
+func _configurar_barrera_y_posicionamiento_tiro_libre(equipo_sacador_idx: int, pos_balon: Vector3) -> void:
+	_defensores_barrera_tl.clear()
+	_posiciones_barrera_tl.clear()
+	
+	var pos_arco_rival: Vector3 = Vector3(20.0 if equipo_sacador_idx == 0 else -20.0, 0.0, 0.0)
+	var dist_al_arco: float = pos_balon.distance_to(pos_arco_rival)
+	
+	# Regla Futsal: Menor a 12m -> 3 defensores; Mayor o igual -> 2 defensores
+	var num_barrera: int = 3 if dist_al_arco < 12.0 else 2
+	
+	var dir_arco: Vector3 = (pos_arco_rival - pos_balon).normalized()
+	if dir_arco.length_squared() < 0.01:
+		dir_arco = Vector3(1.0 if equipo_sacador_idx == 0 else -1.0, 0.0, 0.0)
+	
+	# Punto central de la barrera a exactamente 5.0 metros reglamentarios
+	var centro_barrera: Vector3 = pos_balon + dir_arco * distancia_barrera_futsal
+	centro_barrera.x = clampf(centro_barrera.x, -18.8, 18.8)
+	centro_barrera.z = clampf(centro_barrera.z, -9.2, 9.2)
+	
+	var vec_perp: Vector3 = Vector3(-dir_arco.z, 0.0, dir_arco.x).normalized()
+	
+	var grupo_rival: String = "equipo_visitante" if equipo_sacador_idx == 0 else "equipo_local"
+	var rivales: Array[Node] = get_tree().get_nodes_in_group(grupo_rival)
+	var defensores_campo: Array[Jugador3D] = []
+	for n: Node in rivales:
+		var j: Jugador3D = n as Jugador3D
+		if j and j.posicion_tactica != "PORTERO":
+			defensores_campo.append(j)
+	
+	# Ordenar rivales por cercanía al punto central de la barrera
+	defensores_campo.sort_custom(func(a: Jugador3D, b: Jugador3D) -> bool:
+		return a.global_position.distance_squared_to(centro_barrera) < b.global_position.distance_squared_to(centro_barrera)
+	)
+	
+	var offsets: Array[float] = []
+	if num_barrera == 2:
+		offsets = [-0.36, 0.36]
+	else:
+		offsets = [-0.70, 0.0, 0.70]
+	
+	var cantidad_a_ubicar: int = mini(num_barrera, defensores_campo.size())
+	for i: int in range(cantidad_a_ubicar):
+		var def_barrera: Jugador3D = defensores_campo[i]
+		var off: float = offsets[i]
+		var pos_cand: Vector3 = centro_barrera + vec_perp * off
+		# Calibrar radialmente a exactamente 5.0 metros reglamentarios del balón
+		var pos_exacta_5m: Vector3 = pos_balon + (pos_cand - pos_balon).normalized() * distancia_barrera_futsal
+		pos_exacta_5m.x = clampf(pos_exacta_5m.x, -18.8, 18.8)
+		pos_exacta_5m.z = clampf(pos_exacta_5m.z, -9.2, 9.2)
+		pos_exacta_5m.y = 0.0
+		
+		def_barrera.global_position = pos_exacta_5m
+		var dir_mira: Vector3 = (pos_balon - pos_exacta_5m).normalized()
+		def_barrera.rotation.y = atan2(-dir_mira.x, -dir_mira.z)
+		def_barrera.velocity = Vector3.ZERO
+		def_barrera.fijar_en_saque(true, pos_exacta_5m)
+		
+		_defensores_barrera_tl.append(def_barrera)
+		_posiciones_barrera_tl.append(pos_exacta_5m)
+	
+	# Los demás defensores rivales deben permanecer reglamentariamente a >= 5.0m del balón
+	for i: int in range(cantidad_a_ubicar, defensores_campo.size()):
+		var def_libre: Jugador3D = defensores_campo[i]
+		var diff: Vector3 = def_libre.global_position - pos_balon
+		diff.y = 0.0
+		if diff.length() < distancia_barrera_futsal:
+			var dir_alej: Vector3 = diff.normalized() if diff.length_squared() > 0.01 else -dir_arco
+			var pos_reubicada: Vector3 = pos_balon + dir_alej * (distancia_barrera_futsal + 0.35)
+			pos_reubicada.x = clampf(pos_reubicada.x, -18.8, 18.8)
+			pos_reubicada.z = clampf(pos_reubicada.z, -9.2, 9.2)
+			def_libre.global_position = Vector3(pos_reubicada.x, 0.0, pos_reubicada.z)
+			def_libre.velocity = Vector3.ZERO
+	
+	# Compañeros de equipo (excepto el sacador): posicionarse fuera de la barrera listos para pase corto o rebote
+	var grupo_propios: String = "equipo_local" if equipo_sacador_idx == 0 else "equipo_visitante"
+	var companeros: Array[Node] = get_tree().get_nodes_in_group(grupo_propios)
+	var idx_comp: int = 0
+	for n: Node in companeros:
+		var comp: Jugador3D = n as Jugador3D
+		if comp == null or comp == _sacador_actual or comp.posicion_tactica == "PORTERO":
+			continue
+		var diff_comp: Vector3 = comp.global_position - pos_balon
+		diff_comp.y = 0.0
+		if diff_comp.length() < 3.2 or comp.global_position.distance_to(centro_barrera) < 2.5:
+			var signo_lado: float = -1.0 if idx_comp % 2 == 0 else 1.0
+			var pos_apoyo: Vector3 = pos_balon - dir_arco * 1.5 + vec_perp * (signo_lado * (3.5 + float(idx_comp) * 1.2))
+			pos_apoyo.x = clampf(pos_apoyo.x, -18.8, 18.8)
+			pos_apoyo.z = clampf(pos_apoyo.z, -9.2, 9.2)
+			comp.global_position = Vector3(pos_apoyo.x, 0.0, pos_apoyo.z)
+			comp.velocity = Vector3.ZERO
+		idx_comp += 1
+
+
+## Mantiene firmes a los defensores de la barrera de tiro libre a 5m y despejado el radio
+func _mantener_barrera_tiro_libre() -> void:
+	if not _esperando_toque:
+		return
+	
+	# Mantener firmes a los defensores de la barrera en su posición reglamentaria
+	for i: int in range(_defensores_barrera_tl.size()):
+		var def: Jugador3D = _defensores_barrera_tl[i]
+		if def and is_instance_valid(def) and i < _posiciones_barrera_tl.size():
+			def.global_position = _posiciones_barrera_tl[i]
+			def.velocity = Vector3.ZERO
+	
+	# Garantizar que ningún otro rival invada el radio de 5.0 metros
+	var grupo_rival: String = "equipo_visitante" if _equipo_sacador == 0 else "equipo_local"
+	var rivales: Array[Node] = get_tree().get_nodes_in_group(grupo_rival)
+	for n: Node in rivales:
+		var r: Jugador3D = n as Jugador3D
+		if r == null or r.posicion_tactica == "PORTERO" or r in _defensores_barrera_tl:
+			continue
+		var diff: Vector3 = r.global_position - _pos_saque
+		diff.y = 0.0
+		var d: float = diff.length()
+		if d < distancia_barrera_futsal:
+			var dir_rad: Vector3 = diff.normalized() if d > 0.01 else Vector3(1.0, 0.0, 0.0)
+			var npos: Vector3 = _pos_saque + dir_rad * (distancia_barrera_futsal + 0.1)
+			npos.x = clampf(npos.x, -19.0, 19.0)
+			npos.z = clampf(npos.z, -9.5, 9.5)
+			r.global_position = Vector3(npos.x, 0.0, npos.z)
+			r.velocity = Vector3.ZERO
+
 

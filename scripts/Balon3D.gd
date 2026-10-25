@@ -116,7 +116,7 @@ func _aplicar_curva_tiro_colocado(delta: float) -> void:
 	var vel_avance_actual: float = vel_plana.dot(_dir_avance_tiro)
 	
 	# Si el tiempo de vuelo concluyó, o el balón chocó/perdió su avance hacia el arco, desactivar curva
-	if _tiempo_magnus > 1.25 or vel_avance_actual < maxf(3.0, _vel_avance_minima * 0.35):
+	if _tiempo_magnus > 1.85 or vel_avance_actual < maxf(2.2, _vel_avance_minima * 0.28):
 		_efecto_magnus_activo = false
 		return
 	
@@ -312,6 +312,34 @@ func liberar_con_efecto_magnus(impulso: Vector3, vector_giro_o_lateral: Vector3,
 	_tiempo_magnus = 0.0
 	# Rotación visual moderada sin generar torques cíclicos
 	angular_velocity = Vector3(0.0, 9.0, 0.0)
+
+
+## Libera el balón en tiro libre por trazo táctil (Swipe) aplicando impulso y efecto Magnus (comba):
+## - impulso: vector tridimensional con la potencia y elevación calculada a partir del trazo.
+## - comba: curvatura normalizada [-1.0, 1.0] (positiva: rosca hacia la derecha; negativa: rosca hacia la izquierda).
+## - equipo_origen: identificador del equipo ejecutor (0: Local, 1: Visitante).
+func liberar_tiro_libre_swipe(impulso: Vector3, comba: float, equipo_origen: int = 0) -> void:
+	liberar(impulso, equipo_origen, false)
+	var imp_plano: Vector3 = Vector3(impulso.x, 0.0, impulso.z)
+	if imp_plano.length_squared() < 0.1:
+		return
+	
+	_dir_avance_tiro = imp_plano.normalized()
+	_vel_avance_minima = imp_plano.length() / maxf(0.1, mass)
+	
+	# Vector lateral perpendicular en XZ hacia la derecha del vector de avance:
+	var dir_lateral_derecha: Vector3 = Vector3(-_dir_avance_tiro.z, 0.0, _dir_avance_tiro.x).normalized()
+	# Si comba > 0 empuja a la derecha; si comba < 0 empuja a la izquierda
+	_dir_lateral_curva = dir_lateral_derecha * signf(comba)
+	
+	# Fuerza lateral inicial con efecto Magnus proporcional a la comba del trazo
+	var fuerza_curva: float = lerpf(2.0, 4.8, clampf(abs(comba), 0.0, 1.0))
+	_fuerza_magnus_inicial = fuerza_curva
+	_efecto_magnus_activo = (abs(comba) > 0.04)
+	_tiempo_magnus = 0.0
+	
+	# Rotación angular visual coherente con el efecto Magnus sobre el eje vertical
+	angular_velocity = Vector3(0.0, -comba * 18.0, 0.0)
 
 
 ## Calcula el módulo del impulso (N·s) necesario para que el balón, rodando bajo linear_damp + fricción de rodadura
