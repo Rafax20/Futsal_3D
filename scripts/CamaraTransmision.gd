@@ -9,7 +9,8 @@ enum ModoCamara {
 	BROADCAST,
 	TRANSICION_TIRO_LIBRE,
 	TIRO_LIBRE,
-	TRANSICION_BROADCAST
+	TRANSICION_BROADCAST,
+	CENITAL_SELECCION
 }
 
 @export_group("Objetivo de Seguimiento")
@@ -38,13 +39,24 @@ enum ModoCamara {
 ## Límite máximo en Z.
 @export var limite_max_z: float = 3.5
 
-@export_group("Tiro Libre Cinemático")
-## Distancia detrás del balón para la vista trasera baja (3.5 m).
-@export var distancia_detras_tl: float = 3.5
-## Altura de la cámara en tiro libre (1.8 m).
-@export var altura_tl: float = 1.8
+@export_group("Tiro Libre Cinemático (Over-The-Shoulder)")
+## Distancia detrás del balón para la vista de tiro libre (3.8 m).
+@export var distancia_detras_tl: float = 3.8
+## Altura de la cámara en tiro libre (1.6 m).
+@export var altura_tl: float = 1.6
+## Desplazamiento lateral horizontal (0.8 a 1.0 m) para lograr un plano "sobre el hombro" (Over-The-Shoulder) despejado.
+@export_range(0.8, 1.0, 0.02) var offset_lateral_tl: float = 0.90
+## Factor de interpolación (0..1) entre el balón y el arco rival para el punto de mira de `look_at()`.
+@export_range(0.35, 0.85, 0.05) var factor_punto_mira_tl: float = 0.62
+## Altura del punto intermedio de mira entre balón y portería.
+@export var altura_punto_mira_tl: float = 1.05
 ## Duración de transición suave entre modos de cámara (segundos).
-@export var duracion_transicion_tl: float = 0.82
+@export var duracion_transicion_tl: float = 0.78
+
+@export_group("FOV y Calibración Óptica")
+@export var fov_tiro_libre: float = 50.0
+@export var fov_broadcast: float = 50.0
+@export var fov_cenital: float = 50.0
 
 # Estado de cámara
 var modo_camara: ModoCamara = ModoCamara.BROADCAST
@@ -54,10 +66,13 @@ var _gestor_partido: GestorPartido = null
 var _nodo_balon: Node3D = null
 var _nodo_jugador: Node3D = null
 
-# Variables para interpolación y retorno tras superar la barrera
+# Variables para interpolación, paneo horizontal y retorno tras superar la barrera
 var _pos_origen_tl: Vector3 = Vector3.ZERO
 var _pos_arco_rival_tl: Vector3 = Vector3.ZERO
+var _dir_base_arco_tl: Vector3 = Vector3(1.0, 0.0, 0.0)
 var _distancia_barrera_tl: float = 5.0
+var _offset_lateral_actual_tl: float = 0.90
+var _angulo_paneo_yaw_tl: float = 0.0
 var _balon_pateado_tl: bool = false
 var _tiempo_desde_patada_tl: float = 0.0
 
@@ -96,43 +111,137 @@ func _on_estado_partido_cambiado(nuevo_estado: GestorPartido.EstadoPartido) -> v
 			regresar_a_broadcast(0.85)
 
 
-## Activa la transición suave a la vista trasera baja orientada al arco rival
-func activar_camara_tiro_libre(pos_balon: Vector3, pos_arco: Vector3, dist_barrera: float = 5.0) -> void:
+## Activa la vista de Tiro Libre "Sobre el Hombro" (Over-The-Shoulder):
+## - Calcula el vector unitario desde el balón hacia el centro del arco o forward del lanzador.
+## - Posiciona la cámara detrás del balón a distancia_detras_tl (3.8 m) y altura_tl (1.6 m).
+## - Desplaza la cámara lateralmente (0.8 a 1.0 m hacia la derecha / perfil natural del lanzador).
+## - Orienta la cámara apuntando a un punto pivote fijo vinculado a (Ball.position + Lanzador.forward).
+## - Restablece el ángulo, FOV y altura de la cámara tras la transición de vista ("Cambio de posición" -> "Vista de tiro").
+func activar_camara_tiro_libre(
+	pos_balon: Vector3,
+	pos_arco: Vector3,
+	dist_barrera: float = 5.0,
+	offset_perfil: float = -1.0,
+	dir_lanzador: Vector3 = Vector3.ZERO,
+	inmediato: bool = false
+) -> void:
 	_pos_origen_tl = pos_balon
 	_pos_arco_rival_tl = pos_arco
 	_distancia_barrera_tl = dist_barrera
+	_offset_lateral_actual_tl = offset_lateral_tl if offset_perfil < 0.0 else clampf(offset_perfil, 0.8, 1.0)
+	_angulo_paneo_yaw_tl = 0.0
 	_balon_pateado_tl = false
 	_tiempo_desde_patada_tl = 0.0
-	
-	# Vector unitario en dirección hacia la portería rival
-	var dir_hacia_arco: Vector3 = (pos_arco - pos_balon).normalized()
-	if dir_hacia_arco.length_squared() < 0.01:
-		dir_hacia_arco = Vector3(1.0, 0.0, 0.0)
-	
-	# Vista trasera baja: 3.5 m detrás del balón, altura 1.8 m
-	var pos_camara: Vector3 = pos_balon - dir_hacia_arco * distancia_detras_tl
+
+	var dir_plana: Vector3 = dir_lanzador
+	dir_plana.y = 0.0
+	if dir_plana.length_squared() < 0.01:
+		dir_plana = Vector3(pos_arco.x - pos_balon.x, 0.0, pos_arco.z - pos_balon.z).normalized()
+	if dir_plana.length_squared() < 0.01:
+		dir_plana = Vector3(1.0, 0.0, 0.0)
+	_dir_base_arco_tl = dir_plana.normalized()
+
+	# Restablecer FOV, ángulo y altura de cámara en vista de tiro
+	fov = fov_tiro_libre
+
+	var tf_objetivo: Transform3D = _calcular_transform_tiro_libre()
+
+	# Si se solicita inmediato o venimos de la vista cenital de selección de posición,
+	# aplicar el transform inmediatamente para evitar giros o interpolaciones a ángulos incoherentes
+	if inmediato or modo_camara == ModoCamara.CENITAL_SELECCION:
+		global_transform = tf_objetivo
+		_tf_origen_transicion = tf_objetivo
+		_tf_destino_transicion = tf_objetivo
+		_t_transicion_acumulada = 0.0
+		modo_camara = ModoCamara.TIRO_LIBRE
+	else:
+		_tf_origen_transicion = global_transform
+		_tf_destino_transicion = tf_objetivo
+		_t_transicion_acumulada = 0.0
+		_duracion_transicion_actual = duracion_transicion_tl
+		modo_camara = ModoCamara.TRANSICION_TIRO_LIBRE
+
+
+## Calcula el Transform3D de la cámara en modo Tiro Libre (Over-The-Shoulder)
+## siguiendo un punto pivote fijo vinculado directamente a (Ball.position + Lanzador.forward)
+func _calcular_transform_tiro_libre() -> Transform3D:
+	var dir_arco: Vector3 = _dir_base_arco_tl.rotated(Vector3.UP, _angulo_paneo_yaw_tl).normalized()
+	var vec_derecha: Vector3 = Vector3(-dir_arco.z, 0.0, dir_arco.x).normalized()
+
+	# Posición de la cámara Over-The-Shoulder:
+	# 3.8 m detrás del balón, altura calibrada (1.6 m) y offset lateral (0.9 m)
+	var pos_camara: Vector3 = (
+		_pos_origen_tl
+		- dir_arco * distancia_detras_tl
+		+ vec_derecha * _offset_lateral_actual_tl
+	)
 	pos_camara.y = altura_tl
-	
-	# Orientada con look_at hacia la portería rival
-	var punto_mira: Vector3 = Vector3(pos_arco.x, 1.1, pos_arco.z)
-	var tf_objetivo: Transform3D = Transform3D().looking_at(punto_mira - pos_camara, Vector3.UP)
+
+	# Punto pivote fijo vinculado a (Ball.position + Lanzador.forward)
+	# en lugar de alternar o quedar huérfano entre coordenadas viejas y nuevas
+	var dist_pivote: float = 7.5
+	var punto_pivote_target: Vector3 = _pos_origen_tl + dir_arco * dist_pivote + vec_derecha * (_offset_lateral_actual_tl * 0.25)
+	punto_pivote_target.y = altura_punto_mira_tl
+
+	var tf_objetivo: Transform3D = Transform3D().looking_at(punto_pivote_target - pos_camara, Vector3.UP)
 	tf_objetivo.origin = pos_camara
-	
-	_tf_origen_transicion = global_transform
-	_tf_destino_transicion = tf_objetivo
-	_t_transicion_acumulada = 0.0
-	_duracion_transicion_actual = duracion_transicion_tl
-	modo_camara = ModoCamara.TRANSICION_TIRO_LIBRE
+	return tf_objetivo
+
+
+## Ajusta el ángulo horizontal de paneo de la cámara durante el apuntado del Tiro Libre (Zona Izquierda de la pantalla)
+func ajustar_paneo_tiro_libre(delta_yaw_rad: float) -> void:
+	if modo_camara != ModoCamara.TIRO_LIBRE and modo_camara != ModoCamara.TRANSICION_TIRO_LIBRE:
+		return
+	if _balon_pateado_tl:
+		return
+	_angulo_paneo_yaw_tl = clampf(_angulo_paneo_yaw_tl + delta_yaw_rad, -0.45, 0.45)
+	_tf_destino_transicion = _calcular_transform_tiro_libre()
+	if modo_camara == ModoCamara.TIRO_LIBRE:
+		global_transform = _tf_destino_transicion
+
+
+## Retorna el ángulo horizontal de paneo acumulado en radianes
+func obtener_angulo_paneo_tl() -> float:
+	return _angulo_paneo_yaw_tl
+
+
+## Retorna el vector unitario horizontal hacia donde apunta actualmente la cámara de tiro libre
+func obtener_direccion_apuntado_tl() -> Vector3:
+	return _dir_base_arco_tl.rotated(Vector3.UP, _angulo_paneo_yaw_tl).normalized()
+
+
+## Notifica a la cámara el instante exacto en que el pie del lanzador impacta el balón tras la carrera previa
+func notificar_impacto_tiro_libre() -> void:
+	_balon_pateado_tl = true
+	_tiempo_desde_patada_tl = 0.0
 
 
 ## Inicia la transición interpolada suave de regreso a la vista broadcast
 func regresar_a_broadcast(duracion: float = 0.9) -> void:
 	if modo_camara == ModoCamara.BROADCAST or modo_camara == ModoCamara.TRANSICION_BROADCAST:
 		return
+	fov = fov_broadcast
 	_tf_origen_transicion = global_transform
 	_t_transicion_acumulada = 0.0
 	_duracion_transicion_actual = duracion
 	modo_camara = ModoCamara.TRANSICION_BROADCAST
+
+
+## Coloca de inmediato la cámara hacia la vista cenital enfocando el medio campo rival (Modo Selección de Posición)
+func activar_camara_cenital_seleccion(centro_campo_ofensivo: Vector3 = Vector3(10.0, 0.0, 0.0), altura_cenital: float = 24.5, _inmediato: bool = true) -> void:
+	_balon_pateado_tl = false
+	_tiempo_desde_patada_tl = 0.0
+	_angulo_paneo_yaw_tl = 0.0
+	fov = fov_cenital
+	var pos_cam: Vector3 = Vector3(centro_campo_ofensivo.x, altura_cenital, centro_campo_ofensivo.z)
+	var punto_mira: Vector3 = Vector3(centro_campo_ofensivo.x, 0.0, centro_campo_ofensivo.z)
+	var tf_cenital: Transform3D = Transform3D().looking_at(punto_mira - pos_cam, Vector3(0.0, 0.0, -1.0))
+	tf_cenital.origin = pos_cam
+	
+	global_transform = tf_cenital
+	_tf_origen_transicion = tf_cenital
+	_tf_destino_transicion = tf_cenital
+	modo_camara = ModoCamara.CENITAL_SELECCION
 
 
 func _physics_process(delta: float) -> void:
@@ -163,6 +272,9 @@ func _physics_process(delta: float) -> void:
 			global_transform = _tf_origen_transicion.interpolate_with(tf_dest_b, t_suave_b)
 			if peso_b >= 1.0:
 				modo_camara = ModoCamara.BROADCAST
+		
+		ModoCamara.CENITAL_SELECCION:
+			pass
 
 
 func _procesar_camara_broadcast(delta: float) -> void:
@@ -199,36 +311,41 @@ func _procesar_seguimiento_tiro_libre(delta: float) -> void:
 	var balon: Node3D = _obtener_nodo_balon()
 	if balon == null or not is_instance_valid(balon):
 		return
-	
+
 	var pos_b: Vector3 = balon.global_position
 	var dist_origen: float = pos_b.distance_to(_pos_origen_tl)
-	
+
 	# Detectar salida del balón desde el punto de tiro libre
-	if dist_origen > 0.45:
+	if dist_origen > 0.38:
 		_balon_pateado_tl = true
-	
-	if _balon_pateado_tl:
-		_tiempo_desde_patada_tl += delta
-		
-		# Regla eFootball: Al superar la barrera (5.0 metros), volver suavemente a vista aérea estándar
-		if dist_origen >= (_distancia_barrera_tl + 0.15):
-			regresar_a_broadcast(0.92)
-			return
-		
-		# Timeout de contingencia (rebote en barrera, detención, etc.)
-		var vel_balon: float = 0.0
-		if balon is RigidBody3D:
-			vel_balon = (balon as RigidBody3D).linear_velocity.length()
-		
-		if _tiempo_desde_patada_tl > 1.35 or (_tiempo_desde_patada_tl > 0.4 and vel_balon < 0.9):
-			regresar_a_broadcast(0.92)
-			return
-		
-		# Micro-seguimiento angular hacia el balón mientras se eleva hacia la barrera
-		var dir_balon: Vector3 = (pos_b - global_position).normalized()
-		if dir_balon.length_squared() > 0.01:
-			var tf_mira: Transform3D = global_transform.looking_at(pos_b + Vector3(0, 0.3, 0), Vector3.UP)
-			global_transform = global_transform.interpolate_with(tf_mira, delta * 4.0)
+
+	if not _balon_pateado_tl:
+		# Mientras no se haya pateado, interpolar suavemente el ángulo de paneo Over-The-Shoulder
+		global_transform = global_transform.interpolate_with(_tf_destino_transicion, clampf(delta * 12.0, 0.0, 1.0))
+		return
+
+	_tiempo_desde_patada_tl += delta
+
+	# Regla eFootball: Al rebasar la barrera (5.0 metros), transicionar con interpolación suave a la vista de seguimiento aéreo
+	if dist_origen >= _distancia_barrera_tl:
+		regresar_a_broadcast(0.85)
+		return
+
+	# Timeout de contingencia (rebote en barrera, detención, etc.)
+	var vel_balon: float = 0.0
+	if balon is RigidBody3D:
+		vel_balon = (balon as RigidBody3D).linear_velocity.length()
+
+	if _tiempo_desde_patada_tl > 1.35 or (_tiempo_desde_patada_tl > 0.35 and vel_balon < 0.9):
+		regresar_a_broadcast(0.85)
+		return
+
+	# Seguimiento suave de elevación y trayectoria del balón mientras se aproxima a la barrera
+	var punto_mira_vuelo: Vector3 = pos_b.lerp(_pos_arco_rival_tl + Vector3(0.0, 1.1, 0.0), 0.45)
+	var dir_mira: Vector3 = punto_mira_vuelo - global_position
+	if dir_mira.length_squared() > 0.01:
+		var tf_mira: Transform3D = global_transform.looking_at(punto_mira_vuelo, Vector3.UP)
+		global_transform = global_transform.interpolate_with(tf_mira, clampf(delta * 5.5, 0.0, 1.0))
 
 
 func _obtener_nodo_balon() -> Node3D:

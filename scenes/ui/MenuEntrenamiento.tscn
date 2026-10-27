@@ -1,0 +1,452 @@
+[gd_scene load_steps=11 format=3 uid="uid://c8menuentrenamiento01"]
+
+[ext_resource type="Script" path="res://scripts/ui/MenuEntrenamiento.gd" id="1_menu_entrenamiento_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_volver"]
+bg_color = Color(0.11, 0.16, 0.26, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.55, 0.85, 0.8)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tarjeta_activa"]
+bg_color = Color(0.08, 0.14, 0.24, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.2, 0.72, 1, 0.9)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 20.0
+content_margin_top = 18.0
+content_margin_right = 20.0
+content_margin_bottom = 18.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tarjeta_modo"]
+bg_color = Color(0.07, 0.1, 0.16, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.25, 0.36, 0.52, 0.7)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 20.0
+content_margin_top = 18.0
+content_margin_right = 20.0
+content_margin_bottom = 18.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge_disponible"]
+bg_color = Color(0.12, 0.75, 0.45, 0.25)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.95, 0.6, 0.85)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 8.0
+content_margin_top = 2.0
+content_margin_right = 8.0
+content_margin_bottom = 2.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge_prox"]
+bg_color = Color(0.85, 0.65, 0.12, 0.22)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.75, 0.2, 0.8)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 8.0
+content_margin_top = 2.0
+content_margin_right = 8.0
+content_margin_bottom = 2.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_primario"]
+bg_color = Color(0.12, 0.75, 0.45, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.55, 1, 0.75, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_secundario"]
+bg_color = Color(0.12, 0.2, 0.32, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.55, 0.82, 0.75)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_aviso_temporal"]
+bg_color = Color(0.06, 0.09, 0.15, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.75, 0.22, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+content_margin_left = 24.0
+content_margin_top = 10.0
+content_margin_right = 24.0
+content_margin_bottom = 10.0
+
+[node name="MenuEntrenamiento" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_menu_entrenamiento_script")
+
+[node name="Fondo" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0470588, 0.0627451, 0.0941176, 1)
+
+[node name="MargenSuperior" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 78.0
+grow_horizontal = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 30
+
+[node name="BarraSuperior" type="HBoxContainer" parent="MargenSuperior"]
+layout_mode = 2
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="BotonVolver" type="Button" parent="MargenSuperior/BarraSuperior"]
+custom_minimum_size = Vector2(120, 42)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_volver")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_volver")
+text = "◀ MENÚ"
+
+[node name="VBoxTitulo" type="VBoxContainer" parent="MargenSuperior/BarraSuperior"]
+layout_mode = 2
+size_flags_horizontal = 3
+alignment = 1
+
+[node name="Titulo" type="Label" parent="MargenSuperior/BarraSuperior/VBoxTitulo"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 22
+text = "MODO ENTRENAMIENTO"
+
+[node name="Subtitulo" type="Label" parent="MargenSuperior/BarraSuperior/VBoxTitulo"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "Selecciona una rutina de práctica libre y jugadas a balón parado"
+
+[node name="MargenPrincipal" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 82.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 30
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 30
+theme_override_constants/margin_bottom = 26
+
+[node name="VBoxContenido" type="VBoxContainer" parent="MargenPrincipal"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="GridModos" type="GridContainer" parent="MargenPrincipal/VBoxContenido"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/h_separation = 18
+theme_override_constants/v_separation = 18
+columns = 3
+
+[node name="TarjetaTiroLibre" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_tarjeta_activa")
+
+[node name="VBox" type="VBoxContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaTiroLibre"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Badge" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaTiroLibre/VBox"]
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge_disponible")
+
+[node name="LabelBadge" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaTiroLibre/VBox/Badge"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 1, 0.68, 1)
+theme_override_font_sizes/font_size = 10
+text = "★ ACTIVO"
+
+[node name="Titulo" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaTiroLibre/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "TIRO LIBRE"
+
+[node name="Desc" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaTiroLibre/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.7, 0.82, 0.94, 1)
+theme_override_font_sizes/font_size = 12
+text = "Elige el punto de falta en vista cenital y practica disparos con comba Magnus sobre la barrera de 5m."
+autowrap_mode = 3
+
+[node name="BotonSeleccionar" type="Button" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaTiroLibre/VBox"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+focus_mode = 0
+theme_override_colors/font_color = Color(0.02, 0.15, 0.08, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_primario")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_primario")
+text = "ENTRENAR TIRO LIBRE"
+
+[node name="TarjetaOfensivo" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_tarjeta_modo")
+
+[node name="VBox" type="VBoxContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaOfensivo"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Badge" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaOfensivo/VBox"]
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge_prox")
+
+[node name="LabelBadge" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaOfensivo/VBox/Badge"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 10
+text = "PRÓXIMAMENTE"
+
+[node name="Titulo" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaOfensivo/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "ENTRENAMIENTO OFENSIVO"
+
+[node name="Desc" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaOfensivo/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.62, 0.72, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+text = "Situaciones de superioridad numérica (3 vs 2 y 4 vs 2) con desmarques Pasa y Corre."
+autowrap_mode = 3
+
+[node name="BotonSeleccionar" type="Button" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaOfensivo/VBox"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secundario")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_secundario")
+text = "SELECCIONAR"
+
+[node name="TarjetaPartidoPractica" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_tarjeta_modo")
+
+[node name="VBox" type="VBoxContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPartidoPractica"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Badge" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPartidoPractica/VBox"]
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge_prox")
+
+[node name="LabelBadge" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPartidoPractica/VBox/Badge"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 10
+text = "PRÓXIMAMENTE"
+
+[node name="Titulo" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPartidoPractica/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "PARTIDO DE PRÁCTICA"
+
+[node name="Desc" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPartidoPractica/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.62, 0.72, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+text = "5 vs 5 libre sin tiempo ni faltas para ensayar rotación en rombo 1-2-1."
+autowrap_mode = 3
+
+[node name="BotonSeleccionar" type="Button" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPartidoPractica/VBox"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secundario")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_secundario")
+text = "SELECCIONAR"
+
+[node name="TarjetaCorner" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_tarjeta_modo")
+
+[node name="VBox" type="VBoxContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaCorner"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Badge" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaCorner/VBox"]
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge_prox")
+
+[node name="LabelBadge" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaCorner/VBox/Badge"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 10
+text = "PRÓXIMAMENTE"
+
+[node name="Titulo" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaCorner/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "CÓRNER (IZQ / DER)"
+
+[node name="Desc" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaCorner/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.62, 0.72, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+text = "Jugadas de pizarra desde los cuadrantes de esquina con bloqueo y volea."
+autowrap_mode = 3
+
+[node name="BotonSeleccionar" type="Button" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaCorner/VBox"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secundario")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_secundario")
+text = "SELECCIONAR"
+
+[node name="TarjetaPenales" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_tarjeta_modo")
+
+[node name="VBox" type="VBoxContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPenales"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Badge" type="PanelContainer" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPenales/VBox"]
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_badge_prox")
+
+[node name="LabelBadge" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPenales/VBox/Badge"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 10
+text = "PRÓXIMAMENTE"
+
+[node name="Titulo" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPenales/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "PENALES"
+
+[node name="Desc" type="Label" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPenales/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.62, 0.72, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+text = "Ejecución desde el punto penal de 6m y Doble Penalti de 10m mano a mano."
+autowrap_mode = 3
+
+[node name="BotonSeleccionar" type="Button" parent="MargenPrincipal/VBoxContenido/GridModos/TarjetaPenales/VBox"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_secundario")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_secundario")
+text = "SELECCIONAR"
+
+[node name="PanelAvisoTemporal" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -250.0
+offset_top = -68.0
+offset_right = 250.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_aviso_temporal")
+
+[node name="LabelAviso" type="Label" parent="PanelAvisoTemporal"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.92, 0.4, 1)
+theme_override_font_sizes/font_size = 14
+text = "Próximamente entrenamiento: Entrenamiento Ofensivo"
+horizontal_alignment = 1
+vertical_alignment = 1

@@ -24,9 +24,12 @@ enum EstadoPartido {
 
 signal estado_cambiado(nuevo: EstadoPartido)
 signal cuenta_regresiva_4s_actualizada(segundos_restantes: float, activa: bool)
+signal sancion_2min_actualizada(equipo_sancionado: int, segundos_restantes: float, activa: bool)
+signal tarjeta_mostrada(jugador: Jugador3D, tipo_tarjeta: String, puntaje_severidad: float)
+signal gol_anotado(equipo_anotador: int)
 signal posesion_cambiada(en_ataque_local: bool, equipo_poseedor: int)
 
-@export var distancia_reglamentaria: float = 4.0
+@export var distancia_reglamentaria: float = 5.0
 @export var distancia_barrera_futsal: float = 5.0
 @export var radio_circulo_central: float = 3.0
 @export var margen_distancia: float = 0.3
@@ -35,6 +38,10 @@ signal posesion_cambiada(en_ataque_local: bool, equipo_poseedor: int)
 @export var t_timeout_saque: float = 4.0
 @export var t_duracion_entrada: float = 2.4
 @export var t_duracion_tiempo_muerto: float = 3.5
+
+## Reglas FIFA/IFAB de Tiro Directo vs. Indirecto y Doble Toque
+var es_tiro_indirecto: bool = false
+var toques_en_jugada: int = 0
 
 var _defensores_barrera_tl: Array[Jugador3D] = []
 var _posiciones_barrera_tl: Array[Vector3] = []
@@ -49,14 +56,57 @@ var _pos_saque: Vector3 = Vector3.ZERO
 var _sancionando_4s: bool = false
 var _en_ataque_local_actual: bool = true
 var _equipo_poseedor_actual: int = 0
+var _reproductor_silbato: AudioStreamPlayer = null
+
+## Control de Sanciones Disciplinarias y Expulsiones (FIFA/IFAB Ley 12 - Regla de los 2 Minutos)
+var tiempo_inferioridad_local: float = 0.0
+var inferioridad_local_activa: bool = false
+var jugador_expulsado_local: Jugador3D = null
+
+var tiempo_inferioridad_visitante: float = 0.0
+var inferioridad_visitante_activa: bool = false
+var jugador_expulsado_visitante: Jugador3D = null
 
 
 func _ready() -> void:
 	add_to_group("gestor_partido")
+	_inicializar_silbato_arbitral()
 	_conectar_balon()
+	if not gol_anotado.is_connected(_on_gol_anotado):
+		gol_anotado.connect(_on_gol_anotado)
 	if GameManager and not GameManager.fin_primer_tiempo.is_connected(_on_fin_primer_tiempo):
 		GameManager.fin_primer_tiempo.connect(_on_fin_primer_tiempo)
 	call_deferred("iniciar_entrada_equipos")
+
+
+func _inicializar_silbato_arbitral() -> void:
+	_reproductor_silbato = AudioStreamPlayer.new()
+	_reproductor_silbato.name = "SilbatoArbitral"
+	_reproductor_silbato.volume_db = -5.0
+	add_child(_reproductor_silbato)
+	var sample_rate: int = 22050
+	var duracion: float = 0.42
+	var total_muestras: int = int(sample_rate * duracion)
+	var datos_pcm: PackedByteArray = PackedByteArray()
+	datos_pcm.resize(total_muestras * 2)
+	for i: int in range(total_muestras):
+		var t: float = float(i) / float(sample_rate)
+		var env: float = clampf(t / 0.02, 0.0, 1.0) * clampf((duracion - t) / 0.06, 0.0, 1.0)
+		var mod_trino: float = 1.0 + 0.04 * sin(TAU * 28.0 * t)
+		var onda: float = (sin(TAU * 2850.0 * mod_trino * t) * 0.65 + sin(TAU * 5700.0 * mod_trino * t) * 0.25) * env
+		var muestra_i16: int = clampi(int(onda * 24000.0), -32767, 32767)
+		datos_pcm.encode_s16(i * 2, muestra_i16)
+	var wav: AudioStreamWAV = AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = sample_rate
+	wav.stereo = false
+	wav.data = datos_pcm
+	_reproductor_silbato.stream = wav
+
+
+func _reproducir_pitido_arbitral() -> void:
+	if _reproductor_silbato and is_instance_valid(_reproductor_silbato):
+		_reproductor_silbato.play()
 
 
 func _conectar_balon() -> void:
@@ -159,7 +209,12 @@ func _physics_process(delta: float) -> void:
 	if GameManager:
 		GameManager.reloj_neto_activo = (estado == EstadoPartido.EN_JUEGO)
 	
+	if _balon != null and is_instance_valid(_balon):
+		es_tiro_indirecto = _balon.es_tiro_indirecto
+		toques_en_jugada = _balon.toques_en_jugada
+	
 	_actualizar_estado_posesion_hud(false)
+	_actualizar_sanciones_2min(delta)
 	
 	if estado == EstadoPartido.EN_JUEGO or estado == EstadoPartido.ENTRADA_EQUIPOS or estado == EstadoPartido.TIEMPO_MUERTO:
 		cuenta_regresiva_4s_actualizada.emit(0.0, false)
@@ -185,13 +240,13 @@ func _physics_process(delta: float) -> void:
 		if not _sacador_actual._en_posicion_saque:
 			_sacador_actual.fijar_en_saque(true, _sacador_actual._pos_anclaje_saque)
 	
-	# Aplicar continuamente la barrera reglamentaria (5m en Tiro Libre, pasillo libre en Doble Penalti, o 4m estándar)
+	# Aplicar continuamente la distancia reglamentaria de 5.0 metros en balón parado
 	if estado == EstadoPartido.DOBLE_PENALTI:
 		_mantener_despeje_doble_penalti()
 	elif estado == EstadoPartido.TIRO_LIBRE:
 		_mantener_barrera_tiro_libre()
 	else:
-		_aplicar_regla_4m(false)
+		_aplicar_regla_5m(false)
 	
 	# Regla oficial de los 4 Segundos en reanudaciones (Banda, Meta, Esquina, Tiro Libre, Doble Penalti)
 	if _esperando_toque and _timer_timeout > 0.0:
@@ -329,9 +384,10 @@ func iniciar_saque_centro(equipo_sacador: int = 0) -> void:
 		j.rotation.y = atan2(-dir_mirada.x, -dir_mirada.z)
 		j.velocity = Vector3.ZERO
 	
+	es_tiro_indirecto = false
+	toques_en_jugada = 0
 	if _balon:
-		_balon.colocar_en_reanudacion(_pos_saque)
-		_balon.sacador_autorizado = sacador
+		_balon.configurar_saque_reglamentario(_pos_saque, sacador, false)
 	
 	if sacador != null:
 		# Colocar al sacador a exactamente 0.5 metros del balón en el punto central
@@ -380,19 +436,23 @@ func _aplicar_regla_circulo_central() -> void:
 # 2. REANUDACIONES REGLAMENTARIAS (BANDA CON PIE, META CON MANO, ESQUINA, TIRO LIBRE)
 # ==============================================================================
 
-func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int) -> void:
+func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int, tiro_indirecto: bool = false) -> void:
 	if _balon == null:
 		_conectar_balon()
 	
 	_sancionando_4s = false
 	_equipo_sacador = equipo_sacador
 	_pos_saque = pos
+	# Según Reglas FIFA/IFAB de Futsal: Saque de banda y Saque de meta no pueden ser gol directo (1 toque)
+	es_tiro_indirecto = tiro_indirecto or tipo == EstadoPartido.SAQUE_BANDA or tipo == EstadoPartido.SAQUE_META
+	toques_en_jugada = 0
 	_cambiar_estado(tipo)
 	
 	var todos: Array[Node] = get_tree().get_nodes_in_group("jugadores_futsal")
 	for n: Node in todos:
 		var j_limpio: Jugador3D = n as Jugador3D
 		if j_limpio:
+			j_limpio.establecer_pose_barrera(false)
 			j_limpio.fijar_en_saque(false)
 			j_limpio.soltar_posesion()
 	
@@ -409,8 +469,7 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int)
 	_sacador_actual = sacador
 	
 	if _balon:
-		_balon.colocar_en_reanudacion(_pos_saque)
-		_balon.sacador_autorizado = sacador
+		_balon.configurar_saque_reglamentario(_pos_saque, sacador, es_tiro_indirecto)
 	
 	if sacador != null:
 		var dir_hacia_campo: Vector3 = Vector3(1.0 if equipo_sacador == 0 else -1.0, 0.0, 0.0)
@@ -432,10 +491,11 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int)
 			pos_anclaje = Vector3(_pos_saque.x, 0.0, _pos_saque.z)
 		elif tipo == EstadoPartido.TIRO_LIBRE:
 			var pos_arco_rival: Vector3 = Vector3(20.0 if equipo_sacador == 0 else -20.0, 0.0, 0.0)
-			dir_hacia_campo = (pos_arco_rival - _pos_saque).normalized()
+			dir_hacia_campo = Vector3(pos_arco_rival.x - _pos_saque.x, 0.0, pos_arco_rival.z - _pos_saque.z).normalized()
 			if dir_hacia_campo.length_squared() < 0.01:
 				dir_hacia_campo = Vector3(1.0 if equipo_sacador == 0 else -1.0, 0.0, 0.0)
-			pos_anclaje = _pos_saque - dir_hacia_campo * 0.65
+			var vec_derecha_tl: Vector3 = Vector3(-dir_hacia_campo.z, 0.0, dir_hacia_campo.x).normalized()
+			pos_anclaje = _pos_saque - dir_hacia_campo * 1.45 - vec_derecha_tl * 0.48
 		else:
 			pos_anclaje = _pos_saque - dir_hacia_campo * 0.62
 		
@@ -472,7 +532,7 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int)
 	if tipo == EstadoPartido.TIRO_LIBRE:
 		_configurar_barrera_y_posicionamiento_tiro_libre(equipo_sacador, _pos_saque)
 	else:
-		_aplicar_regla_4m(true)
+		_aplicar_regla_5m(true)
 	
 	await get_tree().create_timer(t_pausa_saque).timeout
 	
@@ -484,12 +544,106 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int)
 
 
 # ==============================================================================
-# 3. ACUMULACIÓN DE FALTAS Y DOBLE PENALTI A 10 METROS (6ª FALTA SIN BARRERA)
+# 3. ACUMULACIÓN DE FALTAS, ARBITRAJE ALGORÍTMICO Y SANCIONES DISCIPLINARIAS
 # ==============================================================================
 
-func registrar_falta(equipo_infractor: int, pos_falta: Vector3) -> void:
+## Evalúa algorítmicamente la severidad de una falta (FIFA/IFAB Law 12):
+## - Ángulo de entrada: si el infractor viene por la espalda del poseedor (dot < -0.3): +3.0 pts
+## - Velocidad relativa: supera el 70% de su sprint máximo al momento del impacto: +2.0 pts
+## - Ocasión manifiesta / Último defensor (DOGSO): 0 defensores de campo entre balón y arco rival: +2.5 pts
+## - Fuerza excesiva / Barrida deslizante sin tocar balón: +2.0 pts
+func evaluar_severidad_falta(infractor: Jugador3D, poseedor: Jugador3D, pos_falta: Vector3, es_barrida: bool) -> Dictionary:
+	var puntaje: float = 0.0
+	var desglose: Array[String] = []
+	
+	# 1. Ángulo de Entrada: aproximación por la espalda del portador (dot < -0.3)
+	if poseedor and infractor:
+		var facing_poseedor: Vector3 = -poseedor.global_transform.basis.z
+		facing_poseedor.y = 0.0
+		if facing_poseedor.length_squared() > 0.001:
+			facing_poseedor = facing_poseedor.normalized()
+		
+		var dir_hacia_infractor: Vector3 = infractor.global_position - poseedor.global_position
+		dir_hacia_infractor.y = 0.0
+		if dir_hacia_infractor.length_squared() > 0.001:
+			dir_hacia_infractor = dir_hacia_infractor.normalized()
+			var dot_entrada: float = facing_poseedor.dot(dir_hacia_infractor)
+			if dot_entrada < -0.3:
+				puntaje += 3.0
+				desglose.append("Entrada por detrás (+3.0)")
+	
+	# 2. Velocidad Relativa: supera el 70% de su sprint máximo
+	if infractor:
+		var vel_sprint_max: float = infractor.obtener_velocidad_sprint_max()
+		if infractor.velocity.length() > vel_sprint_max * 0.70:
+			puntaje += 2.0
+			desglose.append("Velocidad de sprint excesiva (+2.0)")
+	
+	# 3. Ocasión Manifiesta / Último Defensor (DOGSO):
+	# Si no hay ningún defensor de campo rival entre el balón y la línea de arco (solo el portero)
+	if poseedor:
+		var equipo_poseedor: int = int(poseedor.equipo)
+		var x_arco_rival: float = 20.0 if equipo_poseedor == 0 else -20.0
+		var pos_ref_x: float = pos_falta.x
+		var grupo_defensa: String = "equipo_visitante" if equipo_poseedor == 0 else "equipo_local"
+		var defensores_campo_intermedios: int = 0
+		
+		for n: Node in get_tree().get_nodes_in_group(grupo_defensa):
+			var def_j: Jugador3D = n as Jugador3D
+			if def_j and is_instance_valid(def_j) and not def_j.esta_expulsado and def_j != infractor:
+				if def_j.posicion_tactica != "PORTERO":
+					var def_x: float = def_j.global_position.x
+					if (equipo_poseedor == 0 and def_x > pos_ref_x and def_x < x_arco_rival) or \
+					   (equipo_poseedor == 1 and def_x < pos_ref_x and def_x > x_arco_rival):
+						defensores_campo_intermedios += 1
+		
+		if defensores_campo_intermedios == 0:
+			puntaje += 2.5
+			desglose.append("Ocasión manifiesta de gol / DOGSO (+2.5)")
+	
+	# 4. Fuerza Excesiva / Barrida deslizante sin tocar balón
+	if es_barrida:
+		puntaje += 2.0
+		desglose.append("Barrida deslizante sin balón (+2.0)")
+	
+	return {
+		"puntaje": puntaje,
+		"desglose": desglose
+	}
+
+
+func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugador3D = null, poseedor: Jugador3D = null, es_barrida: bool = false) -> void:
 	if estado != EstadoPartido.EN_JUEGO:
 		return
+	
+	# Fallbacks para infractor y poseedor en caso de invocaciones sin nodo explícito
+	if infractor == null:
+		var grupo_infractor: String = "equipo_local" if equipo_infractor == 0 else "equipo_visitante"
+		var jugs: Array[Node] = get_tree().get_nodes_in_group(grupo_infractor)
+		var min_d: float = 999.0
+		for n: Node in jugs:
+			var j: Jugador3D = n as Jugador3D
+			if j and not j.esta_expulsado and j.posicion_tactica != "PORTERO":
+				var d: float = j.global_position.distance_to(pos_falta)
+				if d < min_d:
+					min_d = d
+					infractor = j
+	
+	if poseedor == null:
+		var grupo_rival: String = "equipo_visitante" if equipo_infractor == 0 else "equipo_local"
+		var jugs_rival: Array[Node] = get_tree().get_nodes_in_group(grupo_rival)
+		var min_d_p: float = 999.0
+		for n: Node in jugs_rival:
+			var j: Jugador3D = n as Jugador3D
+			if j and not j.esta_expulsado:
+				var d: float = j.global_position.distance_to(pos_falta)
+				if d < min_d_p:
+					min_d_p = d
+					poseedor = j
+	
+	# Evaluación algorítmica de severidad (FIFA/IFAB)
+	var resultado_eval: Dictionary = evaluar_severidad_falta(infractor, poseedor, pos_falta, es_barrida)
+	var puntaje: float = float(resultado_eval.get("puntaje", 0.0))
 	
 	var total_faltas: int = 1
 	if GameManager:
@@ -497,13 +651,169 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3) -> void:
 	
 	var equipo_favorecido: int = 1 if equipo_infractor == 0 else 0
 	
-	# A partir de la 6ª falta acumulada en el mismo periodo: Doble Penalti desde 10m sin barrera
-	if total_faltas >= 6:
-		iniciar_doble_penalti(equipo_favorecido, total_faltas)
+	# Aplicación de Sanciones Disciplinarias según umbrales de severidad
+	var nombre_infractor: String = ""
+	var dorsal_infractor: int = 0
+	if infractor != null:
+		nombre_infractor = infractor.nombre_jugador if infractor.nombre_jugador != "" else infractor.posicion_tactica
+		dorsal_infractor = infractor.dorsal
+	
+	_reproducir_pitido_arbitral()
+	
+	if puntaje >= 6.5:
+		# Tarjeta Roja Directa (Expulsión)
+		tarjeta_mostrada.emit(infractor, "ROJA_DIRECTA", puntaje)
+		_emitir_anuncio_hud("¡TARJETA ROJA DIRECTA! ¡EXPULSIÓN! #%d %s (Severidad: %.1f)" % [dorsal_infractor, nombre_infractor, puntaje])
+		_procesar_expulsion(infractor, false, puntaje)
+	elif puntaje >= 3.5:
+		if infractor != null:
+			infractor.tarjetas_amarillas += 1
+			if infractor.tarjetas_amarillas >= 2:
+				# Segunda Amarilla -> Tarjeta Roja (Expulsión)
+				tarjeta_mostrada.emit(infractor, "SEGUNDA_AMARILLA", puntaje)
+				_emitir_anuncio_hud("¡SEGUNDA AMARILLA! ¡EXPULSIÓN! #%d %s" % [dorsal_infractor, nombre_infractor])
+				_procesar_expulsion(infractor, true, puntaje)
+			else:
+				# Tarjeta Amarilla (Amonestación)
+				tarjeta_mostrada.emit(infractor, "AMARILLA", puntaje)
+				_emitir_anuncio_hud("¡TARJETA AMARILLA! #%d %s (Severidad: %.1f)" % [dorsal_infractor, nombre_infractor, puntaje])
+		else:
+			tarjeta_mostrada.emit(infractor, "AMARILLA", puntaje)
+			_emitir_anuncio_hud("¡TARJETA AMARILLA! (Severidad: %.1f)" % puntaje)
 	else:
-		_emitir_anuncio_hud("¡FALTA! (%d/5 ACUMULADAS) - TIRO LIBRE" % total_faltas)
+		# Falta común (sin tarjeta)
+		_emitir_anuncio_hud("¡FALTA! (%d/5 ACUMULADAS) - TIRO LIBRE DIRECTO" % total_faltas)
+	
+	# A partir de la 6ª falta acumulada en el mismo periodo: Tiro Libre Directo sin barrera (Doble Penalti)
+	if total_faltas >= 6:
+		iniciar_doble_penalti(equipo_favorecido, total_faltas, pos_falta)
+	else:
 		var pos_tl: Vector3 = Vector3(clampf(pos_falta.x, -14.0, 14.0), 0.25, clampf(pos_falta.z, -8.5, 8.5))
-		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, pos_tl, equipo_favorecido)
+		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, pos_tl, equipo_favorecido, false)
+
+
+## Procesa la expulsión de un jugador y activa el periodo de inferioridad numérica (Regla de los 2 Minutos)
+func _procesar_expulsion(infractor: Jugador3D, _por_doble_amarilla: bool, _puntaje: float) -> void:
+	if infractor == null:
+		return
+	
+	var eq_id: int = int(infractor.equipo)
+	if eq_id == 0:
+		inferioridad_local_activa = true
+		tiempo_inferioridad_local = 120.0
+		jugador_expulsado_local = infractor
+		sancion_2min_actualizada.emit(0, 120.0, true)
+	else:
+		inferioridad_visitante_activa = true
+		tiempo_inferioridad_visitante = 120.0
+		jugador_expulsado_visitante = infractor
+		sancion_2min_actualizada.emit(1, 120.0, true)
+	
+	infractor.expulsar_jugador()
+
+
+## Actualiza los cronómetros de las sanciones de 2 minutos durante el juego neto (EN_JUEGO)
+func _actualizar_sanciones_2min(delta: float) -> void:
+	if estado != EstadoPartido.EN_JUEGO:
+		return
+	
+	if inferioridad_local_activa:
+		tiempo_inferioridad_local -= delta
+		if tiempo_inferioridad_local <= 0.0:
+			tiempo_inferioridad_local = 0.0
+			inferioridad_local_activa = false
+			sancion_2min_actualizada.emit(0, 0.0, false)
+			_finalizar_inferioridad(0, "TIEMPO_CUMPLIDO")
+		else:
+			sancion_2min_actualizada.emit(0, tiempo_inferioridad_local, true)
+	
+	if inferioridad_visitante_activa:
+		tiempo_inferioridad_visitante -= delta
+		if tiempo_inferioridad_visitante <= 0.0:
+			tiempo_inferioridad_visitante = 0.0
+			inferioridad_visitante_activa = false
+			sancion_2min_actualizada.emit(1, 0.0, false)
+			_finalizar_inferioridad(1, "TIEMPO_CUMPLIDO")
+		else:
+			sancion_2min_actualizada.emit(1, tiempo_inferioridad_visitante, true)
+
+
+## Finaliza la sanción de inferioridad numérica y gestiona el ingreso del sustituto
+func _finalizar_inferioridad(equipo_sancionado: int, motivo: String) -> void:
+	var nombre_eq: String = "LOCAL" if equipo_sancionado == 0 else "VISITANTE"
+	if motivo == "GOL_RIVAL":
+		_emitir_anuncio_hud("¡GOL RIVAL! SANCIÓN DE 2 MIN CANCELADA (ENTRA SUSTITUTO %s)" % nombre_eq)
+	else:
+		_emitir_anuncio_hud("¡FINALIZÓ SANCIÓN DE 2 MINUTOS! ENTRA SUSTITUTO %s (5 VS 5)" % nombre_eq)
+	
+	_hacer_ingresar_sustituto(equipo_sancionado)
+
+
+## Gestiona el ingreso del sustituto desde el banquillo al expirar la sanción o tras gol concedido (FIFA Law 12)
+func _hacer_ingresar_sustituto(equipo_sancionado: int) -> void:
+	var j_expulsado: Jugador3D = jugador_expulsado_local if equipo_sancionado == 0 else jugador_expulsado_visitante
+	var pos_tactica: String = "ALA_IZQ"
+	var pos_inicial: Vector3 = Vector3(-2.0 if equipo_sancionado == 0 else 2.0, 0.0, -3.0)
+	var nombre_sustituto: String = "Sustituto Loc" if equipo_sancionado == 0 else "Sustituto Vis"
+	var dorsal_sustituto: int = 14 if equipo_sancionado == 0 else 15
+	
+	if j_expulsado and is_instance_valid(j_expulsado):
+		pos_tactica = j_expulsado.posicion_tactica
+		pos_inicial = j_expulsado._posicion_tactica_inicial
+		nombre_sustituto = "Sub %s" % (j_expulsado.nombre_jugador if j_expulsado.nombre_jugador != "" else pos_tactica)
+	
+	var escena_jugador: PackedScene = load("res://scenes/Jugador3D.tscn")
+	if escena_jugador == null:
+		return
+	
+	var sustituto: Jugador3D = escena_jugador.instantiate() as Jugador3D
+	if sustituto == null:
+		return
+	
+	sustituto.name = "Sustituto_%s_%d" % ["Local" if equipo_sancionado == 0 else "Vis", Time.get_ticks_msec()]
+	sustituto.equipo = Jugador3D.Equipo.LOCAL if equipo_sancionado == 0 else Jugador3D.Equipo.VISITANTE
+	sustituto.posicion_tactica = pos_tactica
+	sustituto.dorsal = dorsal_sustituto
+	sustituto.nombre_jugador = nombre_sustituto
+	
+	var contenedor: Node = get_parent().get_node_or_null("Jugadores") if get_parent() else null
+	if contenedor == null:
+		contenedor = get_parent()
+	if contenedor == null:
+		contenedor = self
+	contenedor.add_child(sustituto)
+	
+	sustituto._posicion_tactica_inicial = pos_inicial
+	var pos_banquillo: Vector3 = Vector3(-8.5, 0.0, -11.4) if equipo_sancionado == 0 else Vector3(5.0, 0.0, -11.4)
+	sustituto.aplicar_uniforme_equipo(equipo_sancionado)
+	sustituto.iniciar_entrada_cancha(pos_banquillo)
+	
+	if equipo_sancionado == 0:
+		jugador_expulsado_local = null
+	else:
+		jugador_expulsado_visitante = null
+
+
+## Callback ante cada gol anotado para aplicar la regla oficial de excepción por gol en inferioridad numérica
+func _on_gol_anotado(equipo_anotador: int) -> void:
+	# Regla de Excepción por Gol en Sanción de 2 Minutos (FIFA/IFAB Ley 12):
+	# Si ambos equipos están en inferioridad (ej. 4 vs 4), ningún equipo recupera jugadores por gol.
+	if inferioridad_local_activa and inferioridad_visitante_activa:
+		return
+	
+	# Si el equipo en superioridad (5) anota gol contra el equipo en inferioridad (4):
+	# Se cancela la sanción y el equipo sancionado completa sus 5 jugadores con un sustituto.
+	if inferioridad_local_activa and equipo_anotador == 1:
+		inferioridad_local_activa = false
+		tiempo_inferioridad_local = 0.0
+		sancion_2min_actualizada.emit(0, 0.0, false)
+		_finalizar_inferioridad(0, "GOL_RIVAL")
+	elif inferioridad_visitante_activa and equipo_anotador == 0:
+		inferioridad_visitante_activa = false
+		tiempo_inferioridad_visitante = 0.0
+		sancion_2min_actualizada.emit(1, 0.0, false)
+		_finalizar_inferioridad(1, "GOL_RIVAL")
+	# Si el equipo en inferioridad numérica anota, la sanción NO se cancela y el reloj continúa.
 
 
 ## Sanciona la Regla Oficial de Futsal de Cesión al Portero:
@@ -515,28 +825,67 @@ func sancionar_cesion_portero_manos(equipo_infractor: int, pos_infraccion: Vecto
 	var equipo_favorecido: int = 1 if equipo_infractor == 0 else 0
 	var x_linea_area: float = -14.0 if equipo_infractor == 0 else 14.0
 	var z_linea_area: float = clampf(pos_infraccion.z, -3.2, 3.2)
+	_reproducir_pitido_arbitral()
 	_emitir_anuncio_hud("¡CESIÓN AL PORTERO (MANOS)! TIRO LIBRE INDIRECTO")
-	iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, Vector3(x_linea_area, 0.25, z_linea_area), equipo_favorecido)
+	iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, Vector3(x_linea_area, 0.25, z_linea_area), equipo_favorecido, true)
 
 
-func iniciar_doble_penalti(equipo_ejecutor: int, num_falta: int = 6) -> void:
+## Sanciona infracción reglamentaria por mano deliberada o posición antinatural en la barrera defensiva.
+## Si ocurre dentro del área penal (6m), se pita Penalti. Fuera del área se pita Tiro Libre Directo.
+func sancionar_mano_barrera(infractor: Jugador3D, pos_infraccion: Vector3, es_penal: bool) -> void:
+	if estado != EstadoPartido.TIRO_LIBRE and estado != EstadoPartido.DOBLE_PENALTI and estado != EstadoPartido.EN_JUEGO:
+		return
+	var eq_infractor: int = infractor.equipo if infractor != null else 1
+	var eq_favorecido: int = 1 if eq_infractor == 0 else 0
+	_reproducir_pitido_arbitral()
+
+	if es_penal:
+		_emitir_anuncio_hud("¡MANO EN LA BARRERA! ¡PENALTI SANCIONADO!")
+		var x_penal: float = 14.0 if eq_favorecido == 0 else -14.0
+		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, Vector3(x_penal, 0.25, 0.0), eq_favorecido, false)
+	else:
+		_emitir_anuncio_hud("¡MANO EN LA BARRERA! TIRO LIBRE DIRECTO")
+		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, pos_infraccion, eq_favorecido, false)
+
+
+## Ejecuta la regla oficial de 6ª falta acumulada (Tiro Libre Directo sin Barrera):
+## - Desactiva por completo la formación de la barrera.
+## - Si la falta ocurrió a > 10.0m del arco rival, posiciona automáticamente el balón en el segundo punto penal (10.0m).
+## - Si ocurrió entre el área penal (6.0m) y los 10.0m, se ejecuta desde el punto de la falta sin barrera.
+## - Todos los jugadores de campo (excepto pateador y arqueros) se sitúan detrás de la línea paralela al balón y a >= 5.0m.
+## - El portero rival puede adelantarse hasta un límite de 5.0m respecto al balón.
+func iniciar_doble_penalti(equipo_ejecutor: int, num_falta: int = 6, pos_falta: Vector3 = Vector3.ZERO) -> void:
 	if _balon == null:
 		_conectar_balon()
 	
 	_sancionando_4s = false
 	_equipo_sacador = equipo_ejecutor
+	es_tiro_indirecto = false
+	toques_en_jugada = 0
+	_defensores_barrera_tl.clear()
+	_posiciones_barrera_tl.clear()
 	_cambiar_estado(EstadoPartido.DOBLE_PENALTI)
 	
-	# Segundo punto penal reglamentario: a 10 metros de la línea de meta (±10.0m en cancha de ±20.0m)
+	var pos_arco_rival: Vector3 = Vector3(20.0 if equipo_ejecutor == 0 else -20.0, 0.0, 0.0)
 	var x_segundo_penal: float = 10.0 if equipo_ejecutor == 0 else -10.0
-	_pos_saque = Vector3(x_segundo_penal, 0.25, 0.0)
+	var usar_punto_falta: bool = false
+	if pos_falta != Vector3.ZERO:
+		var dist_al_arco: float = Vector2(pos_falta.x, pos_falta.z).distance_to(Vector2(pos_arco_rival.x, pos_arco_rival.z))
+		if dist_al_arco <= 10.0:
+			usar_punto_falta = true
 	
-	_emitir_anuncio_hud("¡%dª FALTA! ¡DOBLE PENALTI A 10M SIN BARRERA!" % num_falta)
+	if usar_punto_falta:
+		_pos_saque = Vector3(clampf(pos_falta.x, -14.0, 14.0), 0.25, clampf(pos_falta.z, -8.5, 8.5))
+		_emitir_anuncio_hud("¡%dª FALTA! ¡TIRO LIBRE SIN BARRERA DESDE EL PUNTO DE FALTA!" % num_falta)
+	else:
+		_pos_saque = Vector3(x_segundo_penal, 0.25, 0.0)
+		_emitir_anuncio_hud("¡%dª FALTA! ¡DOBLE PENALTI A 10M SIN BARRERA!" % num_falta)
 	
 	var todos: Array[Node] = get_tree().get_nodes_in_group("jugadores_futsal")
 	for n: Node in todos:
 		var j_limpio: Jugador3D = n as Jugador3D
 		if j_limpio:
+			j_limpio.establecer_pose_barrera(false)
 			j_limpio.fijar_en_saque(false)
 			j_limpio.soltar_posesion()
 	
@@ -545,21 +894,32 @@ func iniciar_doble_penalti(equipo_ejecutor: int, num_falta: int = 6) -> void:
 	_sacador_actual = ejecutor
 	
 	if _balon:
-		_balon.colocar_en_reanudacion(_pos_saque)
-		_balon.sacador_autorizado = ejecutor
+		_balon.configurar_saque_reglamentario(_pos_saque, ejecutor, false)
 	
-	# Despejar a todos los demás jugadores detrás de la línea del balón (prohibida la barrera)
+	# Despejar a todos los demás jugadores de campo detrás de la línea del balón y a >= 5.0m (prohibida la barrera)
 	_mantener_despeje_doble_penalti()
 	
-	# Posicionar al portero defensor a mínimo 5m del balón (sobre su línea de meta)
+	var pos_balon_plana: Vector3 = Vector3(_pos_saque.x, 0.0, _pos_saque.z)
+	var dir_arco: Vector3 = (pos_arco_rival - pos_balon_plana).normalized()
+	if dir_arco.length_squared() < 0.01:
+		dir_arco = Vector3(1.0 if equipo_ejecutor == 0 else -1.0, 0.0, 0.0)
+	
+	# El portero rival puede adelantarse hasta un límite máximo de 5.0m respecto al balón
 	if portero_rival:
-		var x_meta_rival: float = 19.3 if equipo_ejecutor == 0 else -19.3
-		portero_rival.global_position = Vector3(x_meta_rival, 0.0, 0.0)
+		var pos_gk_adelantado: Vector3 = pos_balon_plana + dir_arco * distancia_barrera_futsal
+		if equipo_ejecutor == 0:
+			pos_gk_adelantado.x = clampf(pos_gk_adelantado.x, 14.0, 19.35)
+		else:
+			pos_gk_adelantado.x = clampf(pos_gk_adelantado.x, -19.35, -14.0)
+		pos_gk_adelantado.z = clampf(pos_gk_adelantado.z, -1.65, 1.65)
+		portero_rival.global_position = Vector3(pos_gk_adelantado.x, 0.0, pos_gk_adelantado.z)
 		portero_rival.velocity = Vector3.ZERO
+		var dir_mira_gk: Vector3 = (pos_balon_plana - portero_rival.global_position).normalized()
+		portero_rival.rotation.y = atan2(-dir_mira_gk.x, -dir_mira_gk.z)
 	
 	if ejecutor:
-		var dir_arco: Vector3 = Vector3(1.0 if equipo_ejecutor == 0 else -1.0, 0.0, 0.0)
-		var pos_anclaje: Vector3 = _pos_saque - dir_arco * 0.65
+		var vec_derecha_dp: Vector3 = Vector3(-dir_arco.z, 0.0, dir_arco.x).normalized()
+		var pos_anclaje: Vector3 = pos_balon_plana - dir_arco * 1.45 - vec_derecha_dp * 0.48
 		pos_anclaje.y = 0.0
 		ejecutor.fijar_en_saque(true, pos_anclaje)
 		ejecutor.rotation.y = atan2(-dir_arco.x, -dir_arco.z)
@@ -579,16 +939,37 @@ func iniciar_doble_penalti(equipo_ejecutor: int, num_falta: int = 6) -> void:
 
 func _mantener_despeje_doble_penalti() -> void:
 	var todos: Array[Node] = get_tree().get_nodes_in_group("jugadores_futsal")
+	var signo_ataque: float = 1.0 if _equipo_sacador == 0 else -1.0
+	var x_linea_detras: float = _pos_saque.x - signo_ataque * (distancia_barrera_futsal + 0.35)
+	x_linea_detras = clampf(x_linea_detras, -18.5, 18.5)
+	var pos_balon_plana: Vector3 = Vector3(_pos_saque.x, 0.0, _pos_saque.z)
 	var idx_fila: int = 0
 	for n: Node in todos:
 		var j: Jugador3D = n as Jugador3D
-		if j == null or j == _sacador_actual or j.posicion_tactica == "PORTERO":
+		if j == null or j == _sacador_actual:
 			continue
-		# Todos los jugadores de campo deben permanecer detrás de la línea del balón y a más de 5m
-		var x_detras: float = 4.0 if _equipo_sacador == 0 else -4.0
-		var z_lateral: float = -7.5 + float(idx_fila % 4) * 5.0
-		if (_equipo_sacador == 0 and j.global_position.x > 5.5) or (_equipo_sacador == 1 and j.global_position.x < -5.5):
-			j.global_position = Vector3(x_detras, 0.0, z_lateral)
+		if j.posicion_tactica == "PORTERO":
+			# El portero defensor debe respetar los >= 5.0 metros reglamentarios respecto al balón
+			if int(j.equipo) != _equipo_sacador:
+				var diff_gk: Vector3 = Vector3(j.global_position.x, 0.0, j.global_position.z) - pos_balon_plana
+				var d_gk: float = diff_gk.length()
+				if d_gk < distancia_barrera_futsal and d_gk > 0.01:
+					var npos_gk: Vector3 = pos_balon_plana + diff_gk.normalized() * distancia_barrera_futsal
+					npos_gk.x = clampf(npos_gk.x, -19.35, 19.35)
+					j.global_position = Vector3(npos_gk.x, 0.0, npos_gk.z)
+					j.velocity = Vector3.ZERO
+			continue
+		
+		# Todos los jugadores de campo deben situarse detrás de la línea paralela al balón y a >= 5.0m de distancia
+		j.establecer_pose_barrera(false)
+		var pos_j_plana: Vector3 = Vector3(j.global_position.x, 0.0, j.global_position.z)
+		var delante_de_linea: bool = (_equipo_sacador == 0 and pos_j_plana.x > _pos_saque.x - 0.5) or (_equipo_sacador == 1 and pos_j_plana.x < _pos_saque.x + 0.5)
+		var dist_al_balon: float = pos_j_plana.distance_to(pos_balon_plana)
+		if delante_de_linea or dist_al_balon < distancia_barrera_futsal:
+			var z_lateral: float = -7.5 + float(idx_fila % 4) * 5.0
+			if Vector2(x_linea_detras, z_lateral).distance_to(Vector2(_pos_saque.x, _pos_saque.z)) < distancia_barrera_futsal:
+				z_lateral = -8.5 if _pos_saque.z >= 0.0 else 8.5
+			j.global_position = Vector3(x_linea_detras, 0.0, z_lateral)
 			j.velocity = Vector3.ZERO
 		idx_fila += 1
 
@@ -608,20 +989,26 @@ func _sancionar_regla_4_segundos() -> void:
 	var equipo_beneficiado: int = 1 if equipo_infractor == 0 else 0
 	var pos_anterior: Vector3 = _pos_saque
 	
+	_reproducir_pitido_arbitral()
+	
 	if _sacador_actual and is_instance_valid(_sacador_actual):
 		_sacador_actual.fijar_en_saque(false)
 		_sacador_actual.soltar_posesion()
 	
 	if estado_previo == EstadoPartido.SAQUE_META:
 		# Si el portero demora más de 4s: tiro libre indirecto para el rival al borde del área de 6m
-		_emitir_anuncio_hud("¡4 SEGUNDOS DEL PORTERO! TIRO LIBRE RIVAL")
+		_emitir_anuncio_hud("¡TIEMPO AGOTADO (4S) DEL PORTERO! TIRO LIBRE INDIRECTO RIVAL")
 		var x_borde_area: float = -13.8 if equipo_infractor == 0 else 13.8
-		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, Vector3(x_borde_area, 0.25, 0.0), equipo_beneficiado)
+		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, Vector3(x_borde_area, 0.25, 0.0), equipo_beneficiado, true)
+	elif estado_previo == EstadoPartido.TIRO_LIBRE or estado_previo == EstadoPartido.DOBLE_PENALTI:
+		# En tiro libre: si vence la cuenta de 4s, se concede tiro libre indirecto al equipo rival en el mismo punto
+		_emitir_anuncio_hud("¡TIEMPO AGOTADO (4S)! TIRO LIBRE INDIRECTO RIVAL")
+		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, pos_anterior, equipo_beneficiado, true)
 	else:
-		# En saque de banda, córner o tiro libre: la posesión pasa al equipo contrario
-		_emitir_anuncio_hud("¡REGLA DE 4 SEGUNDOS! POSESIÓN RIVAL")
+		# En saque de banda o córner: la posesión pasa al equipo contrario en banda
+		_emitir_anuncio_hud("¡TIEMPO AGOTADO (4S)! POSESIÓN RIVAL")
 		var z_banda: float = 9.95 if pos_anterior.z >= 0.0 else -9.95
-		iniciar_reanudacion(EstadoPartido.SAQUE_BANDA, Vector3(clampf(pos_anterior.x, -18.5, 18.5), 0.25, z_banda), equipo_beneficiado)
+		iniciar_reanudacion(EstadoPartido.SAQUE_BANDA, Vector3(clampf(pos_anterior.x, -18.5, 18.5), 0.25, z_banda), equipo_beneficiado, true)
 
 
 # ==============================================================================
@@ -712,6 +1099,27 @@ func _on_fin_primer_tiempo() -> void:
 	iniciar_saque_centro(1)
 
 
+## Valida si un gol anotado cumple con la regla FIFA/IFAB de Tiro Directo vs. Indirecto.
+## Si es tiro libre indirecto (o saque de banda/meta) y el balón ingresa al arco con un solo toque
+## (`toques_en_jugada == 1`), anula el gol y concede Saque de Meta (`SAQUE_META`) al equipo defensor.
+func validar_y_procesar_gol(equipo_que_anoto: int) -> bool:
+	if _balon == null:
+		_conectar_balon()
+	
+	if _balon != null and is_instance_valid(_balon):
+		es_tiro_indirecto = _balon.es_tiro_indirecto
+		toques_en_jugada = _balon.toques_en_jugada
+		if not _balon.es_gol_valido_reglamentario():
+			_reproducir_pitido_arbitral()
+			_emitir_anuncio_hud("¡GOL ANULADO! TIRO INDIRECTO SIN 2° TOQUE — SAQUE DE META")
+			var equipo_defensor: int = 1 if equipo_que_anoto == 0 else 0
+			var pos_meta: Vector3 = Vector3(-17.8 if equipo_defensor == 0 else 17.8, 0.25, 0.0)
+			iniciar_reanudacion(EstadoPartido.SAQUE_META, pos_meta, equipo_defensor, true)
+			return false
+	
+	return true
+
+
 ## Gestiona la celebración del gol y el saque desde el centro del campo
 func iniciar_gol(equipo_que_anoto: int) -> void:
 	if _balon == null:
@@ -719,6 +1127,7 @@ func iniciar_gol(equipo_que_anoto: int) -> void:
 	
 	_cambiar_estado(EstadoPartido.GOL)
 	_esperando_toque = false
+	gol_anotado.emit(equipo_que_anoto)
 	
 	if _balon:
 		_balon.esta_fuera_de_juego = true
@@ -729,6 +1138,7 @@ func iniciar_gol(equipo_que_anoto: int) -> void:
 	for n: Node in todos:
 		var j: Jugador3D = n as Jugador3D
 		if j:
+			j.establecer_pose_barrera(false)
 			j.fijar_en_saque(false)
 			j.set_congelado(true)
 			j.velocity = Vector3.ZERO
@@ -771,8 +1181,8 @@ func _finalizar_reanudacion() -> void:
 		_cambiar_estado(EstadoPartido.EN_JUEGO)
 
 
-## Aplica la barrera reglamentaria de 4 metros a todos los rivales del equipo sacador
-func _aplicar_regla_4m(reubicacion_inicial: bool = false) -> void:
+## Aplica la distancia reglamentaria de 5.0 metros a todos los rivales del equipo sacador
+func _aplicar_regla_5m(reubicacion_inicial: bool = false) -> void:
 	if _balon == null:
 		return
 	
@@ -866,25 +1276,6 @@ func _obtener_portero(equipo_sac: int) -> Jugador3D:
 	return _obtener_sacador_campo(_pos_saque, equipo_sac)
 
 
-func _obtener_companero_mas_cercano(sacador: Jugador3D) -> Jugador3D:
-	var grupo: String = "equipo_local" if _equipo_sacador == 0 else "equipo_visitante"
-	var jugadores: Array[Node] = get_tree().get_nodes_in_group(grupo)
-	var mas_cercano: Jugador3D = null
-	var min_dist: float = 999.0
-	for n: Node in jugadores:
-		var j: Jugador3D = n as Jugador3D
-		if j and j != sacador and j.posicion_tactica != "PORTERO":
-			var d: float = 999.0
-			if sacador != null:
-				d = sacador.global_position.distance_to(j.global_position)
-			elif _balon != null:
-				d = _balon.global_position.distance_to(j.global_position)
-			if d < min_dist:
-				min_dist = d
-				mas_cercano = j
-	return mas_cercano
-
-
 func _obtener_sacador_campo(pos_balon: Vector3, equipo_sac: int) -> Jugador3D:
 	var grupo: String = "equipo_local" if equipo_sac == 0 else "equipo_visitante"
 	var jugadores: Array[Node] = get_tree().get_nodes_in_group(grupo)
@@ -927,30 +1318,38 @@ func _emitir_anuncio_hud(texto: String) -> void:
 		hud.mostrar_anuncio(texto)
 
 
-## Configura la barrera rival a exactamente 5.0m del balón según las reglas oficiales de Futsal:
+## Configura la barrera rival a exactamente 5.0m del balón en la línea hacia el centro del arco rival:
+## `pos_barrera = balon.global_position + (arco_rival.global_position - balon.global_position).normalized() * 5.0`
 ## - Si la distancia al arco es menor a 12 m: barrera de 3 defensores.
 ## - Si la distancia al arco es mayor o igual a 12 m: barrera de 2 defensores.
+## - Ningún jugador rival puede estar dentro de un radio inferior a 5.0 metros del balón al momento de la orden.
 func _configurar_barrera_y_posicionamiento_tiro_libre(equipo_sacador_idx: int, pos_balon: Vector3) -> void:
 	_defensores_barrera_tl.clear()
 	_posiciones_barrera_tl.clear()
-	
+
 	var pos_arco_rival: Vector3 = Vector3(20.0 if equipo_sacador_idx == 0 else -20.0, 0.0, 0.0)
-	var dist_al_arco: float = pos_balon.distance_to(pos_arco_rival)
-	
+	var pos_balon_plana: Vector3 = Vector3(pos_balon.x, 0.0, pos_balon.z)
+	var dist_al_arco: float = pos_balon_plana.distance_to(pos_arco_rival)
+
 	# Regla Futsal: Menor a 12m -> 3 defensores; Mayor o igual -> 2 defensores
 	var num_barrera: int = 3 if dist_al_arco < 12.0 else 2
-	
-	var dir_arco: Vector3 = (pos_arco_rival - pos_balon).normalized()
+
+	# Determinar el poste más cercano al balón y el poste opuesto para posicionamiento del arquero
+	var signo_poste_cercano: float = -1.0
+	if pos_balon.z > 0.15:
+		signo_poste_cercano = 1.0
+	elif pos_balon.z < -0.15:
+		signo_poste_cercano = -1.0
+
+	# Vector unitario desde el balón hacia el centro del arco rival
+	var dir_arco: Vector3 = (pos_arco_rival - pos_balon_plana).normalized()
 	if dir_arco.length_squared() < 0.01:
 		dir_arco = Vector3(1.0 if equipo_sacador_idx == 0 else -1.0, 0.0, 0.0)
-	
-	# Punto central de la barrera a exactamente 5.0 metros reglamentarios
-	var centro_barrera: Vector3 = pos_balon + dir_arco * distancia_barrera_futsal
-	centro_barrera.x = clampf(centro_barrera.x, -18.8, 18.8)
-	centro_barrera.z = clampf(centro_barrera.z, -9.2, 9.2)
-	
+
+	# Posición reglamentaria de la barrera a exactamente 5.0 metros en la línea hacia el centro del arco rival
+	var pos_barrera: Vector3 = pos_balon_plana + dir_arco * distancia_barrera_futsal
 	var vec_perp: Vector3 = Vector3(-dir_arco.z, 0.0, dir_arco.x).normalized()
-	
+
 	var grupo_rival: String = "equipo_visitante" if equipo_sacador_idx == 0 else "equipo_local"
 	var rivales: Array[Node] = get_tree().get_nodes_in_group(grupo_rival)
 	var defensores_campo: Array[Jugador3D] = []
@@ -958,41 +1357,52 @@ func _configurar_barrera_y_posicionamiento_tiro_libre(equipo_sacador_idx: int, p
 		var j: Jugador3D = n as Jugador3D
 		if j and j.posicion_tactica != "PORTERO":
 			defensores_campo.append(j)
-	
-	# Ordenar rivales por cercanía al punto central de la barrera
+
+	# Ordenar rivales por cercanía al punto de la barrera
 	defensores_campo.sort_custom(func(a: Jugador3D, b: Jugador3D) -> bool:
-		return a.global_position.distance_squared_to(centro_barrera) < b.global_position.distance_squared_to(centro_barrera)
+		return a.global_position.distance_squared_to(pos_barrera) < b.global_position.distance_squared_to(pos_barrera)
 	)
-	
+
+	# Separación compacta hombro con hombro de 0.55 m entre cada defensor de la barrera
 	var offsets: Array[float] = []
 	if num_barrera == 2:
-		offsets = [-0.36, 0.36]
+		offsets = [-0.275, 0.275]
 	else:
-		offsets = [-0.70, 0.0, 0.70]
-	
+		offsets = [-0.55, 0.0, 0.55]
+
 	var cantidad_a_ubicar: int = mini(num_barrera, defensores_campo.size())
 	for i: int in range(cantidad_a_ubicar):
 		var def_barrera: Jugador3D = defensores_campo[i]
 		var off: float = offsets[i]
-		var pos_cand: Vector3 = centro_barrera + vec_perp * off
-		# Calibrar radialmente a exactamente 5.0 metros reglamentarios del balón
-		var pos_exacta_5m: Vector3 = pos_balon + (pos_cand - pos_balon).normalized() * distancia_barrera_futsal
+		var pos_exacta_5m: Vector3 = pos_barrera + vec_perp * off
 		pos_exacta_5m.x = clampf(pos_exacta_5m.x, -18.8, 18.8)
 		pos_exacta_5m.z = clampf(pos_exacta_5m.z, -9.2, 9.2)
 		pos_exacta_5m.y = 0.0
-		
+
 		def_barrera.global_position = pos_exacta_5m
-		var dir_mira: Vector3 = (pos_balon - pos_exacta_5m).normalized()
+		var dir_mira: Vector3 = (pos_balon_plana - pos_exacta_5m).normalized()
 		def_barrera.rotation.y = atan2(-dir_mira.x, -dir_mira.z)
 		def_barrera.velocity = Vector3.ZERO
 		def_barrera.fijar_en_saque(true, pos_exacta_5m)
-		
+		def_barrera.establecer_pose_barrera(true)
+
 		_defensores_barrera_tl.append(def_barrera)
 		_posiciones_barrera_tl.append(pos_exacta_5m)
-	
-	# Los demás defensores rivales deben permanecer reglamentariamente a >= 5.0m del balón
+
+	# Posicionar al arquero rival cubriendo el poste opuesto con visión limpia hacia el lanzador
+	var portero_rival: Jugador3D = _obtener_portero(1 if equipo_sacador_idx == 0 else 0)
+	if portero_rival != null and is_instance_valid(portero_rival):
+		var x_gk: float = 19.35 if equipo_sacador_idx == 0 else -19.35
+		var z_poste_opuesto: float = -signo_poste_cercano * clampf(0.68 + absf(pos_balon.z) * 0.05, 0.62, 1.12)
+		portero_rival.global_position = Vector3(x_gk, 0.0, z_poste_opuesto)
+		portero_rival.velocity = Vector3.ZERO
+		var dir_mira_gk: Vector3 = (pos_balon_plana - portero_rival.global_position).normalized()
+		portero_rival.rotation.y = atan2(-dir_mira_gk.x, -dir_mira_gk.z)
+
+	# Ningún otro defensor rival puede estar dentro de un radio inferior a 5.0 metros del balón
 	for i: int in range(cantidad_a_ubicar, defensores_campo.size()):
 		var def_libre: Jugador3D = defensores_campo[i]
+		def_libre.establecer_pose_barrera(false)
 		var diff: Vector3 = def_libre.global_position - pos_balon
 		diff.y = 0.0
 		if diff.length() < distancia_barrera_futsal:
@@ -1013,7 +1423,7 @@ func _configurar_barrera_y_posicionamiento_tiro_libre(equipo_sacador_idx: int, p
 			continue
 		var diff_comp: Vector3 = comp.global_position - pos_balon
 		diff_comp.y = 0.0
-		if diff_comp.length() < 3.2 or comp.global_position.distance_to(centro_barrera) < 2.5:
+		if diff_comp.length() < 3.2 or comp.global_position.distance_to(pos_barrera) < 2.5:
 			var signo_lado: float = -1.0 if idx_comp % 2 == 0 else 1.0
 			var pos_apoyo: Vector3 = pos_balon - dir_arco * 1.5 + vec_perp * (signo_lado * (3.5 + float(idx_comp) * 1.2))
 			pos_apoyo.x = clampf(pos_apoyo.x, -18.8, 18.8)

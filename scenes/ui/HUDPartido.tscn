@@ -382,15 +382,15 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -260.0
+offset_left = -360.0
 offset_top = -125.0
-offset_right = 260.0
+offset_right = 360.0
 offset_bottom = -95.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_colors/font_color = Color(1, 0.92, 0.45, 0.95)
 theme_override_font_sizes/font_size = 14
-text = "⚡ TRAZA HACIA EL ARCO • CURVA EL DEDO PARA DAR COMBA"
+text = "◀ IZQUIERDA (45%): PANEO DE CÁMARA  •  DERECHA (55%): TRAZA PARA DISPARAR Y CURVAR ▶"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -477,6 +477,13 @@ layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.35, 0.35, 1)
 theme_override_font_sizes/font_size = 14
 text = "[4.0s]"
+
+[node name="LabelSancion2Min" type="Label" parent="MarcadorSuperior/PanelContenedor/ContenedorMarcador"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.28, 0.28, 1)
+theme_override_font_sizes/font_size = 14
+text = "[4v5 - 02:00]"
 
 [node name="PanelFichaJugador" type="PanelContainer" parent="."]
 anchors_preset = 7

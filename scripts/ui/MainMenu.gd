@@ -9,6 +9,7 @@ extends Control
 
 # Botones y tarjetas
 @onready var btn_jugar_destacado: Button = $MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox/BotonJugar
+@onready var btn_entrenamiento: Button = get_node_or_null("MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox/BotonEntrenamiento") as Button
 @onready var btn_tarjeta_partido: Button = $MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/BotonAccesoRapido
 @onready var btn_alineacion: Button = $MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/TarjetaAlineacion/VBox/BotonAlineacion
 @onready var btn_tienda: Button = $MargenPrincipal/MosaicoContenedor/ColumnaSecundaria/FilaInferior/TarjetaTienda/VBox/BotonTienda
@@ -36,6 +37,8 @@ func _actualizar_indicadores_economia() -> void:
 func _conectar_eventos() -> void:
 	if btn_jugar_destacado:
 		btn_jugar_destacado.pressed.connect(_on_iniciar_partido_pressed)
+	if btn_entrenamiento:
+		btn_entrenamiento.pressed.connect(_on_entrenamiento_pressed)
 	if btn_tarjeta_partido:
 		btn_tarjeta_partido.pressed.connect(_on_iniciar_partido_pressed)
 	
@@ -55,6 +58,10 @@ func _on_iniciar_partido_pressed() -> void:
 		GameManager.cargar_partido()
 	else:
 		get_tree().change_scene_to_file("res://scenes/Cancha3D.tscn")
+
+
+func _on_entrenamiento_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/ui/MenuEntrenamiento.tscn")
 
 
 func _on_alineacion_pressed() -> void:

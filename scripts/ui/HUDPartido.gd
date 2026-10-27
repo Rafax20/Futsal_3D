@@ -22,6 +22,7 @@ extends CanvasLayer
 @onready var label_periodo: Label = get_node_or_null("MarcadorSuperior/PanelContenedor/ContenedorMarcador/LabelPeriodo") as Label
 @onready var label_tiempo: Label = $MarcadorSuperior/PanelContenedor/ContenedorMarcador/LabelTiempo
 @onready var label_cuenta_4s: Label = get_node_or_null("MarcadorSuperior/PanelContenedor/ContenedorMarcador/LabelCuenta4s") as Label
+@onready var label_sancion_2min: Label = get_node_or_null("MarcadorSuperior/PanelContenedor/ContenedorMarcador/LabelSancion2Min") as Label
 @onready var label_jugador_activo: Label = get_node_or_null("PanelFichaJugador/LabelJugadorActivo") as Label
 @onready var btn_tiempo_muerto: Button = get_node_or_null("BotonTiempoMuerto") as Button
 @onready var btn_pausa: Button = $BotonPausa
@@ -50,6 +51,7 @@ func _ready() -> void:
 	_conectar_botones_superiores()
 	_conectar_game_manager()
 	_conectar_gestor_partido()
+	_conectar_eventos_atajadas()
 	
 	menu_pausa.visible = false
 	if banner_anuncio:
@@ -175,8 +177,11 @@ func _conectar_game_manager() -> void:
 
 func _conectar_gestor_partido() -> void:
 	_gestor_partido = get_tree().get_first_node_in_group("gestor_partido") as GestorPartido
-	if _gestor_partido and not _gestor_partido.cuenta_regresiva_4s_actualizada.is_connected(_on_cuenta_4s_actualizada):
-		_gestor_partido.cuenta_regresiva_4s_actualizada.connect(_on_cuenta_4s_actualizada)
+	if _gestor_partido:
+		if not _gestor_partido.cuenta_regresiva_4s_actualizada.is_connected(_on_cuenta_4s_actualizada):
+			_gestor_partido.cuenta_regresiva_4s_actualizada.connect(_on_cuenta_4s_actualizada)
+		if not _gestor_partido.sancion_2min_actualizada.is_connected(_on_sancion_2min_actualizada):
+			_gestor_partido.sancion_2min_actualizada.connect(_on_sancion_2min_actualizada)
 
 
 # Handlers de marcador, tiempo neto, faltas acumuladas, periodo y 4 segundos
@@ -209,6 +214,50 @@ func _on_cuenta_4s_actualizada(segundos_restantes: float, activa: bool) -> void:
 		label_cuenta_4s.visible = activa
 		if activa:
 			label_cuenta_4s.text = "[%.1fs]" % segundos_restantes
+
+
+func _on_sancion_2min_actualizada(equipo_sancionado: int, segundos_restantes: float, activa: bool) -> void:
+	if label_sancion_2min == null:
+		var contenedor_marcador: Node = get_node_or_null("MarcadorSuperior/PanelContenedor/ContenedorMarcador")
+		if contenedor_marcador:
+			label_sancion_2min = Label.new()
+			label_sancion_2min.name = "LabelSancion2Min"
+			label_sancion_2min.visible = false
+			label_sancion_2min.add_theme_color_override("font_color", Color(1.0, 0.28, 0.28, 1.0))
+			label_sancion_2min.add_theme_font_size_override("font_size", 13)
+			contenedor_marcador.add_child(label_sancion_2min)
+	
+	if label_sancion_2min:
+		label_sancion_2min.visible = activa
+		if activa:
+			var mins: int = int(segundos_restantes) / 60
+			var segs: int = int(segundos_restantes) % 60
+			var tag_eq: String = "LOC" if equipo_sancionado == 0 else "VIS"
+			label_sancion_2min.text = "[4v5 %s %02d:%02d]" % [tag_eq, mins, segs]
+
+
+func _conectar_eventos_atajadas() -> void:
+	var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
+	if not balones.is_empty():
+		var b: Balon3D = balones[0] as Balon3D
+		if b and not b.atajada_realizada.is_connected(_on_atajada_realizada):
+			b.atajada_realizada.connect(_on_atajada_realizada)
+
+
+func _on_atajada_realizada(zona: String, nombre_arquero: String) -> void:
+	var mensaje: String = ""
+	match zona:
+		"manos":
+			mensaje = "¡MANOTAZO SALVADOR DE %s!" % nombre_arquero
+		"piernas":
+			mensaje = "¡PARADA CON EL PIE DE %s!" % nombre_arquero
+		"pecho":
+			mensaje = "¡BLOQUEO DE PECHO DE %s!" % nombre_arquero
+		"cabeza":
+			mensaje = "¡BLOQUEO DE CABEZA DE %s!" % nombre_arquero
+		_:
+			mensaje = "¡ATAJADA DE %s!" % nombre_arquero
+	mostrar_anuncio(mensaje, 2.0)
 
 
 func _on_tiempo_muerto_pressed() -> void:

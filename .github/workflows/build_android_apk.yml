@@ -1,0 +1,152 @@
+name: Build Android APK (Godot 4)
+
+on:
+  push:
+    branches:
+      - main
+      - "features/*"
+  workflow_dispatch:
+    inputs:
+      godot_version:
+        description: "Versión de Godot 4 a utilizar (ej: 4.7.2-stable)"
+        required: false
+        default: "4.7.2-stable"
+
+env:
+  GODOT_VERSION_DEFAULT: "4.7.2-stable"
+  EXPORT_PRESET_NAME: "Android"
+  APK_OUTPUT_PATH: "build/Futsal3D.apk"
+
+jobs:
+  build-android-debug:
+    name: Compilar APK Debug (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: 1. Checkout del repositorio
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: 2. Configurar Java (JDK 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: 3. Configurar Android SDK y Build-Tools
+        uses: android-actions/setup-android@v3
+
+      - name: 4. Instalar paquetes de Android SDK requeridos por Godot 4
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: 5. Generar Android Debug Keystore por defecto (sin secretos)
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -keyalg RSA -genkeypair \
+              -alias androiddebugkey \
+              -keypass android \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -validity 9999 \
+              -deststoretype pkcs12
+          fi
+          ls -lh "$HOME/.android/debug.keystore"
+
+      - name: 6. Instalar Godot 4 (Linux Headless) y Plantillas de Exportación Oficiales
+        env:
+          INPUT_GODOT_VERSION: ${{ github.event.inputs.godot_version }}
+        run: |
+          set -euo pipefail
+          TARGET_TAG="${INPUT_GODOT_VERSION:-$GODOT_VERSION_DEFAULT}"
+          echo "Verificando disponibilidad de Godot ${TARGET_TAG}..."
+
+          BASE_URL="https://github.com/godotengine/godot-builds/releases/download/${TARGET_TAG}"
+          HTTP_STATUS=$(curl -sL -o /dev/null -w "%{http_code}" "${BASE_URL}/Godot_v${TARGET_TAG}_linux.x86_64.zip" || true)
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Tag exacto ${TARGET_TAG} no encontrado directamente (HTTP ${HTTP_STATUS}). Buscando release compatible en godot-builds..."
+            FALLBACK_TAG=$(curl -sL https://api.github.com/repos/godotengine/godot-builds/releases | jq -r '[.[] | select(.tag_name | startswith("4."))][0].tag_name')
+            if [ -n "$FALLBACK_TAG" ] && [ "$FALLBACK_TAG" != "null" ]; then
+              TARGET_TAG="$FALLBACK_TAG"
+              BASE_URL="https://github.com/godotengine/godot-builds/releases/download/${TARGET_TAG}"
+            fi
+          fi
+
+          # Determinar nombre de carpeta de plantillas (ej: "4.7.2-stable" -> "4.7.2.stable")
+          TEMPLATE_DIR_NAME=$(echo "$TARGET_TAG" | sed 's/-/./g')
+          MAJOR_MINOR=$(echo "$TARGET_TAG" | cut -d'-' -f1 | awk -F. '{print $1"."$2}')
+
+          echo "Descargando Godot v${TARGET_TAG} (Plantillas: ${TEMPLATE_DIR_NAME})..."
+          mkdir -p /tmp/godot-install
+          cd /tmp/godot-install
+
+          curl -fL --retry 3 -o godot.zip "${BASE_URL}/Godot_v${TARGET_TAG}_linux.x86_64.zip"
+          curl -fL --retry 3 -o templates.tpz "${BASE_URL}/Godot_v${TARGET_TAG}_export_templates.tpz"
+
+          unzip -q godot.zip
+          mv "Godot_v${TARGET_TAG}_linux.x86_64" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+
+          TEMPLATE_DEST="$HOME/.local/share/godot/export_templates/${TEMPLATE_DIR_NAME}"
+          mkdir -p "$TEMPLATE_DEST"
+          unzip -q templates.tpz
+          mv templates/* "$TEMPLATE_DEST/"
+
+          echo "GODOT_MAJOR_MINOR=${MAJOR_MINOR}" >> "$GITHUB_ENV"
+          godot --version
+
+      - name: 7. Configurar rutas de Android SDK, JDK 17 y Debug Keystore en Godot
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          ANDROID_SDK_DIR="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          KEYSTORE_PATH="$HOME/.android/debug.keystore"
+
+          for CFG_FILE in \
+            "$HOME/.config/godot/editor_settings-4.tres" \
+            "$HOME/.config/godot/editor_settings-${GODOT_MAJOR_MINOR}.tres" \
+            "$HOME/.config/godot/editor_settings-4.7.tres"; do
+            cat <<EOF > "$CFG_FILE"
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "${ANDROID_SDK_DIR}"
+          export/android/java_sdk_path = "${JAVA_HOME}"
+          export/android/debug_keystore = "${KEYSTORE_PATH}"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          done
+
+      - name: 8. Importar recursos 3D/texturas y exportar APK Debug (build/Futsal3D.apk)
+        env:
+          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: ${{ runner.os == 'Linux' && '/home/runner/.android/debug.keystore' || '' }}
+          GODOT_ANDROID_KEYSTORE_DEBUG_USER: "androiddebugkey"
+          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: "android"
+        run: |
+          mkdir -p build
+
+          echo "Importando activos del proyecto (.glb, texturas, escenas) en modo headless..."
+          godot --headless --import || true
+
+          echo "Exportando preset '${EXPORT_PRESET_NAME}' hacia '${APK_OUTPUT_PATH}'..."
+          godot --headless --verbose --export-debug "${EXPORT_PRESET_NAME}" "${APK_OUTPUT_PATH}"
+
+          if [ ! -f "${APK_OUTPUT_PATH}" ]; then
+            echo "Error: El archivo ${APK_OUTPUT_PATH} no fue generado."
+            exit 1
+          fi
+          ls -lh "${APK_OUTPUT_PATH}"
+
+      - name: 9. Subir APK como artefacto descargable (retención de 7 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Futsal3D-Android-Debug-APK
+          path: ${{ env.APK_OUTPUT_PATH }}
+          retention-days: 7
+          if-no-files-found: error

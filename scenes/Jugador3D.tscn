@@ -1,110 +1,25 @@
-[gd_scene format=3 uid="uid://drkb4xfp25m2s"]
+[gd_scene load_steps=13 format=3 uid="uid://drkb4xfp25m2s"]
 
 [ext_resource type="Script" path="res://scripts/Jugador3D.gd" id="1_jugador_script"]
+[ext_resource type="Shader" path="res://shaders/jugador_midpoly.gdshader" id="2_shader_midpoly"]
+[ext_resource type="PackedScene" uid="uid://bw0knkkhmg47j" path="res://assets/modelos/Jugador_Futsal.glb" id="3_modelo_jugador"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_jugador"]
-radius = 0.36
-height = 1.9
+radius = 0.34
+height = 1.88
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_torso_local"]
-albedo_color = Color(0.85098, 0.152941, 0.152941, 1)
-roughness = 0.4
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sombra_contacto"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.02, 0.03, 0.05, 0.38)
 
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_torso"]
-material = SubResource("StandardMaterial3D_torso_local")
-radius = 0.27
-height = 0.72
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_escudo"]
-albedo_color = Color(0.95, 0.79, 0.3, 1)
-metallic = 0.35
-roughness = 0.25
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_escudo"]
-material = SubResource("StandardMaterial3D_escudo")
-top_radius = 0.065
-bottom_radius = 0.055
-height = 0.02
-radial_segments = 6
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_piel"]
-albedo_color = Color(0.878431, 0.721569, 0.584314, 1)
-roughness = 0.55
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_cuello"]
-material = SubResource("StandardMaterial3D_piel")
-top_radius = 0.075
-bottom_radius = 0.085
-height = 0.14
-
-[sub_resource type="SphereMesh" id="SphereMesh_cabeza"]
-material = SubResource("StandardMaterial3D_piel")
-radius = 0.175
-height = 0.36
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pelo"]
-albedo_color = Color(0.12, 0.09, 0.08, 1)
-roughness = 0.7
-
-[sub_resource type="SphereMesh" id="SphereMesh_pelo"]
-material = SubResource("StandardMaterial3D_pelo")
-radius = 0.182
-height = 0.22
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_manga"]
-material = SubResource("StandardMaterial3D_torso_local")
-top_radius = 0.085
-bottom_radius = 0.075
-height = 0.22
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_brazo"]
-material = SubResource("StandardMaterial3D_piel")
-top_radius = 0.065
-bottom_radius = 0.055
-height = 0.32
-
-[sub_resource type="SphereMesh" id="SphereMesh_mano"]
-material = SubResource("StandardMaterial3D_piel")
-radius = 0.065
-height = 0.13
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_shorts"]
-albedo_color = Color(0.101961, 0.121569, 0.180392, 1)
-roughness = 0.5
-
-[sub_resource type="BoxMesh" id="BoxMesh_shorts"]
-material = SubResource("StandardMaterial3D_shorts")
-size = Vector3(0.46, 0.24, 0.34)
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_muslo"]
-material = SubResource("StandardMaterial3D_shorts")
-top_radius = 0.105
-bottom_radius = 0.09
-height = 0.24
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_pierna"]
-material = SubResource("StandardMaterial3D_piel")
-top_radius = 0.078
-bottom_radius = 0.065
-height = 0.26
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_medias"]
-albedo_color = Color(0.95, 0.95, 0.95, 1)
-roughness = 0.5
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_media"]
-material = SubResource("StandardMaterial3D_medias")
-top_radius = 0.068
-bottom_radius = 0.06
-height = 0.22
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_botin"]
-albedo_color = Color(0.12, 0.14, 0.18, 1)
-roughness = 0.35
-
-[sub_resource type="BoxMesh" id="BoxMesh_botin"]
-material = SubResource("StandardMaterial3D_botin")
-size = Vector3(0.13, 0.09, 0.26)
+[sub_resource type="CylinderMesh" id="CylinderMesh_sombra_contacto"]
+material = SubResource("StandardMaterial3D_sombra_contacto")
+top_radius = 0.36
+bottom_radius = 0.36
+height = 0.004
+radial_segments = 24
+rings = 1
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_indicador"]
 shading_mode = 0
@@ -114,7 +29,7 @@ albedo_color = Color(0.15, 0.95, 0.55, 1)
 material = SubResource("StandardMaterial3D_indicador")
 inner_radius = 0.46
 outer_radius = 0.56
-rings = 16
+rings = 24
 ring_segments = 8
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flecha_guia"]
@@ -139,117 +54,36 @@ collision_mask = 1
 script = ExtResource("1_jugador_script")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.94, 0)
 shape = SubResource("CapsuleShape3D_jugador")
 
 [node name="Visual" type="Node3D" parent="."]
-transform = Transform3D(1.18, 0, 0, 0, 1.18, 0, 0, 0, 1.18, 0, 0, 0)
+transform = Transform3D(1.05, 0, 0, 0, 1.05, 0, 0, 0, 1.05, 0, 0, 0)
 
-[node name="Torso" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.98, 0)
-mesh = SubResource("CapsuleMesh_torso")
+[node name="ModeloJugador" parent="Visual" instance=ExtResource("3_modelo_jugador")]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 0, 0)
 
-[node name="EscudoPecho" type="MeshInstance3D" parent="Visual/Torso"]
-transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, -0.1, 0.14, -0.255)
-mesh = SubResource("CylinderMesh_escudo")
+[node name="SombraContactoPiso" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_sombra_contacto")
 
-[node name="LabelDorsal" type="Label3D" parent="Visual/Torso"]
-transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 0.05, 0.275)
-pixel_size = 0.0045
+[node name="LabelDorsal" type="Label3D" parent="Visual"]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 1.25, 0.138)
+cast_shadow = 0
+pixel_size = 0.0038
 text = "10"
 font_size = 64
 outline_size = 12
 
-[node name="Cuello" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.34, 0)
-mesh = SubResource("CylinderMesh_cuello")
-
-[node name="Cabeza" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.52, 0)
-mesh = SubResource("SphereMesh_cabeza")
-
-[node name="Pelo" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, -0.015)
-mesh = SubResource("SphereMesh_pelo")
-
-[node name="PivoteBrazoIzq" type="Node3D" parent="Visual"]
-transform = Transform3D(0.984808, -0.173648, 0, 0.173648, 0.984808, 0, 0, 0, 1, -0.33, 1.22, 0)
-
-[node name="MangaIzq" type="MeshInstance3D" parent="Visual/PivoteBrazoIzq"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.09, 0)
-mesh = SubResource("CylinderMesh_manga")
-
-[node name="BrazoIzq" type="MeshInstance3D" parent="Visual/PivoteBrazoIzq"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, 0)
-mesh = SubResource("CylinderMesh_brazo")
-
-[node name="ManoIzq" type="MeshInstance3D" parent="Visual/PivoteBrazoIzq"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
-mesh = SubResource("SphereMesh_mano")
-
-[node name="PivoteBrazoDer" type="Node3D" parent="Visual"]
-transform = Transform3D(0.984808, 0.173648, 0, -0.173648, 0.984808, 0, 0, 0, 1, 0.33, 1.22, 0)
-
-[node name="MangaDer" type="MeshInstance3D" parent="Visual/PivoteBrazoDer"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.09, 0)
-mesh = SubResource("CylinderMesh_manga")
-
-[node name="BrazoDer" type="MeshInstance3D" parent="Visual/PivoteBrazoDer"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, 0)
-mesh = SubResource("CylinderMesh_brazo")
-
-[node name="ManoDer" type="MeshInstance3D" parent="Visual/PivoteBrazoDer"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
-mesh = SubResource("SphereMesh_mano")
-
-[node name="Pantalones" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.62, 0)
-mesh = SubResource("BoxMesh_shorts")
-
-[node name="PivotePiernaIzq" type="Node3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.135, 0.56, 0)
-
-[node name="MusloIzq" type="MeshInstance3D" parent="Visual/PivotePiernaIzq"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
-mesh = SubResource("CylinderMesh_muslo")
-
-[node name="PiernaIzq" type="MeshInstance3D" parent="Visual/PivotePiernaIzq"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.28, 0)
-mesh = SubResource("CylinderMesh_pierna")
-
-[node name="MediaIzq" type="MeshInstance3D" parent="Visual/PivotePiernaIzq"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.42, 0)
-mesh = SubResource("CylinderMesh_media")
-
-[node name="BotinIzq" type="MeshInstance3D" parent="Visual/PivotePiernaIzq"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.52, -0.04)
-mesh = SubResource("BoxMesh_botin")
-
-[node name="PivotePiernaDer" type="Node3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.135, 0.56, 0)
-
-[node name="MusloDer" type="MeshInstance3D" parent="Visual/PivotePiernaDer"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
-mesh = SubResource("CylinderMesh_muslo")
-
-[node name="PiernaDer" type="MeshInstance3D" parent="Visual/PivotePiernaDer"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.28, 0)
-mesh = SubResource("CylinderMesh_pierna")
-
-[node name="MediaDer" type="MeshInstance3D" parent="Visual/PivotePiernaDer"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.42, 0)
-mesh = SubResource("CylinderMesh_media")
-
-[node name="BotinDer" type="MeshInstance3D" parent="Visual/PivotePiernaDer"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.52, -0.04)
-mesh = SubResource("BoxMesh_botin")
-
 [node name="IndicadorControl" type="MeshInstance3D" parent="Visual"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+cast_shadow = 0
 mesh = SubResource("TorusMesh_indicador")
 
 [node name="LabelNombre" type="Label3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.98, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.92, 0)
+cast_shadow = 0
 billboard = 1
 no_depth_test = true
 pixel_size = 0.0042
@@ -263,10 +97,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.028, 0)
 
 [node name="CuerpoFlecha" type="MeshInstance3D" parent="FlechaGuiaPase"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.92)
+cast_shadow = 0
 mesh = SubResource("BoxMesh_flecha_cuerpo")
 
 [node name="PuntaFlecha" type="MeshInstance3D" parent="FlechaGuiaPase"]
 transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, -1.46)
+cast_shadow = 0
 mesh = SubResource("PrismMesh_flecha_punta")
 
 [node name="ControlBalonArea" type="Area3D" parent="."]

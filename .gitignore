@@ -6,6 +6,8 @@
 *.translation
 *.apk
 *.aab
+*.idsig
 *.pck
-
+build/
+bin/
 .env

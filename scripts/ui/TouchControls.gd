@@ -61,13 +61,28 @@ var _gestor_partido: GestorPartido = null
 var _modo_actual: int = -1
 var _modo_defensivo_actual: bool = false
 
-# Estado de Tiro Libre y Trazo Táctil (Swipe)
+# Estado de Tiro Libre: Pantalla Dividida (Izquierda < 45% Paneo Cámara | Derecha >= 45% Swipe Disparo)
 var _modo_tiro_libre_activo: bool = false
+var _pan_touch_id: int = -1
+var _pan_pos_previa: Vector2 = Vector2.ZERO
+var _pan_pos_inicio: Vector2 = Vector2.ZERO
+var _pan_tiempo_inicio: float = 0.0
 var _capturando_swipe_tiro_libre: bool = false
 var _swipe_touch_id: int = -1
 var _swipe_puntos: PackedVector2Array = PackedVector2Array()
 var _swipe_tiempo_inicio: float = 0.0
-var _color_halo_swipe: Color = Color(0.18, 0.68, 1.0, 0.45)
+var _potencia_swipe_actual: float = 0.0
+var _comba_swipe_actual: float = 0.0
+var _en_secuencia_carrera_tl: bool = false
+var _tiempo_carrera_tl: float = 0.0
+var _duracion_carrera_tl: float = 0.35
+var _pos_inicio_carrera_tl: Vector3 = Vector3.ZERO
+var _pos_impacto_carrera_tl: Vector3 = Vector3.ZERO
+var _dir_tiro_pendiente_tl: Vector3 = Vector3(1.0, 0.0, 0.0)
+var _impulso_pendiente_tl: Vector3 = Vector3.ZERO
+var _comba_pendiente_tl: float = 0.0
+var _es_cucharita_pendiente_tl: bool = false
+var _color_halo_swipe: Color = Color(0.18, 0.68, 1.0, 0.38)
 var _color_linea_swipe: Color = Color(0.95, 0.98, 1.0, 0.95)
 var _color_punta_swipe: Color = Color(1.0, 0.88, 0.25, 1.0)
 
@@ -133,14 +148,92 @@ func _ready() -> void:
 
 
 func _draw() -> void:
-	if _modo_tiro_libre_activo and _swipe_puntos.size() >= 2:
-		# Dibujar halo exterior translúcido
-		draw_polyline(_swipe_puntos, _color_halo_swipe, 10.0, true)
-		# Dibujar línea central neón
-		draw_polyline(_swipe_puntos, _color_linea_swipe, 4.0, true)
-		# Indicador de punta en el extremo actual del trazo
-		var pt_punta: Vector2 = _swipe_puntos[-1]
-		draw_circle(pt_punta, 6.5, _color_punta_swipe)
+	if not _modo_tiro_libre_activo:
+		return
+
+	var view_size: Vector2 = get_viewport_rect().size
+	var x_divisoria: float = view_size.x * 0.45
+
+	# 1. Línea divisoria sutil de Pantalla Dividida (Izquierda < 45% Paneo | Derecha >= 45% Disparo Swipe)
+	var y_top_div: float = 80.0
+	var y_bot_div: float = view_size.y - 135.0
+	var paso_guion: float = 18.0
+	var y_cursor: float = y_top_div
+	while y_cursor < y_bot_div:
+		draw_line(
+			Vector2(x_divisoria, y_cursor),
+			Vector2(x_divisoria, minf(y_cursor + 8.0, y_bot_div)),
+			Color(0.45, 0.78, 1.0, 0.24),
+			1.5,
+			true
+		)
+		y_cursor += paso_guion
+
+	if _swipe_puntos.size() < 2:
+		return
+
+	# 2. Halo translúcido siguiendo la curva del dedo
+	draw_polyline(_swipe_puntos, _color_halo_swipe, 10.0, true)
+
+	# 3. Guía visual de puntos (línea punteada en tiempo real) a lo largo del trazo
+	var dist_acum: float = 0.0
+	var separacion_puntos: float = 14.0
+	draw_circle(_swipe_puntos[0], 4.5, _color_linea_swipe)
+	for i: int in range(1, _swipe_puntos.size()):
+		var a: Vector2 = _swipe_puntos[i - 1]
+		var b: Vector2 = _swipe_puntos[i]
+		var seg_len: float = a.distance_to(b)
+		if seg_len < 0.001:
+			continue
+		var dir_seg: Vector2 = (b - a) / seg_len
+		var d: float = separacion_puntos - dist_acum
+		while d <= seg_len:
+			var pt_dot: Vector2 = a + dir_seg * d
+			draw_circle(pt_dot, 3.4, _color_linea_swipe)
+			d += separacion_puntos
+		dist_acum = fmod(dist_acum + seg_len, separacion_puntos)
+
+	# 4. Flecha de dirección y curvatura en el extremo del trazo
+	var pt_punta: Vector2 = _swipe_puntos[-1]
+	var idx_prev: int = maxi(0, _swipe_puntos.size() - 4)
+	var dir_punta: Vector2 = (pt_punta - _swipe_puntos[idx_prev]).normalized()
+	if dir_punta.length_squared() < 0.01:
+		dir_punta = (_swipe_puntos[-1] - _swipe_puntos[0]).normalized()
+	if dir_punta.length_squared() > 0.01:
+		var perp_punta: Vector2 = Vector2(-dir_punta.y, dir_punta.x)
+		var ala_izq: Vector2 = pt_punta - dir_punta * 18.0 + perp_punta * 10.5
+		var ala_der: Vector2 = pt_punta - dir_punta * 18.0 - perp_punta * 10.5
+		var pts_flecha: PackedVector2Array = PackedVector2Array([pt_punta + dir_punta * 4.0, ala_izq, ala_der])
+		draw_colored_polygon(pts_flecha, _color_punta_swipe)
+
+	# 5. Indicador de arco de curvatura (Efecto Magnus) en el punto medio del trazo
+	if absf(_comba_swipe_actual) > 0.06 and _swipe_puntos.size() >= 3:
+		var p_ini: Vector2 = _swipe_puntos[0]
+		var p_fin: Vector2 = _swipe_puntos[-1]
+		var cuerda: Vector2 = p_fin - p_ini
+		if cuerda.length() > 25.0:
+			var mid_cuerda: Vector2 = (p_ini + p_fin) * 0.5
+			var normal_cuerda: Vector2 = Vector2(-cuerda.y, cuerda.x).normalized()
+			var p_pico_curva: Vector2 = _swipe_puntos[_swipe_puntos.size() / 2]
+			var color_curva: Color = Color(0.28, 0.92, 1.0, 0.85)
+			draw_line(mid_cuerda, p_pico_curva, color_curva, 2.2, true)
+			var dir_flecha_curva: Vector2 = normal_cuerda * signf(_comba_swipe_actual)
+			var perp_c: Vector2 = Vector2(-dir_flecha_curva.y, dir_flecha_curva.x)
+			var c_tip: Vector2 = p_pico_curva + dir_flecha_curva * 8.0
+			var c_a1: Vector2 = c_tip - dir_flecha_curva * 9.0 + perp_c * 5.5
+			var c_a2: Vector2 = c_tip - dir_flecha_curva * 9.0 - perp_c * 5.5
+			draw_colored_polygon(PackedVector2Array([c_tip, c_a1, c_a2]), color_curva)
+
+	# 6. Barra lateral flotante de potencia junto al origen del trazo
+	var origen_barra: Vector2 = _swipe_puntos[0] + Vector2(26.0, -36.0)
+	var ancho_b: float = 10.0
+	var alto_b: float = 72.0
+	var rect_bg: Rect2 = Rect2(origen_barra.x, origen_barra.y, ancho_b, alto_b)
+	draw_rect(rect_bg, Color(0.05, 0.08, 0.14, 0.82), true)
+	var fill_h: float = alto_b * clampf(_potencia_swipe_actual, 0.0, 1.0)
+	var col_pot: Color = Color(0.2, 0.92, 0.45, 0.95).lerp(Color(1.0, 0.28, 0.2, 0.98), clampf(_potencia_swipe_actual, 0.0, 1.0))
+	draw_rect(Rect2(origen_barra.x, origen_barra.y + (alto_b - fill_h), ancho_b, fill_h), col_pot, true)
+	draw_rect(rect_bg, Color(0.75, 0.9, 1.0, 0.8), false, 1.5)
 
 
 func _process(delta: float) -> void:
@@ -148,7 +241,10 @@ func _process(delta: float) -> void:
 	_procesar_input_teclado()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	if _en_secuencia_carrera_tl:
+		_procesar_secuencia_carrera_tiro_libre(delta)
+		return
 	if _tocando_joystick:
 		var jug_joy: Jugador3D = obtener_jugador_activo()
 		if jug_joy and is_instance_valid(jug_joy):
@@ -313,6 +409,25 @@ func _aplicar_modo_hud(nuevo_modo: int) -> void:
 		if btn_hueco: btn_hueco.visible = true
 		if btn_tiro: btn_tiro.visible = true
 		if btn_sprint: btn_sprint.visible = true
+
+
+## Conmuta de forma adaptativa la UI en tiros libres (Vista táctica con joystick/botones vs Vista tiro OTS con swipe)
+func conmutar_vista_tiro_libre(es_tactica: bool) -> void:
+	if not _modo_tiro_libre_activo:
+		return
+	if es_tactica:
+		_capturando_swipe_tiro_libre = false
+		_swipe_puntos.clear()
+		queue_redraw()
+		if joystick_base: joystick_base.visible = true
+		if btn_pase: btn_pase.visible = true
+		if btn_hueco: btn_hueco.visible = true
+		if btn_tiro: btn_tiro.visible = true
+	else:
+		if joystick_base: joystick_base.visible = false
+		if btn_pase: btn_pase.visible = false
+		if btn_hueco: btn_hueco.visible = false
+		if btn_tiro: btn_tiro.visible = false
 
 
 func _inicializar_estilos_botones() -> void:
@@ -769,10 +884,16 @@ func obtener_jugador_activo() -> Jugador3D:
 
 
 # ==============================================================================
-# 5. DISPARO POR TRAZO TÁCTIL (SWIPE) ESTILO EFOOTBALL Y PASE CORTO
+# 5. PANTALLA DIVIDIDA EN TIRO LIBRE (PANEO IZQ 45% + SWIPE DER 55%) Y CARRERA PREVIA
 # ==============================================================================
 
 func _manejar_input_swipe_tiro_libre(event: InputEvent) -> void:
+	if _en_secuencia_carrera_tl:
+		return
+
+	var view_w: float = get_viewport_rect().size.x
+	var limite_x_paneo: float = view_w * 0.45
+
 	# A. Eventos ScreenTouch (Android / Pantallas Táctiles)
 	if event is InputEventScreenTouch:
 		var touch: InputEventScreenTouch = event
@@ -780,16 +901,23 @@ func _manejar_input_swipe_tiro_libre(event: InputEvent) -> void:
 			if _es_posicion_en_boton_pase_corto(touch.position):
 				_on_btn_pase_corto_pressed()
 				return
-			_iniciar_swipe_tiro_libre(touch.index, touch.position)
+			if touch.position.x < limite_x_paneo:
+				_iniciar_paneo_camara_tl(touch.index, touch.position)
+			else:
+				_iniciar_swipe_tiro_libre(touch.index, touch.position)
 		else:
-			if touch.index == _swipe_touch_id:
+			if touch.index == _pan_touch_id:
+				_finalizar_paneo_camara_tl(touch.position)
+			elif touch.index == _swipe_touch_id:
 				_finalizar_swipe_tiro_libre()
-	
+
 	elif event is InputEventScreenDrag:
 		var drag: InputEventScreenDrag = event
-		if drag.index == _swipe_touch_id:
+		if drag.index == _pan_touch_id:
+			_actualizar_paneo_camara_tl(drag.position)
+		elif drag.index == _swipe_touch_id:
 			_actualizar_swipe_tiro_libre(drag.position)
-	
+
 	# B. Eventos de Mouse (Pruebas en Editor / PC)
 	elif event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event
@@ -798,14 +926,21 @@ func _manejar_input_swipe_tiro_libre(event: InputEvent) -> void:
 				if _es_posicion_en_boton_pase_corto(mb.position):
 					_on_btn_pase_corto_pressed()
 					return
-				_iniciar_swipe_tiro_libre(-99, mb.position)
+				if mb.position.x < limite_x_paneo:
+					_iniciar_paneo_camara_tl(-98, mb.position)
+				else:
+					_iniciar_swipe_tiro_libre(-99, mb.position)
 			else:
+				if _pan_touch_id == -98:
+					_finalizar_paneo_camara_tl(mb.position)
 				if _swipe_touch_id == -99:
 					_finalizar_swipe_tiro_libre()
-	
+
 	elif event is InputEventMouseMotion:
 		var mm: InputEventMouseMotion = event
-		if _swipe_touch_id == -99 and _capturando_swipe_tiro_libre:
+		if _pan_touch_id == -98:
+			_actualizar_paneo_camara_tl(mm.position)
+		elif _swipe_touch_id == -99 and _capturando_swipe_tiro_libre:
 			_actualizar_swipe_tiro_libre(mm.position)
 
 
@@ -815,12 +950,56 @@ func _es_posicion_en_boton_pase_corto(pos_pantalla: Vector2) -> bool:
 	return false
 
 
+func _obtener_camara_transmision() -> CamaraTransmision:
+	if get_viewport() and get_viewport().get_camera_3d() is CamaraTransmision:
+		return get_viewport().get_camera_3d() as CamaraTransmision
+	return null
+
+
+func _iniciar_paneo_camara_tl(touch_id: int, pos: Vector2) -> void:
+	_pan_touch_id = touch_id
+	_pan_pos_previa = pos
+	_pan_pos_inicio = pos
+	_pan_tiempo_inicio = Time.get_ticks_msec() / 1000.0
+
+
+func _actualizar_paneo_camara_tl(pos: Vector2) -> void:
+	var delta_x: float = pos.x - _pan_pos_previa.x
+	_pan_pos_previa = pos
+	var camara: CamaraTransmision = _obtener_camara_transmision()
+	if camara != null:
+		camara.ajustar_paneo_tiro_libre(-delta_x * 0.0022)
+		var dir_apuntado: Vector3 = camara.obtener_direccion_apuntado_tl()
+		var sacador: Jugador3D = _gestor_partido.obtener_sacador_actual() if _gestor_partido else obtener_jugador_activo()
+		var balon: Balon3D = _gestor_partido.obtener_balon() if _gestor_partido else null
+		if sacador != null and is_instance_valid(sacador) and balon != null and is_instance_valid(balon):
+			var vec_der: Vector3 = Vector3(-dir_apuntado.z, 0.0, dir_apuntado.x).normalized()
+			var pos_lanzador: Vector3 = balon.global_position - dir_apuntado * 1.45 - vec_der * 0.48
+			pos_lanzador.y = 0.0
+			sacador.fijar_en_saque(true, pos_lanzador)
+			sacador.rotation.y = atan2(-dir_apuntado.x, -dir_apuntado.z)
+
+
+func _finalizar_paneo_camara_tl(pos: Vector2 = Vector2.ZERO) -> void:
+	if _pan_touch_id != -1 and pos != Vector2.ZERO:
+		var duracion: float = (Time.get_ticks_msec() / 1000.0) - _pan_tiempo_inicio
+		var dist_recorrida: float = pos.distance_to(_pan_pos_inicio)
+		if dist_recorrida < 25.0 and duracion < 0.40:
+			_intentar_pase_tactil_tl(pos)
+	_pan_touch_id = -1
+
+
 func _iniciar_swipe_tiro_libre(touch_id: int, pos: Vector2) -> void:
 	_swipe_touch_id = touch_id
 	_capturando_swipe_tiro_libre = true
 	_swipe_puntos.clear()
 	_swipe_puntos.append(pos)
 	_swipe_tiempo_inicio = Time.get_ticks_msec() / 1000.0
+	_potencia_swipe_actual = 0.15
+	_comba_swipe_actual = 0.0
+	if barra_potencia:
+		barra_potencia.visible = true
+		barra_potencia.value = _potencia_swipe_actual
 	queue_redraw()
 
 
@@ -829,7 +1008,40 @@ func _actualizar_swipe_tiro_libre(pos: Vector2) -> void:
 		return
 	if _swipe_puntos.is_empty() or pos.distance_to(_swipe_puntos[-1]) >= 4.0:
 		_swipe_puntos.append(pos)
+		_recalcular_metricas_swipe_en_vivo()
 		queue_redraw()
+
+
+func _recalcular_metricas_swipe_en_vivo() -> void:
+	if _swipe_puntos.size() < 2:
+		return
+	var duracion: float = maxf(0.04, (Time.get_ticks_msec() / 1000.0) - _swipe_tiempo_inicio)
+	var longitud_acum: float = 0.0
+	for i: int in range(1, _swipe_puntos.size()):
+		longitud_acum += _swipe_puntos[i].distance_to(_swipe_puntos[i - 1])
+	var vel_px_s: float = longitud_acum / duracion
+	var factor_len: float = clampf(longitud_acum / 260.0, 0.15, 1.0)
+	var factor_vel: float = clampf((vel_px_s - 350.0) / 1850.0, 0.15, 1.0)
+	_potencia_swipe_actual = clampf(factor_len * 0.55 + factor_vel * 0.45, 0.15, 1.0)
+	if barra_potencia:
+		barra_potencia.visible = true
+		barra_potencia.value = _potencia_swipe_actual
+
+	var p0: Vector2 = _swipe_puntos[0]
+	var p1: Vector2 = _swipe_puntos[-1]
+	var delta_vec: Vector2 = p1 - p0
+	var cuerda_len: float = delta_vec.length()
+	if cuerda_len > 20.0:
+		var norm_cuerda: Vector2 = Vector2(-delta_vec.y, delta_vec.x) / cuerda_len
+		var max_dist_perp: float = 0.0
+		for p: Vector2 in _swipe_puntos:
+			var d_perp: float = (p - p0).dot(norm_cuerda)
+			if absf(d_perp) > absf(max_dist_perp):
+				max_dist_perp = d_perp
+		var ratio_curva: float = max_dist_perp / cuerda_len
+		# Si la panza del arco se abre a la izquierda (d_perp < 0), el trazo cierra a la derecha (curvatura > 0);
+		# si la panza se abre a la derecha (d_perp > 0), el trazo cierra a la izquierda (curvatura < 0).
+		_comba_swipe_actual = clampf(-ratio_curva * 3.4, -1.0, 1.0) if absf(ratio_curva) > 0.04 else 0.0
 
 
 func _finalizar_swipe_tiro_libre() -> void:
@@ -837,137 +1049,349 @@ func _finalizar_swipe_tiro_libre() -> void:
 		return
 	_capturando_swipe_tiro_libre = false
 	_swipe_touch_id = -1
-	
+
 	if _swipe_puntos.size() < 2:
+		var p_tap_unico: Vector2 = _swipe_puntos[0] if not _swipe_puntos.is_empty() else Vector2.ZERO
 		_swipe_puntos.clear()
+		if barra_potencia:
+			barra_potencia.visible = false
 		queue_redraw()
+		if p_tap_unico != Vector2.ZERO:
+			_intentar_pase_tactil_tl(p_tap_unico)
 		return
-	
+
 	var p0: Vector2 = _swipe_puntos[0]
 	var p1: Vector2 = _swipe_puntos[-1]
 	var delta_vec: Vector2 = p1 - p0
 	var len_total: float = delta_vec.length()
-	
-	# Umbral mínimo de trazo (35px) para evitar disparos accidentales
+
+	# Umbral mínimo de trazo (35px): si es menor, se procesa como Toque Corto (Tap) para pase a compañero
 	if len_total < 35.0:
 		_swipe_puntos.clear()
+		if barra_potencia:
+			barra_potencia.visible = false
 		queue_redraw()
+		_intentar_pase_tactil_tl(p0)
 		return
-	
+
+	_recalcular_metricas_swipe_en_vivo()
 	_procesar_calculo_disparo_swipe(p0, p1, delta_vec)
 
 
-func _procesar_calculo_disparo_swipe(p0: Vector2, p1: Vector2, delta_vec: Vector2) -> void:
-	var duracion: float = maxf(0.04, (Time.get_ticks_msec() / 1000.0) - _swipe_tiempo_inicio)
-	
-	# 1. Longitud total acumulada del trazo para medir velocidad con precisión
-	var longitud_acumulada: float = 0.0
-	for i: int in range(1, _swipe_puntos.size()):
-		longitud_acumulada += _swipe_puntos[i].distance_to(_swipe_puntos[i - 1])
-	
-	# 2. Velocidad del trazo -> Potencia del disparo
-	var vel_swipe_px_s: float = longitud_acumulada / duracion
-	var pot_norm: float = clampf((vel_swipe_px_s - 450.0) / 1950.0, 0.35, 1.0)
-	var rapidez_tiro: float = lerpf(12.5, 26.5, pot_norm)
-	
-	# 3. Dirección y Elevación
-	# En coordenadas de pantalla, hacia arriba es -Y (hacia la portería rival)
-	var view_rect: Rect2 = get_viewport_rect()
-	var factor_x: float = clampf(delta_vec.x / (view_rect.size.x * 0.35), -1.0, 1.0)
-	var dist_y: float = maxf(30.0, -delta_vec.y)
-	var factor_y: float = clampf(dist_y / (view_rect.size.y * 0.42), 0.1, 1.0)
-	
-	# Elevación 3D (poste transversal a 2.0m en futsal):
-	# Trazo corto: raso/bajo (0.28m); medio: media altura (1.2m); largo: a la escuadra (1.95m); excesivo: fuera (2.3m)
-	var elevacion_y: float = lerpf(0.28, 2.30, factor_y)
-	
-	# Desviación horizontal respecto al centro de la portería (postes en ±1.85m):
-	var z_desviacion: float = factor_x * 2.35
-	
-	# 4. Curvatura del trazo -> Comba / Efecto Magnus
-	# Medimos la máxima desviación perpendicular respecto a la recta secante P0 -> P1
-	var cuerda_len: float = delta_vec.length()
-	var norm_cuerda: Vector2 = Vector2(-delta_vec.y, delta_vec.x) / cuerda_len
-	var max_dist_perp: float = 0.0
-	for p: Vector2 in _swipe_puntos:
-		var d_perp: float = (p - p0).dot(norm_cuerda)
-		if abs(d_perp) > abs(max_dist_perp):
-			max_dist_perp = d_perp
-	
-	var ratio_curva: float = max_dist_perp / cuerda_len
-	var comba: float = 0.0
-	if abs(ratio_curva) > 0.05:
-		# Curvatura detectada (positiva: comba a la derecha; negativa: comba a la izquierda)
-		comba = clampf(ratio_curva * 3.4, -1.0, 1.0)
-	
-	_ejecutar_disparo_tiro_libre(elevacion_y, z_desviacion, rapidez_tiro, comba)
-	
-	# Limpieza visual del trazo con fade out suave
-	var tw: Tween = create_tween()
-	tw.tween_interval(0.25)
-	tw.tween_callback(func():
-		_swipe_puntos.clear()
-		queue_redraw()
-	)
+## Detecta si un toque corto (Tap) sobre la pantalla apuntó a un compañero de equipo en vista de tiro libre
+func _detectar_companero_tocado_tl(pos_pantalla: Vector2) -> Jugador3D:
+	var camara: CamaraTransmision = _obtener_camara_transmision()
+	if camara == null or get_viewport() == null:
+		return null
+	var ray_origin: Vector3 = camara.project_ray_origin(pos_pantalla)
+	var ray_dir: Vector3 = camara.project_ray_normal(pos_pantalla)
+
+	var space_state: PhysicsDirectSpaceState3D = get_viewport().get_world_3d().direct_space_state
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + ray_dir * 50.0)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	var hit: Dictionary = space_state.intersect_ray(query)
+	if not hit.is_empty():
+		var col: Object = hit.get("collider")
+		if col is Jugador3D and (col as Jugador3D).equipo == Jugador3D.Equipo.LOCAL:
+			return col as Jugador3D
+
+	var companeros: Array[Node] = get_tree().get_nodes_in_group("equipo_local")
+	var candidato: Jugador3D = null
+	var menor_dist: float = 1.35
+	for n: Node in companeros:
+		var j: Jugador3D = n as Jugador3D
+		if j == null or not is_instance_valid(j):
+			continue
+		var pos_torso: Vector3 = j.global_position + Vector3(0.0, 0.9, 0.0)
+		var proy: float = (pos_torso - ray_origin).dot(ray_dir)
+		if proy > 0.5:
+			var pt_cercano: Vector3 = ray_origin + ray_dir * proy
+			var dist: float = pt_cercano.distance_to(pos_torso)
+			if dist < menor_dist:
+				menor_dist = dist
+				candidato = j
+	return candidato
 
 
-func _ejecutar_disparo_tiro_libre(elevacion_y: float, z_objetivo: float, rapidez_tiro: float, comba: float) -> void:
-	var balon: Balon3D = null
-	if _gestor_partido:
-		balon = _gestor_partido.obtener_balon()
+const VEL_PASE_AL_PIE_TL: float = 8.5
+const VEL_PASE_AL_HUECO_TL: float = 11.5
+
+
+## Ejecuta un pase al pie o pase al hueco en profundidad mediante Tap táctil en tiro libre
+func _intentar_pase_tactil_tl(pos_pantalla: Vector2) -> bool:
+	var nodo_entrenamiento: Node = get_tree().get_first_node_in_group("entrenamiento_tiro_libre")
+	if nodo_entrenamiento == null and get_tree().current_scene and get_tree().current_scene.has_method("_procesar_toque_tactil_pase"):
+		nodo_entrenamiento = get_tree().current_scene
+	if nodo_entrenamiento != null and nodo_entrenamiento.has_method("_procesar_toque_tactil_pase"):
+		return bool(nodo_entrenamiento.call("_procesar_toque_tactil_pase", pos_pantalla))
+
+	var sacador: Jugador3D = _gestor_partido.obtener_sacador_actual() if _gestor_partido else obtener_jugador_activo()
+	var balon: Balon3D = _gestor_partido.obtener_balon() if _gestor_partido else null
 	if balon == null:
 		var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
 		if not balones.is_empty():
 			balon = balones[0] as Balon3D
-	
+	if sacador == null or not is_instance_valid(sacador) or balon == null:
+		return false
+
+	var camara: Camera3D = _obtener_camara_transmision()
+	if camara == null and get_viewport() != null:
+		camara = get_viewport().get_camera_3d()
+	if camara == null:
+		return false
+
+	# 1. Probar colisión directa con compañero de equipo (Pase al Pie)
+	var receptor: Jugador3D = _detectar_companero_tocado_tl(pos_pantalla)
+	if receptor != null and receptor != sacador:
+		return _ejecutar_pase_al_pie_tl(sacador, balon, receptor)
+
+	# 2. Probar proyección sobre el suelo libre Plane(Vector3.UP, 0.0) (Pase al Hueco en Profundidad)
+	var ray_origin: Vector3 = camara.project_ray_origin(pos_pantalla)
+	var ray_dir: Vector3 = camara.project_ray_normal(pos_pantalla)
+	var plano_suelo: Plane = Plane(Vector3.UP, 0.0)
+	var hit_suelo = plano_suelo.intersects_ray(ray_origin, ray_dir)
+	if hit_suelo != null:
+		var punto_suelo: Vector3 = hit_suelo
+		if _es_espacio_libre_viable_tl(punto_suelo, balon.global_position):
+			var comp_hueco: Jugador3D = _buscar_companero_mejor_perfilado_tl(punto_suelo, sacador)
+			if comp_hueco != null:
+				return _ejecutar_pase_al_hueco_tl(sacador, balon, comp_hueco, punto_suelo)
+
+	return false
+
+
+func _es_espacio_libre_viable_tl(punto: Vector3, pos_balon: Vector3) -> bool:
+	if punto.x < -18.5 or punto.x > 19.5 or absf(punto.z) > 9.5:
+		return false
+	if punto.x < pos_balon.x - 1.0:
+		return false
+	var d: float = pos_balon.distance_to(punto)
+	return d >= 2.0 and d <= 25.0
+
+
+func _buscar_companero_mejor_perfilado_tl(punto: Vector3, sacador: Jugador3D) -> Jugador3D:
+	var companeros: Array[Node] = get_tree().get_nodes_in_group("equipo_local")
+	var mejor: Jugador3D = null
+	var menor_dist: float = 999.0
+	for n: Node in companeros:
+		var j: Jugador3D = n as Jugador3D
+		if j == null or not is_instance_valid(j) or j == sacador or j.es_arquero or j.posicion_tactica == "PORTERO":
+			continue
+		var d: float = j.global_position.distance_to(punto)
+		if d < menor_dist:
+			menor_dist = d
+			mejor = j
+	return mejor
+
+
+func _ejecutar_pase_al_pie_tl(sacador: Jugador3D, balon: Balon3D, receptor: Jugador3D) -> bool:
+	var pos_b: Vector3 = balon.global_position
+	var dir_pase: Vector3 = (receptor.global_position - pos_b).normalized()
+	dir_pase.y = 0.0
+	if dir_pase.length_squared() > 0.01:
+		dir_pase = dir_pase.normalized()
+		sacador.look_at(sacador.global_position + dir_pase * 5.0, Vector3.UP)
+		sacador.rotation.x = 0.0
+		sacador.rotation.z = 0.0
+	sacador._t_anim_patada = 0.28
+	sacador.soltar_posesion()
+
+	receptor.orientar_y_preparar_recepcion(pos_b)
+
+	var impulso: Vector3 = dir_pase * (VEL_PASE_AL_PIE_TL * balon.mass)
+	balon.sacador_autorizado = null
+	if balon.has_method("liberar_pase_raso"):
+		balon.liberar_pase_raso(impulso, 0)
+	else:
+		balon.linear_damp = 0.3
+		balon.angular_damp = 1.3
+		balon.liberar(impulso, 0, true)
+
+	_aplicar_modo_hud(ModoHUD.ATAQUE)
+	return true
+
+
+func _ejecutar_pase_al_hueco_tl(sacador: Jugador3D, balon: Balon3D, receptor: Jugador3D, punto_suelo: Vector3) -> bool:
+	var pos_b: Vector3 = balon.global_position
+	var punto_destino: Vector3 = Vector3(punto_suelo.x, 0.0, punto_suelo.z)
+	var dir_pase: Vector3 = (punto_destino - pos_b).normalized()
+	dir_pase.y = 0.0
+	if dir_pase.length_squared() > 0.01:
+		dir_pase = dir_pase.normalized()
+		sacador.look_at(sacador.global_position + dir_pase * 5.0, Vector3.UP)
+		sacador.rotation.x = 0.0
+		sacador.rotation.z = 0.0
+	sacador._t_anim_patada = 0.28
+	sacador.soltar_posesion()
+
+	receptor.correr_al_espacio(punto_destino, 2.5)
+
+	var impulso: Vector3 = dir_pase * (VEL_PASE_AL_HUECO_TL * balon.mass)
+	balon.sacador_autorizado = null
+	if balon.has_method("liberar_al_hueco"):
+		balon.liberar_al_hueco(impulso, punto_destino, 0, true)
+	else:
+		balon.linear_damp = 0.3
+		balon.liberar(impulso, 0, true)
+
+	_aplicar_modo_hud(ModoHUD.ATAQUE)
+	return true
+
+
+## Transforma el vector del trazo 2D al espacio del mundo 3D usando el vector frontal (`-camera.global_transform.basis.z`)
+## y el vector lateral (`camera.global_transform.basis.x`) de la cámara activa, respetando la pérdida de velocidad lineal
+## en tiros bombeados y aplicando la mecánica de "Cucharita" (backspin regresivo) si el trazo vertical es muy pronunciado.
+func _procesar_calculo_disparo_swipe(_p0: Vector2, _p1: Vector2, delta_vec: Vector2) -> void:
+	var pot_norm: float = clampf(_potencia_swipe_actual, 0.35, 1.0)
+	var rapidez_base: float = lerpf(14.5, 27.5, pot_norm)
+
+	var view_rect: Rect2 = get_viewport_rect()
+	var desvio_x_norm: float = clampf(delta_vec.x / (view_rect.size.x * 0.32), -1.0, 1.0)
+	var dist_vertical_px: float = maxf(25.0, -delta_vec.y)
+	var altura_norm: float = clampf(dist_vertical_px / (view_rect.size.y * 0.42), 0.05, 1.0)
+
+	# 1. Proyección de los ejes de la cámara activa al mundo 3D: frontal (-basis.z) y lateral (+basis.x)
+	var camara: Camera3D = _obtener_camara_transmision()
+	if camara == null and get_viewport() != null:
+		camara = get_viewport().get_camera_3d()
+	var vector_frontal: Vector3 = Vector3(1.0, 0.0, 0.0)
+	var vector_lateral: Vector3 = Vector3(0.0, 0.0, 1.0)
+	if camara != null and is_instance_valid(camara):
+		var frente_cam: Vector3 = -camara.global_transform.basis.z
+		frente_cam.y = 0.0
+		if frente_cam.length_squared() > 0.001:
+			vector_frontal = frente_cam.normalized()
+		var lat_cam: Vector3 = camara.global_transform.basis.x
+		lat_cam.y = 0.0
+		if lat_cam.length_squared() > 0.001:
+			vector_lateral = lat_cam.normalized()
+
+	# 2. Detectar gesto de "Cucharita" (trazo vertical muy pronunciado con elevación de vaselina/pase elevado)
+	var es_cucharita: bool = (altura_norm >= 0.84 and absf(desvio_x_norm) < 0.38 and pot_norm < 0.76)
+
+	# 3. Pérdida de velocidad lineal proporcional a la altura si se ejecuta un tiro bombeado
+	var factor_bombeo: float = clampf((altura_norm - 0.38) / 0.62, 0.0, 1.0)
+	var rapidez_efectiva: float = rapidez_base * lerpf(1.0, 0.80, factor_bombeo)
+	var comp_vertical_y: float = lerpf(0.05, 0.27, altura_norm)
+
+	# 4. Dirección 3D combinando vector frontal, desviación lateral del trazo y apertura inicial de comba
+	var dir_horiz: Vector3 = (
+		vector_frontal
+		+ vector_lateral * (desvio_x_norm * 0.36 - _comba_swipe_actual * 0.16)
+	).normalized()
+	var dir_tiro_3d: Vector3 = Vector3(dir_horiz.x, comp_vertical_y, dir_horiz.z).normalized()
+
+	_iniciar_secuencia_carrera_tiro_libre(dir_tiro_3d, rapidez_efectiva, _comba_swipe_actual, es_cucharita)
+
+	var tw: Tween = create_tween()
+	tw.tween_interval(0.35)
+	tw.tween_callback(func() -> void:
+		_swipe_puntos.clear()
+		if barra_potencia:
+			barra_potencia.visible = false
+		queue_redraw()
+	)
+
+
+func _iniciar_secuencia_carrera_tiro_libre(
+	dir_tiro: Vector3,
+	rapidez_tiro: float,
+	comba: float,
+	es_cucharita: bool = false
+) -> void:
+	var balon: Balon3D = _gestor_partido.obtener_balon() if _gestor_partido else null
+	if balon == null:
+		var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
+		if not balones.is_empty():
+			balon = balones[0] as Balon3D
 	if balon == null:
 		return
-	
-	var sacador: Jugador3D = null
-	if _gestor_partido:
-		sacador = _gestor_partido.obtener_sacador_actual()
-	if sacador == null:
-		sacador = obtener_jugador_activo()
-	
+
+	var sacador: Jugador3D = _gestor_partido.obtener_sacador_actual() if _gestor_partido else obtener_jugador_activo()
 	var pos_b: Vector3 = balon.global_position
-	var pos_arco: Vector3 = Vector3(20.0, elevacion_y, z_objetivo)
-	var dir_tiro: Vector3 = (pos_arco - pos_b).normalized()
-	
-	# Si se detectó comba, ajustar ligeramente la dirección inicial hacia el lado contrario
-	# para que el balón esquive la barrera y curve hacia la portería (rosca clásica eFootball)
-	if abs(comba) > 0.08:
-		var vec_lat: Vector3 = Vector3(-dir_tiro.z, 0.0, dir_tiro.x).normalized()
-		dir_tiro = (dir_tiro - vec_lat * (comba * 0.16)).normalized()
-	
-	var impulso: Vector3 = dir_tiro * (rapidez_tiro * balon.mass)
-	
+
+	_dir_tiro_pendiente_tl = dir_tiro
+	_impulso_pendiente_tl = dir_tiro * (rapidez_tiro * balon.mass)
+	_comba_pendiente_tl = comba
+	_es_cucharita_pendiente_tl = es_cucharita
+	_tiempo_carrera_tl = 0.0
+	_duracion_carrera_tl = 0.35
+	_en_secuencia_carrera_tl = true
+
 	if sacador and is_instance_valid(sacador):
+		_pos_inicio_carrera_tl = sacador.global_position
+		var dir_plana: Vector3 = Vector3(dir_tiro.x, 0.0, dir_tiro.z).normalized()
+		var vec_der: Vector3 = Vector3(-dir_plana.z, 0.0, dir_plana.x).normalized()
+		_pos_impacto_carrera_tl = Vector3(pos_b.x, 0.0, pos_b.z) - dir_plana * 0.38 - vec_der * 0.16
+		sacador._en_carrera_tiro_libre = true
+		var dir_aprox: Vector3 = (_pos_impacto_carrera_tl - _pos_inicio_carrera_tl).normalized()
+		if dir_aprox.length_squared() > 0.01:
+			sacador.rotation.y = atan2(-dir_aprox.x, -dir_aprox.z)
+
+
+func _procesar_secuencia_carrera_tiro_libre(delta: float) -> void:
+	_tiempo_carrera_tl += delta
+	var progreso: float = clampf(_tiempo_carrera_tl / _duracion_carrera_tl, 0.0, 1.0)
+
+	var sacador: Jugador3D = _gestor_partido.obtener_sacador_actual() if _gestor_partido else obtener_jugador_activo()
+	if sacador and is_instance_valid(sacador):
+		var pos_interp: Vector3 = _pos_inicio_carrera_tl.lerp(_pos_impacto_carrera_tl, progreso)
+		sacador._pos_anclaje_saque = pos_interp
+		sacador.global_position = pos_interp
+		if progreso >= 0.72 and sacador._t_anim_patada <= 0.0:
+			sacador._en_carrera_tiro_libre = false
+			sacador._t_anim_patada = 0.28
+
+	if progreso >= 1.0:
+		_en_secuencia_carrera_tl = false
+		_aplicar_impacto_post_carrera_tl()
+
+
+func _aplicar_impacto_post_carrera_tl() -> void:
+	var balon: Balon3D = _gestor_partido.obtener_balon() if _gestor_partido else null
+	if balon == null:
+		var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
+		if not balones.is_empty():
+			balon = balones[0] as Balon3D
+	if balon == null:
+		_aplicar_modo_hud(ModoHUD.ATAQUE)
+		return
+
+	var sacador: Jugador3D = _gestor_partido.obtener_sacador_actual() if _gestor_partido else obtener_jugador_activo()
+	if sacador and is_instance_valid(sacador):
+		sacador._en_carrera_tiro_libre = false
 		sacador._en_posicion_saque = false
-		sacador._t_anim_patada = 0.35
+		sacador._t_anim_patada = 0.28
 		sacador.soltar_posesion()
-		sacador.rotation.y = atan2(-dir_tiro.x, -dir_tiro.z)
+		sacador.rotation.y = atan2(-_dir_tiro_pendiente_tl.x, -_dir_tiro_pendiente_tl.z)
 		sacador.velocity = Vector3.ZERO
-	
-	if abs(comba) > 0.05:
-		balon.liberar_tiro_libre_swipe(impulso, comba, 0)
+
+	var camara: CamaraTransmision = _obtener_camara_transmision()
+	if camara != null:
+		camara.notificar_impacto_tiro_libre()
+
+	var cam_activa: Camera3D = camara if camara != null else (get_viewport().get_camera_3d() if get_viewport() else null)
+	if absf(_comba_pendiente_tl) > 0.04 or _es_cucharita_pendiente_tl:
+		balon.liberar_tiro_libre_swipe(_impulso_pendiente_tl, _comba_pendiente_tl, 0, cam_activa, _es_cucharita_pendiente_tl)
 	else:
-		balon.liberar(impulso, 0, false)
-	
+		balon.liberar(_impulso_pendiente_tl, 0, false)
+
 	_aplicar_modo_hud(ModoHUD.ATAQUE)
 
 
 func _on_btn_pase_corto_pressed() -> void:
-	if not _modo_tiro_libre_activo:
+	if not _modo_tiro_libre_activo or _en_secuencia_carrera_tl:
 		return
-	
+
 	var sacador: Jugador3D = null
 	if _gestor_partido:
 		sacador = _gestor_partido.obtener_sacador_actual()
 	if sacador == null:
 		sacador = obtener_jugador_activo()
-	
+
 	if sacador and is_instance_valid(sacador):
 		sacador.accion_pase_presionada(0.50, Jugador3D.TipoPase.RASO)
-	
+
 	_aplicar_modo_hud(ModoHUD.ATAQUE)
 

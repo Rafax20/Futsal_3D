@@ -50,6 +50,22 @@ enum TipoPase {
 	ELEVADO
 }
 
+signal atajada_realizada(zona: String, nombre_arquero: String)
+signal bloqueo_barrera(zona: String)
+signal mano_en_barrera(posicion: Vector3, es_penal: bool)
+signal llegada_espacio_libre(posicion: Vector3)
+
+@export_group("Barrera Defensiva y Reglas")
+## Si es true, sanciona mano antinatural en impactos con los brazos extendidos en T-Pose de la barrera.
+## Si es false, inhabilita la capa de colisión de los brazos para emular postura con manos pegadas a la espalda.
+@export var sancionar_manos_barrera: bool = true:
+	set(valor):
+		sancionar_manos_barrera = valor
+		establecer_sancion_manos_barrera(valor)
+
+var area_torso_piernas_cabeza: Area3D = null
+var area_brazos_manos: Area3D = null
+
 @export_group("Identidad y Rol")
 @export var equipo: Equipo = Equipo.LOCAL:
 	set(valor):
@@ -62,6 +78,13 @@ enum TipoPase {
 @export var siglas_equipo: String = "RFC"
 @export var dorsal: int = 10
 @export var posicion_tactica: String = "PIVOT" ## PORTERO, CIERRE, ALA_IZQ, ALA_DER, PIVOT
+@export var es_arquero: bool = false:
+	set(valor):
+		es_arquero = valor
+		if valor:
+			posicion_tactica = "PORTERO"
+		if is_node_ready() and valor:
+			_configurar_hitboxes_anatomicas_portero()
 @export var es_controlado: bool = false:
 	set(valor):
 		es_controlado = valor
@@ -109,33 +132,123 @@ enum TipoPase {
 @export var t_cooldown_barrida_fallida: float = 1.2
 @export var t_bloqueo_recaptura: float = 0.6
 
-# Referencias a nodos hijos y rig articulado Low-Poly
+@export_group("Disciplina y Sanciones (FIFA Law 12)")
+var tarjetas_amarillas: int = 0
+var esta_expulsado: bool = false
+var _cooldown_falta_contacto: float = 0.0
+
+@export_group("Pipeline Mid-Poly y Texture Atlas (Batching)")
+## Texture Atlas de Albedo compartido por equipo (2048x2048 o 1024x1024).
+@export var textura_atlas_albedo: Texture2D = null
+## Normal Map del Texture Atlas para proyectar pliegues de tela, costuras y relieve muscular.
+@export var textura_atlas_normal: Texture2D = null
+## Mapa empaquetado ORM (Occlusion, Roughness, Metallic) opcional del Texture Atlas.
+@export var textura_atlas_orm: Texture2D = null
+## Variante de tono de piel y cabello en el Cuadrante 1 del Atlas (-1 = automático según dorsal).
+@export_range(-1, 3, 1) var variante_aspecto_facial: int = -1
+## Si está activo, recalcula normales suaves (Smooth Shading) y tangentes en mallas ArrayMesh importadas.
+@export var forzar_smooth_shading: bool = true
+
+const SHADER_JUGADOR_MIDPOLY: Shader = preload("res://shaders/jugador_midpoly.gdshader")
+## Pool estático de materiales compartidos por lote de equipo (`LOCAL_CAMPO`, `LOCAL_PORTERO`, `VISITANTE_CAMPO`, `VISITANTE_PORTERO`)
+## para garantizar que los jugadores del mismo equipo compartan 1 sola instancia de Material (1 Draw Call Batch).
+static var _pool_materiales_atlas: Dictionary = {}
+static var _textura_glb_albedo_cache: Texture2D = null
+static var _textura_glb_normal_cache: Texture2D = null
+
+# Referencias a nodos hijos y rig articulado Mid-Poly (Jugador_Futsal.glb)
 @onready var collision_shape_jugador: CollisionShape3D = get_node_or_null("CollisionShape3D") as CollisionShape3D
 @onready var visual: Node3D = $Visual
-@onready var torso_mesh: MeshInstance3D = $Visual/Torso
+@onready var modelo_jugador: Node3D = get_node_or_null("Visual/ModeloJugador") as Node3D
+@onready var esqueleto_humanoide: Skeleton3D = get_node_or_null("Visual/Skeleton3D") as Skeleton3D
+@onready var malla_unificada_midpoly: MeshInstance3D = get_node_or_null("Visual/Skeleton3D/MallaUnificadaMidPoly") as MeshInstance3D
+@onready var sombra_contacto_piso: MeshInstance3D = get_node_or_null("Visual/SombraContactoPiso") as MeshInstance3D
+@onready var torso_mesh: MeshInstance3D = get_node_or_null("Visual/Torso") as MeshInstance3D
 @onready var escudo_pecho: MeshInstance3D = get_node_or_null("Visual/Torso/EscudoPecho") as MeshInstance3D
-@onready var label_dorsal: Label3D = get_node_or_null("Visual/Torso/LabelDorsal") as Label3D
+@onready var label_dorsal: Label3D = (
+	get_node_or_null("Visual/LabelDorsal")
+	if get_node_or_null("Visual/LabelDorsal") != null
+	else get_node_or_null("Visual/Torso/LabelDorsal")
+) as Label3D
 @onready var label_nombre: Label3D = get_node_or_null("Visual/LabelNombre") as Label3D
+@onready var cuello_mesh: MeshInstance3D = get_node_or_null("Visual/Cuello") as MeshInstance3D
+@onready var cabeza_mesh: MeshInstance3D = get_node_or_null("Visual/Cabeza") as MeshInstance3D
+@onready var pelo_mesh: MeshInstance3D = get_node_or_null("Visual/Pelo") as MeshInstance3D
 @onready var pantalones_mesh: MeshInstance3D = get_node_or_null("Visual/Pantalones") as MeshInstance3D
 @onready var pivote_brazo_izq: Node3D = get_node_or_null("Visual/PivoteBrazoIzq") as Node3D
 @onready var pivote_brazo_der: Node3D = get_node_or_null("Visual/PivoteBrazoDer") as Node3D
 @onready var manga_izq_mesh: MeshInstance3D = get_node_or_null("Visual/PivoteBrazoIzq/MangaIzq") as MeshInstance3D
 @onready var manga_der_mesh: MeshInstance3D = get_node_or_null("Visual/PivoteBrazoDer/MangaDer") as MeshInstance3D
+@onready var brazo_izq_mesh: MeshInstance3D = get_node_or_null("Visual/PivoteBrazoIzq/BrazoIzq") as MeshInstance3D
+@onready var brazo_der_mesh: MeshInstance3D = get_node_or_null("Visual/PivoteBrazoDer/BrazoDer") as MeshInstance3D
 @onready var mano_izq_mesh: MeshInstance3D = get_node_or_null("Visual/PivoteBrazoIzq/ManoIzq") as MeshInstance3D
 @onready var mano_der_mesh: MeshInstance3D = get_node_or_null("Visual/PivoteBrazoDer/ManoDer") as MeshInstance3D
 @onready var pivote_pierna_izq: Node3D = get_node_or_null("Visual/PivotePiernaIzq") as Node3D
 @onready var pivote_pierna_der: Node3D = get_node_or_null("Visual/PivotePiernaDer") as Node3D
 @onready var muslo_izq_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaIzq/MusloIzq") as MeshInstance3D
 @onready var muslo_der_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaDer/MusloDer") as MeshInstance3D
+@onready var pierna_izq_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaIzq/PiernaIzq") as MeshInstance3D
+@onready var pierna_der_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaDer/PiernaDer") as MeshInstance3D
 @onready var media_izq_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaIzq/MediaIzq") as MeshInstance3D
 @onready var media_der_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaDer/MediaDer") as MeshInstance3D
-@onready var indicador_control: MeshInstance3D = $Visual/IndicadorControl
+@onready var botin_izq_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaIzq/BotinIzq") as MeshInstance3D
+@onready var botin_der_mesh: MeshInstance3D = get_node_or_null("Visual/PivotePiernaDer/BotinDer") as MeshInstance3D
+@onready var indicador_control: MeshInstance3D = get_node_or_null("Visual/IndicadorControl") as MeshInstance3D
 @onready var flecha_guia_pase: Node3D = get_node_or_null("FlechaGuiaPase") as Node3D
 @onready var cuerpo_flecha_mesh: MeshInstance3D = get_node_or_null("FlechaGuiaPase/CuerpoFlecha") as MeshInstance3D
 @onready var punta_flecha_mesh: MeshInstance3D = get_node_or_null("FlechaGuiaPase/PuntaFlecha") as MeshInstance3D
 @onready var control_balon_area: Area3D = $ControlBalonArea
 @onready var punto_conduccion: Marker3D = $PuntoConduccion
 var _mat_flecha_guia: StandardMaterial3D = null
+
+# Hitboxes anatómicas de contacto para el arquero (Manos, Pecho, Piernas, Cabeza)
+var area_manos: Area3D = null
+var area_pecho: Area3D = null
+var area_piernas: Area3D = null
+var area_cabeza: Area3D = null
+
+# Nodos de malla y huesos descubiertos dinámicamente dentro de `Visual/ModeloJugador` (Jugador_Futsal.glb)
+var malla_cuerpo_glb: MeshInstance3D = null
+var malla_camiseta_glb: MeshInstance3D = null
+var malla_short_glb: MeshInstance3D = null
+var malla_medias_glb: MeshInstance3D = null
+var malla_botines_glb: MeshInstance3D = null
+var malla_pelo_glb: MeshInstance3D = null
+var malla_pestanas_glb: MeshInstance3D = null
+
+var _idx_left_arm: int = -1
+var _idx_right_arm: int = -1
+var _idx_left_forearm: int = -1
+var _idx_right_forearm: int = -1
+var _idx_left_upleg: int = -1
+var _idx_right_upleg: int = -1
+var _idx_left_leg: int = -1
+var _idx_right_leg: int = -1
+var _idx_spine: int = -1
+
+var _rest_left_arm: Quaternion = Quaternion.IDENTITY
+var _rest_right_arm: Quaternion = Quaternion.IDENTITY
+var _rest_left_forearm: Quaternion = Quaternion.IDENTITY
+var _rest_right_forearm: Quaternion = Quaternion.IDENTITY
+var _rest_left_upleg: Quaternion = Quaternion.IDENTITY
+var _rest_right_upleg: Quaternion = Quaternion.IDENTITY
+var _rest_left_leg: Quaternion = Quaternion.IDENTITY
+var _rest_right_leg: Quaternion = Quaternion.IDENTITY
+var _rest_spine: Quaternion = Quaternion.IDENTITY
+
+# Ángulos interpolados para animación esqueletal humanoide
+var _ang_pierna_izq_x: float = 0.0
+var _ang_pierna_der_x: float = 0.0
+var _ang_pierna_izq_z: float = 0.0
+var _ang_pierna_der_z: float = 0.0
+var _ang_rodilla_izq_x: float = 0.0
+var _ang_rodilla_der_x: float = 0.0
+var _ang_brazo_izq_x: float = 0.0
+var _ang_brazo_der_x: float = 0.0
+var _ang_brazo_izq_z: float = 0.0
+var _ang_brazo_der_z: float = 0.0
+var _ang_codo_izq_z: float = 0.35
+var _ang_codo_der_z: float = -0.35
 
 # Estado de máquina de estados y dinámica
 var _estado: EstadoJugador = EstadoJugador.LIBRE
@@ -160,6 +273,8 @@ var _en_achique_cruz_k: bool = false
 var _tipo_atajada_actual: EstadoJugador = EstadoJugador.ATAJADA_BAJA
 var _lado_atajada: float = 0.0 # -1.0: Izquierda, 1.0: Derecha, 0.0: Frontal
 var _t_anim_saque_mano: float = 0.0
+var en_pose_barrera: bool = false
+var _en_carrera_tiro_libre: bool = false
 
 # Objetivo predictivo de recepción de pase al hueco y mecánica "Pasa y Corre" (Give-and-Go)
 var _t_carrera_hueco: float = 0.0
@@ -167,6 +282,12 @@ var _objetivo_carrera_hueco: Vector3 = Vector3.ZERO
 var es_opcion_de_pase: bool = false
 var _t_desmarque_ofensivo: float = 0.0
 var _objetivo_desmarque_ofensivo: Vector3 = Vector3.ZERO
+
+# Rutina de sprint al espacio libre en reanudaciones y tiro libre
+var _corriendo_al_espacio: bool = false
+var _objetivo_carrera_espacio: Vector3 = Vector3.ZERO
+var _t_carrera_espacio: float = 0.0
+var _duracion_carrera_espacio: float = 2.5
 
 # Variables de giro, bloqueo y aturdimiento
 var _dir_previa: Vector3 = Vector3.ZERO
@@ -202,10 +323,22 @@ func _ready() -> void:
 		indicador_control.visible = es_controlado
 	
 	_inicializar_flecha_guia_pase()
+	_inicializar_nodos_modelo_glb()
+	_configurar_geometria_y_sombras_midpoly()
 	_cargar_ficha_futsal_3d()
 	_asignar_grupos()
 	_conectar_sensores_balon()
 	_actualizar_colores_uniforme()
+	
+	if name.findn("portero") != -1 or dorsal == 1 or posicion_tactica == "PORTERO":
+		posicion_tactica = "PORTERO"
+		es_arquero = true
+	
+	if es_arquero:
+		_configurar_hitboxes_anatomicas_portero()
+	else:
+		_configurar_hitboxes_barrera()
+	
 	call_deferred("_configurar_excepcion_colision_balon")
 
 
@@ -223,6 +356,133 @@ func _inicializar_flecha_guia_pase() -> void:
 	flecha_guia_pase.visible = es_controlado
 
 
+## Descubre e inicializa las mallas (`Ch38_*`), texturas embebidas y huesos del modelo importado `Jugador_Futsal.glb`
+func _inicializar_nodos_modelo_glb() -> void:
+	if modelo_jugador == null and visual != null:
+		modelo_jugador = visual.get_node_or_null("ModeloJugador") as Node3D
+	if modelo_jugador == null:
+		return
+
+	# Detener AnimationPlayer estático (T-Pose de 2 cuadros) si existe para permitir control procedural del Skeleton3D
+	var anim_player: AnimationPlayer = modelo_jugador.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if anim_player != null:
+		anim_player.stop()
+
+	if esqueleto_humanoide == null:
+		esqueleto_humanoide = modelo_jugador.find_child("Skeleton3D", true, false) as Skeleton3D
+
+	# Localizar las mallas del futbolista humanoide dentro de Jugador_Futsal.glb
+	malla_cuerpo_glb = modelo_jugador.find_child("Ch38_Body", true, false) as MeshInstance3D
+	malla_camiseta_glb = modelo_jugador.find_child("Ch38_Shirt", true, false) as MeshInstance3D
+	malla_short_glb = modelo_jugador.find_child("Ch38_Shorts", true, false) as MeshInstance3D
+	malla_medias_glb = modelo_jugador.find_child("Ch38_Socks", true, false) as MeshInstance3D
+	malla_botines_glb = modelo_jugador.find_child("Ch38_Shoes", true, false) as MeshInstance3D
+	malla_pelo_glb = modelo_jugador.find_child("Ch38_Hair", true, false) as MeshInstance3D
+	malla_pestanas_glb = modelo_jugador.find_child("Ch38_Eyelashes", true, false) as MeshInstance3D
+
+	# Mantener compatibilidad con referencias que consulten `torso_mesh`, `cabeza_mesh` o `pantalones_mesh`
+	if torso_mesh == null and malla_camiseta_glb != null:
+		torso_mesh = malla_camiseta_glb
+	if cabeza_mesh == null and malla_cuerpo_glb != null:
+		cabeza_mesh = malla_cuerpo_glb
+	if pantalones_mesh == null and malla_short_glb != null:
+		pantalones_mesh = malla_short_glb
+	if pelo_mesh == null and malla_pelo_glb != null:
+		pelo_mesh = malla_pelo_glb
+
+	# Extraer y cachear las texturas Diffuse y Normal embebidas en el .glb antes de aplicar material_override
+	if _textura_glb_albedo_cache == null and malla_cuerpo_glb != null and malla_cuerpo_glb.mesh != null:
+		if malla_cuerpo_glb.mesh.get_surface_count() > 0:
+			var mat_orig: Material = malla_cuerpo_glb.get_active_material(0)
+			if mat_orig == null:
+				mat_orig = malla_cuerpo_glb.mesh.surface_get_material(0)
+			if mat_orig is BaseMaterial3D:
+				var std_mat: BaseMaterial3D = mat_orig as BaseMaterial3D
+				if std_mat.albedo_texture != null:
+					_textura_glb_albedo_cache = std_mat.albedo_texture
+				if std_mat.normal_texture != null:
+					_textura_glb_normal_cache = std_mat.normal_texture
+
+	# Cachear índices y poses de reposo de los huesos principales del rig Mixamo (`mixamorig5:*`)
+	if esqueleto_humanoide != null:
+		_idx_left_arm = _buscar_hueso_humanoide(["mixamorig5:LeftArm", "mixamorig:LeftArm", "LeftArm"])
+		_idx_right_arm = _buscar_hueso_humanoide(["mixamorig5:RightArm", "mixamorig:RightArm", "RightArm"])
+		_idx_left_forearm = _buscar_hueso_humanoide(["mixamorig5:LeftForeArm", "mixamorig:LeftForeArm", "LeftForeArm"])
+		_idx_right_forearm = _buscar_hueso_humanoide(["mixamorig5:RightForeArm", "mixamorig:RightForeArm", "RightForeArm"])
+		_idx_left_upleg = _buscar_hueso_humanoide(["mixamorig5:LeftUpLeg", "mixamorig:LeftUpLeg", "LeftUpLeg"])
+		_idx_right_upleg = _buscar_hueso_humanoide(["mixamorig5:RightUpLeg", "mixamorig:RightUpLeg", "RightUpLeg"])
+		_idx_left_leg = _buscar_hueso_humanoide(["mixamorig5:LeftLeg", "mixamorig:LeftLeg", "LeftLeg"])
+		_idx_right_leg = _buscar_hueso_humanoide(["mixamorig5:RightLeg", "mixamorig:RightLeg", "RightLeg"])
+		_idx_spine = _buscar_hueso_humanoide(["mixamorig5:Spine1", "mixamorig5:Spine", "mixamorig:Spine1", "Spine1", "Spine"])
+
+		if _idx_left_arm >= 0:
+			_rest_left_arm = esqueleto_humanoide.get_bone_rest(_idx_left_arm).basis.get_rotation_quaternion()
+		if _idx_right_arm >= 0:
+			_rest_right_arm = esqueleto_humanoide.get_bone_rest(_idx_right_arm).basis.get_rotation_quaternion()
+		if _idx_left_forearm >= 0:
+			_rest_left_forearm = esqueleto_humanoide.get_bone_rest(_idx_left_forearm).basis.get_rotation_quaternion()
+		if _idx_right_forearm >= 0:
+			_rest_right_forearm = esqueleto_humanoide.get_bone_rest(_idx_right_forearm).basis.get_rotation_quaternion()
+		if _idx_left_upleg >= 0:
+			_rest_left_upleg = esqueleto_humanoide.get_bone_rest(_idx_left_upleg).basis.get_rotation_quaternion()
+		if _idx_right_upleg >= 0:
+			_rest_right_upleg = esqueleto_humanoide.get_bone_rest(_idx_right_upleg).basis.get_rotation_quaternion()
+		if _idx_left_leg >= 0:
+			_rest_left_leg = esqueleto_humanoide.get_bone_rest(_idx_left_leg).basis.get_rotation_quaternion()
+		if _idx_right_leg >= 0:
+			_rest_right_leg = esqueleto_humanoide.get_bone_rest(_idx_right_leg).basis.get_rotation_quaternion()
+		if _idx_spine >= 0:
+			_rest_spine = esqueleto_humanoide.get_bone_rest(_idx_spine).basis.get_rotation_quaternion()
+
+		# Relajar brazos inicialmente desde la T-Pose hacia los costados del torso
+		_aplicar_pose_esqueleto_actual()
+
+
+func _buscar_hueso_humanoide(candidatos: Array[String]) -> int:
+	if esqueleto_humanoide == null:
+		return -1
+	for nombre_hueso: String in candidatos:
+		var idx: int = esqueleto_humanoide.find_bone(nombre_hueso)
+		if idx >= 0:
+			return idx
+	return -1
+
+
+func _aplicar_rotacion_hueso(idx: int, rest_q: Quaternion, rot_x: float, rot_y: float, rot_z: float) -> void:
+	if esqueleto_humanoide == null or idx < 0:
+		return
+	var delta_q: Quaternion = Quaternion.from_euler(Vector3(rot_x, rot_y, rot_z))
+	esqueleto_humanoide.set_bone_pose_rotation(idx, rest_q * delta_q)
+
+
+## Aplica los ángulos articulados actuales al `Skeleton3D` humanoide (`mixamorig5:*`),
+## bajando los brazos de la T-pose (+1.18 rad en X local) y articulando hombros, codos, muslos y rodillas.
+func _aplicar_pose_esqueleto_actual() -> void:
+	if esqueleto_humanoide == null:
+		return
+	# En el rig Mixamo de Jugador_Futsal.glb:
+	# - LeftArm / RightArm: +X baja los brazos desde T-pose (0.0) hacia el costado del cuerpo (~1.18 rad).
+	#   La abducción lateral (abrir brazos en Z) reduce esa bajada en X.
+	#   El balanceo frontal/trasero ocurre en el eje Z local del brazo (+Z en LeftArm avanza, -Z en RightArm avanza).
+	var bajada_izq_x: float = clampf(1.18 - clampf(_ang_brazo_izq_z, -0.4, 1.15) * 0.72, 0.15, 1.35)
+	var bajada_der_x: float = clampf(1.18 - clampf(-_ang_brazo_der_z, -0.4, 1.15) * 0.72, 0.15, 1.35)
+	var swing_izq_z: float = _ang_brazo_izq_x * 0.78
+	var swing_der_z: float = -_ang_brazo_der_x * 0.78
+
+	_aplicar_rotacion_hueso(_idx_left_arm, _rest_left_arm, bajada_izq_x, 0.0, swing_izq_z)
+	_aplicar_rotacion_hueso(_idx_right_arm, _rest_right_arm, bajada_der_x, 0.0, swing_der_z)
+	_aplicar_rotacion_hueso(_idx_left_forearm, _rest_left_forearm, 0.0, 0.0, _ang_codo_izq_z)
+	_aplicar_rotacion_hueso(_idx_right_forearm, _rest_right_forearm, 0.0, 0.0, _ang_codo_der_z)
+
+	# Muslos (LeftUpLeg / RightUpLeg): +X avanza el muslo, -X lo retrasa, Z abre lateralmente
+	_aplicar_rotacion_hueso(_idx_left_upleg, _rest_left_upleg, _ang_pierna_izq_x, 0.0, _ang_pierna_izq_z)
+	_aplicar_rotacion_hueso(_idx_right_upleg, _rest_right_upleg, _ang_pierna_der_x, 0.0, _ang_pierna_der_z)
+
+	# Rodillas (LeftLeg / RightLeg): -X flexiona la rodilla hacia atrás
+	_aplicar_rotacion_hueso(_idx_left_leg, _rest_left_leg, _ang_rodilla_izq_x, 0.0, 0.0)
+	_aplicar_rotacion_hueso(_idx_right_leg, _rest_right_leg, _ang_rodilla_der_x, 0.0, 0.0)
+
+
 ## Fuerza la actualización de equipo, ficha de datos, grupos y materiales 3D del uniforme
 func aplicar_uniforme_equipo(forzar_equipo: int = -1) -> void:
 	if forzar_equipo == 0:
@@ -232,6 +492,12 @@ func aplicar_uniforme_equipo(forzar_equipo: int = -1) -> void:
 	_cargar_ficha_futsal_3d()
 	_asignar_grupos()
 	_actualizar_colores_uniforme()
+	if posicion_tactica == "PORTERO":
+		es_arquero = true
+	if es_arquero:
+		_configurar_hitboxes_anatomicas_portero()
+	else:
+		_configurar_hitboxes_barrera()
 
 
 ## Inicia la secuencia cinemática de entrada trotando desde la zona de banquillos hacia la posición inicial
@@ -260,6 +526,75 @@ func finalizar_entrada_cancha() -> void:
 func asignar_objetivo_carrera_hueco(punto_destino: Vector3, duracion: float = 1.2) -> void:
 	_objetivo_carrera_hueco = punto_destino
 	_t_carrera_hueco = duracion
+
+
+## Activa de inmediato la rutina de sprint (move_and_slide) hacia una coordenada en el espacio libre
+## para ganarle la espalda a la barrera defensiva en jugadas a balón parado
+func correr_al_espacio(punto_suelo: Vector3, duracion: float = 2.5) -> void:
+	fijar_en_saque(false)
+	set_congelado(false)
+	_corriendo_al_espacio = true
+	_objetivo_carrera_espacio = Vector3(punto_suelo.x, 0.0, punto_suelo.z)
+	_duracion_carrera_espacio = duracion
+	_t_carrera_espacio = 0.0
+	sprint_activo = true
+	_sprint_tactil_mantenido = true
+	es_opcion_de_pase = true
+	if indicador_control:
+		indicador_control.visible = true
+
+
+## Detiene la rutina de sprint al espacio libre y estabiliza al jugador
+func detener_carrera_espacio() -> void:
+	_corriendo_al_espacio = false
+	sprint_activo = false
+	_sprint_tactil_mantenido = false
+	velocity = Vector3.ZERO
+	_direccion_deseada = Vector3.ZERO
+
+
+## Orienta el cuerpo hacia el balón entrante y activa el área de recepción y control (Pase al Pie)
+func orientar_y_preparar_recepcion(pos_balon: Vector3) -> void:
+	detener_carrera_espacio()
+	_en_posicion_saque = false
+	set_congelado(false)
+	velocity = Vector3.ZERO
+	_direccion_deseada = Vector3.ZERO
+	es_opcion_de_pase = true
+	var dir_balon: Vector3 = pos_balon - global_position
+	dir_balon.y = 0.0
+	if dir_balon.length_squared() > 0.001:
+		var dir_n: Vector3 = dir_balon.normalized()
+		look_at(global_position + dir_n * 5.0, Vector3.UP)
+		rotation.x = 0.0
+		rotation.z = 0.0
+	if indicador_control:
+		indicador_control.visible = true
+
+
+## Procesa la cinemática de carrera a máxima velocidad hacia la coordenada de desmarque al hueco
+func _procesar_carrera_al_espacio(delta: float) -> void:
+	_t_carrera_espacio += delta
+	var diff: Vector3 = _objetivo_carrera_espacio - global_position
+	diff.y = 0.0
+	var dist: float = diff.length()
+	
+	if dist > 0.35 and _t_carrera_espacio < _duracion_carrera_espacio:
+		var dir_carrera: Vector3 = diff / dist
+		_direccion_deseada = dir_carrera
+		sprint_activo = true
+		_sprint_tactil_mantenido = true
+		
+		var angulo_obj: float = atan2(-dir_carrera.x, -dir_carrera.z)
+		rotation.y = lerp_angle(rotation.y, angulo_obj, clampf(velocidad_giro * delta * 1.4, 0.0, 1.0))
+		rotation.x = 0.0
+		rotation.z = 0.0
+	else:
+		_corriendo_al_espacio = false
+		_direccion_deseada = Vector3.ZERO
+		sprint_activo = false
+		_sprint_tactil_mantenido = false
+		llegada_espacio_libre.emit(global_position)
 
 
 ## Carga la identidad, dorsal y estadísticas individuales desde la base de datos Futsal_3D
@@ -301,9 +636,40 @@ func _cargar_ficha_futsal_3d() -> void:
 func fijar_en_saque(activo: bool, pos_anclaje: Vector3 = Vector3.ZERO) -> void:
 	_en_posicion_saque = activo
 	if activo:
-		_pos_anclaje_saque = pos_anclaje
-		global_position = pos_anclaje
+		var pos_suelo: Vector3 = Vector3(pos_anclaje.x, 0.0, pos_anclaje.z)
+		_pos_anclaje_saque = pos_suelo
+		global_position = pos_suelo
+		rotation.x = 0.0
+		rotation.z = 0.0
 		velocity = Vector3.ZERO
+	else:
+		en_pose_barrera = false
+		_en_carrera_tiro_libre = false
+
+
+## Activa o desactiva la postura compacta de defensor en barrera de tiro libre
+## y conmuta las hitboxes segmentadas de Torso/Piernas/Cabeza vs Brazos/Manos
+func establecer_pose_barrera(activo: bool) -> void:
+	en_pose_barrera = activo
+	_configurar_hitboxes_barrera()
+
+	if area_torso_piernas_cabeza:
+		area_torso_piernas_cabeza.monitoring = activo
+		area_torso_piernas_cabeza.monitorable = activo
+		area_torso_piernas_cabeza.collision_mask = 1 if activo else 0
+
+	if area_brazos_manos:
+		var hab_manos: bool = activo and sancionar_manos_barrera
+		area_brazos_manos.monitoring = hab_manos
+		area_brazos_manos.monitorable = hab_manos
+		area_brazos_manos.collision_mask = 1 if hab_manos else 0
+
+	var balon: Balon3D = _obtener_balon_juego()
+	if balon and is_instance_valid(balon):
+		# Mantenemos la excepción de colisión con el CharacterBody3D para que sean las hitboxes anatómicas
+		# dedicadas ("Torso_Legs_Head" vs "Arms_Hands") las que procesen el impacto
+		add_collision_exception_with(balon)
+		balon.add_collision_exception_with(self)
 
 
 func _configurar_excepcion_colision_balon() -> void:
@@ -330,8 +696,12 @@ func _asignar_grupos() -> void:
 
 ## Retorna true si el jugador está en condiciones físicas de controlar el balón
 func puede_tomar_balon() -> bool:
-	if _t_bloqueo_recaptura > 0.0 or _t_aturdimiento > 0.0 or _congelado or _en_entrada:
+	if _t_bloqueo_recaptura > 0.0 or _t_aturdimiento > 0.0 or _congelado or _en_entrada or en_pose_barrera:
 		return false
+	if _en_posicion_saque:
+		var balon_saque: Balon3D = _obtener_balon_juego()
+		if balon_saque == null or balon_saque.sacador_autorizado != self:
+			return false
 	var balon: Balon3D = _obtener_balon_juego()
 	if balon == null or not is_instance_valid(balon):
 		return false
@@ -444,6 +814,9 @@ func _actualizar_estado() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if esta_expulsado:
+		return
+	
 	if _t_anim_patada > 0.0:
 		_t_anim_patada -= delta
 	if _t_anim_atajada > 0.0:
@@ -456,6 +829,8 @@ func _physics_process(delta: float) -> void:
 		_t_desmarque_ofensivo -= delta
 		if _t_desmarque_ofensivo <= 0.0:
 			es_opcion_de_pase = false
+	if _cooldown_falta_contacto > 0.0:
+		_cooldown_falta_contacto -= delta
 	
 	_actualizar_estado()
 	
@@ -485,8 +860,8 @@ func _physics_process(delta: float) -> void:
 	if _t_aturdimiento > 0.0:
 		_t_aturdimiento -= delta
 	
-	# Protección contra caídas al vacío / abismo
-	if global_position.y < -0.1:
+	# Protección contra caídas al vacío y anclaje al nivel del suelo
+	if global_position.y < 0.0:
 		global_position.y = 0.0
 		velocity.y = 0.0
 	
@@ -524,7 +899,9 @@ func _physics_process(delta: float) -> void:
 				if not _barrida_toco_balon:
 					_t_aturdimiento = t_cooldown_barrida_fallida
 		_:
-			if es_controlado:
+			if _corriendo_al_espacio:
+				_procesar_carrera_al_espacio(delta)
+			elif es_controlado:
 				_procesar_input_jugador()
 			else:
 				_procesar_ia_tactica(delta)
@@ -532,12 +909,16 @@ func _physics_process(delta: float) -> void:
 			_aplicar_movimiento(delta)
 	
 	if _en_posicion_saque:
+		_pos_anclaje_saque.y = 0.0
 		global_position = _pos_anclaje_saque
+		rotation.x = 0.0
+		rotation.z = 0.0
 		velocity = Vector3.ZERO
 	elif gk_bloqueado_con_manos:
 		velocity = Vector3.ZERO
 	else:
 		move_and_slide()
+		_chequear_contacto_fisico_falta()
 	
 	# Captura proactiva del balón libre
 	_chequear_proximidad_balon()
@@ -545,6 +926,8 @@ func _physics_process(delta: float) -> void:
 	_gestionar_conduccion_y_robos(delta)
 	_actualizar_flecha_guia_pase(delta)
 	_animar_extremidades(delta)
+	if es_arquero:
+		_actualizar_hitboxes_portero()
 
 
 ## Actualiza la Flecha Guía de Pase y Apuntamiento en el plano XZ bajo los pies del jugador controlado:
@@ -685,6 +1068,7 @@ func _chequear_proximidad_balon() -> void:
 func tomar_posesion(balon: Balon3D) -> void:
 	if balon == null:
 		return
+	detener_carrera_espacio()
 	_balon_referencia = balon
 	tiene_posesion = true
 	tiene_balon_en_manos = false
@@ -796,7 +1180,7 @@ func _intentar_robo(portador: Jugador3D, balon: Balon3D) -> void:
 	else:
 		_cooldown_intento_robo = t_cooldown_robo_fallido
 		if facing_portador.dot(dir_hacia_ladron) < -0.15 and randf() < 0.16:
-			_notificar_falta_arbitro(self, portador.global_position)
+			_notificar_falta_arbitro(self, portador.global_position, portador, false)
 
 
 ## Mantiene el balón en los pies o manos del portador
@@ -816,7 +1200,7 @@ func _gestionar_conduccion_y_robos(delta: float) -> void:
 		else:
 			pos_manos.x = minf(pos_manos.x, 18.0)
 		_balon_referencia.conducir_hacia(pos_manos, delta, 99.0, self)
-	else:
+	elif not _en_posicion_saque:
 		var pos_destino: Vector3 = punto_conduccion.global_position if punto_conduccion else global_position - global_transform.basis.z * 0.62
 		_balon_referencia.conducir_hacia(pos_destino, delta, control_balon, self)
 
@@ -986,17 +1370,18 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 		if equipo == Equipo.LOCAL:
 			_emitir_anuncio_hud("¡TIRO COLOCADO CON ROSCA!")
 	elif tipo_tiro == TipoTiro.VASELINA:
-		# SWIPE UP -> VASELINA / PICADITA PARABÓLICA:
-		# Impulso horizontal suave calibrado a la distancia al arco y arco parabólico elevado para superar al arquero en achique
+		# SWIPE UP -> MECÁNICA DE "CUCHARITA" (VASELINA / PICADITA PARABÓLICA CON BACKSPIN REGRESIVO):
+		# Reduce la fuerza frontal (Z) un 40-50% a favor de la componente vertical (Y) y aplica torque negativo en X de cámara
 		var destino_vaselina: Vector3 = Vector3(arco_x, 0.4, clampf(z_colocado * 0.75, -1.35, 1.35))
 		var diff_arco: Vector3 = destino_vaselina - pos_origen_tiro
 		diff_arco.y = 0.0
 		var dist_arco: float = diff_arco.length()
 		var dir_plana_vas: Vector3 = diff_arco.normalized() if dist_arco > 0.1 else Vector3(1.0 if equipo == Equipo.LOCAL else -1.0, 0.0, 0.0)
-		var fuerza_horiz_vas: float = clampf(dist_arco * 0.68 + 3.2 + potencia * 3.0, 6.2, 13.5)
-		var fuerza_vert_vas: float = clampf(4.8 + potencia * 2.1, 4.8, 6.9)
-		var impulso_vaselina: Vector3 = dir_plana_vas * fuerza_horiz_vas + Vector3(0.0, fuerza_vert_vas, 0.0)
-		_balon_referencia.liberar(impulso_vaselina, int(equipo), false)
+		var fuerza_base_vas: float = clampf(dist_arco * 0.65 + 4.2 + potencia * 3.2, 6.8, 14.5) * _balon_referencia.mass
+		var fuerza_vert_vas: float = clampf(2.4 + potencia * 1.1, 2.4, 3.6)
+		var impulso_vaselina: Vector3 = dir_plana_vas * fuerza_base_vas + Vector3(0.0, fuerza_vert_vas, 0.0)
+		var cam_vas: Camera3D = get_viewport().get_camera_3d() if get_viewport() else null
+		_balon_referencia.liberar_cucharita(impulso_vaselina, cam_vas, int(equipo), false)
 		if equipo == Equipo.LOCAL:
 			_emitir_anuncio_hud("¡VASELINA / PICADITA!")
 	else:
@@ -1072,7 +1457,12 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 		
 		soltar_posesion()
 		_t_bloqueo_recaptura = 0.4
-		_balon_referencia.liberar(dir_pase * fuerza_pase + Vector3(0.0, impulso_vertical, 0.0), int(equipo), es_pase_pie_campo)
+		if tipo_pase == TipoPase.ELEVADO:
+			var cam_pase: Camera3D = get_viewport().get_camera_3d() if get_viewport() else null
+			var imp_base_elev: Vector3 = dir_pase * (fuerza_pase * _balon_referencia.mass * 1.45) + Vector3(0.0, impulso_vertical * _balon_referencia.mass, 0.0)
+			_balon_referencia.liberar_cucharita(imp_base_elev, cam_pase, int(equipo), es_pase_pie_campo)
+		else:
+			_balon_referencia.liberar(dir_pase * fuerza_pase + Vector3(0.0, impulso_vertical, 0.0), int(equipo), es_pase_pie_campo)
 		
 		# Activar mecánica "Pasa y Corre" (Give-and-Go) antes de transferir el control al receptor
 		if era_controlado_local and mejor_companero.posicion_tactica != "PORTERO":
@@ -1438,7 +1828,7 @@ func _chequear_falta_barrida() -> bool:
 	
 	for n: Node in rivales:
 		var rival: Jugador3D = n as Jugador3D
-		if rival == null or rival.posicion_tactica == "PORTERO":
+		if rival == null or rival.posicion_tactica == "PORTERO" or rival.esta_expulsado:
 			continue
 		var dist: float = global_position.distance_to(rival.global_position)
 		if dist < 1.25:
@@ -1447,18 +1837,99 @@ func _chequear_falta_barrida() -> bool:
 			_tiempo_barrida = 0.0
 			_t_aturdimiento = t_cooldown_barrida_fallida
 			rival._t_aturdimiento = 0.35
-			_notificar_falta_arbitro(self, rival.global_position)
+			_notificar_falta_arbitro(self, rival.global_position, rival, true)
 			return true
 	return false
 
 
-## Notifica al GestorPartido una falta cometida para el conteo de faltas acumuladas y Doble Penalti
-func _notificar_falta_arbitro(infractor: Jugador3D, pos_falta: Vector3) -> void:
-	var gestor: Node = get_tree().get_first_node_in_group("gestor_partido")
+## Evalúa contacto físico de choque o carga a velocidad alta contra el portador del balón rival
+func _chequear_contacto_fisico_falta() -> void:
+	if esta_expulsado or tiene_posesion or _en_barrida or _cooldown_falta_contacto > 0.0 or _congelado:
+		return
+	if velocity.length() < 2.8:
+		return
+	
+	for i: int in range(get_slide_collision_count()):
+		var col: KinematicCollision3D = get_slide_collision(i)
+		if col == null:
+			continue
+		var collider: Object = col.get_collider()
+		if collider is Jugador3D and collider != self:
+			var rival: Jugador3D = collider as Jugador3D
+			if rival and rival.equipo != equipo and not rival.esta_expulsado and rival.tiene_posesion:
+				_cooldown_falta_contacto = 1.0
+				_notificar_falta_arbitro(self, rival.global_position, rival, false)
+				break
+
+
+## Notifica al GestorPartido una falta cometida para evaluación de severidad, tarjetas y reanudación
+func _notificar_falta_arbitro(infractor: Jugador3D, pos_falta: Vector3, poseedor: Jugador3D = null, es_barrida: bool = false) -> void:
+	var gestor: GestorPartido = get_tree().get_first_node_in_group("gestor_partido") as GestorPartido
 	if gestor == null and get_parent() != null:
-		gestor = get_parent().get_node_or_null("GestorPartido")
+		gestor = get_parent().get_node_or_null("GestorPartido") as GestorPartido
 	if gestor != null and gestor.has_method("registrar_falta"):
-		gestor.registrar_falta(int(infractor.equipo), pos_falta)
+		gestor.registrar_falta(int(infractor.equipo), pos_falta, infractor, poseedor, es_barrida)
+
+
+## Ejecuta la sanción de expulsión de la pista (FIFA/IFAB Law 12):
+## Retira al futbolista sancionado de la pista, oculta su modelo, anula físicas y colisiones,
+## y transfiere inmediatamente el mando táctil a un compañero si era el jugador controlado.
+func expulsar_jugador() -> void:
+	esta_expulsado = true
+	visible = false
+	set_physics_process(false)
+	set_process(false)
+	
+	if tiene_posesion:
+		soltar_posesion()
+	
+	for child: Node in get_children():
+		if child is CollisionShape3D:
+			(child as CollisionShape3D).disabled = true
+	if control_balon_area != null:
+		control_balon_area.monitoring = false
+		control_balon_area.monitorable = false
+	
+	for hitbox: Area3D in [area_manos, area_pecho, area_piernas, area_cabeza]:
+		if hitbox and is_instance_valid(hitbox):
+			hitbox.monitoring = false
+			hitbox.monitorable = false
+	
+	var pos_fuera: Vector3 = Vector3(-12.0 if equipo == Equipo.LOCAL else 12.0, 0.0, -11.5)
+	global_position = pos_fuera
+	velocity = Vector3.ZERO
+	
+	if is_in_group("jugadores_futsal"):
+		remove_from_group("jugadores_futsal")
+	var grupo_eq: String = "equipo_local" if equipo == Equipo.LOCAL else "equipo_visitante"
+	if is_in_group(grupo_eq):
+		remove_from_group(grupo_eq)
+	if is_in_group("jugador_activo"):
+		remove_from_group("jugador_activo")
+	
+	if es_controlado:
+		es_controlado = false
+		_transferir_control_tras_expulsion()
+
+
+func _transferir_control_tras_expulsion() -> void:
+	var grupo_eq: String = "equipo_local" if equipo == Equipo.LOCAL else "equipo_visitante"
+	var companeros: Array[Node] = get_tree().get_nodes_in_group(grupo_eq)
+	for n: Node in companeros:
+		var comp: Jugador3D = n as Jugador3D
+		if comp and comp != self and not comp.esta_expulsado and comp.posicion_tactica != "PORTERO":
+			comp.es_controlado = true
+			comp.add_to_group("jugador_activo")
+			var hud: Node = get_tree().get_first_node_in_group("hud_partido")
+			if hud and hud.has_method("_actualizar_ficha_jugador_activo"):
+				hud.call("_actualizar_ficha_jugador_activo")
+			return
+	for n: Node in companeros:
+		var comp_resto: Jugador3D = n as Jugador3D
+		if comp_resto and comp_resto != self and not comp_resto.esta_expulsado:
+			comp_resto.es_controlado = true
+			comp_resto.add_to_group("jugador_activo")
+			return
 
 
 ## Cambia al defensor más cercano al balón o mejor posicionado en la trayectoria de pase/avance rival
@@ -1478,7 +1949,7 @@ func cambiar_a_mas_cercano_al_balon(mostrar_anuncio: bool = true) -> void:
 	
 	for n: Node in locales:
 		var jug: Jugador3D = n as Jugador3D
-		if jug and jug != self and jug.posicion_tactica != "PORTERO":
+		if jug and jug != self and jug.posicion_tactica != "PORTERO" and not jug.esta_expulsado:
 			var d: float = jug.global_position.distance_to(pos_ref)
 			if d < min_dist:
 				min_dist = d
@@ -1601,8 +2072,14 @@ func _procesar_ia_tactica(delta: float) -> void:
 	
 	var pos_balon: Vector3 = nodo_balon.global_position
 	
-	# 0. Si este jugador IA es el sacador autorizado o está anclado en saque (banda, córner, meta, centro, doble penalti)
-	if _en_posicion_saque or nodo_balon.sacador_autorizado == self:
+	# 0. Si este jugador está en pose de barrera, permanecer inmóvil
+	if en_pose_barrera:
+		_direccion_deseada = Vector3.ZERO
+		sprint_activo = false
+		return
+	
+	# 0b. Si este jugador IA es el sacador autorizado en saque (banda, córner, meta, centro, doble penalti)
+	if nodo_balon.sacador_autorizado == self or (_en_posicion_saque and tiene_posesion):
 		_comportamiento_sacador_ia(pos_balon, nodo_balon)
 		return
 	
@@ -2316,11 +2793,17 @@ func _aplicar_movimiento(delta: float) -> void:
 ## - ATAJADA_MEDIA: Bloqueo de pecho / rostro con torso rígido sin recepción de manos.
 ## - ESTADO_PORTERO_MANOS / SAQUE_MANO: Posesión fija en manos con rotación de apuntado y lanzamiento manual.
 func _animar_extremidades(delta: float) -> void:
-	if pivote_pierna_izq == null or pivote_pierna_der == null or pivote_brazo_izq == null or pivote_brazo_der == null:
+	var tiene_pivotes_legacy: bool = (
+		pivote_pierna_izq != null
+		and pivote_pierna_der != null
+		and pivote_brazo_izq != null
+		and pivote_brazo_der != null
+	)
+	if not tiene_pivotes_legacy and esqueleto_humanoide == null:
 		return
-	
+
 	var vel_plana: float = Vector2(velocity.x, velocity.z).length()
-	
+
 	# ==========================================================================
 	# A. ANIMACIONES REGLAMENTARIAS DEL PORTERO DE FÚTSAL
 	# ==========================================================================
@@ -2330,64 +2813,74 @@ func _animar_extremidades(delta: float) -> void:
 		if not tiene_balon_en_manos and _estado != EstadoJugador.ESTADO_PORTERO_MANOS:
 			var arco_mirada_x: float = 1.0 if equipo == Equipo.LOCAL else -1.0
 			rotation.y = lerp_angle(rotation.y, atan2(-arco_mirada_x, 0.0), clampf(10.0 * delta, 0.0, 1.0))
-		
+
 		# 1. Estado SAQUE_MANO (lanzamiento manual con el brazo para saques de meta y distribución rápida)
 		if _estado == EstadoJugador.SAQUE_MANO or _t_anim_saque_mano > 0.0:
 			var progreso_saque: float = 1.0 - clampf(_t_anim_saque_mano / 0.38, 0.0, 1.0)
 			var arco_brazo: float = sin(progreso_saque * PI)
-			pivote_brazo_der.rotation.x = lerpf(-0.95, 1.65, progreso_saque)
-			pivote_brazo_der.rotation.z = lerpf(pivote_brazo_der.rotation.z, -0.25, delta * 15.0)
-			pivote_brazo_izq.rotation.x = lerpf(pivote_brazo_izq.rotation.x, 0.45 - arco_brazo * 0.5, delta * 15.0)
-			pivote_brazo_izq.rotation.z = lerpf(pivote_brazo_izq.rotation.z, 0.25, delta * 15.0)
-			pivote_pierna_izq.rotation.x = lerpf(pivote_pierna_izq.rotation.x, 0.48 * arco_brazo, delta * 15.0)
-			pivote_pierna_der.rotation.x = lerpf(pivote_pierna_der.rotation.x, -0.38 * arco_brazo, delta * 15.0)
-			pivote_pierna_izq.rotation.z = lerpf(pivote_pierna_izq.rotation.z, 0.0, delta * 15.0)
-			pivote_pierna_der.rotation.z = lerpf(pivote_pierna_der.rotation.z, 0.0, delta * 15.0)
+			_ang_brazo_der_x = lerpf(-0.95, 1.65, progreso_saque)
+			_ang_brazo_der_z = lerpf(_ang_brazo_der_z, -0.25, delta * 15.0)
+			_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, 0.45 - arco_brazo * 0.5, delta * 15.0)
+			_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, 0.25, delta * 15.0)
+			_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.48 * arco_brazo, delta * 15.0)
+			_ang_pierna_der_x = lerpf(_ang_pierna_der_x, -0.38 * arco_brazo, delta * 15.0)
+			_ang_pierna_izq_z = lerpf(_ang_pierna_izq_z, 0.0, delta * 15.0)
+			_ang_pierna_der_z = lerpf(_ang_pierna_der_z, 0.0, delta * 15.0)
+			_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, -0.25 * arco_brazo, delta * 15.0)
+			_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, -0.35 * arco_brazo, delta * 15.0)
 			if visual:
 				visual.rotation.x = lerpf(visual.rotation.x, -0.18 * arco_brazo, delta * 15.0)
 				visual.rotation.z = lerpf(visual.rotation.z, 0.0, delta * 15.0)
 				visual.position.y = lerpf(visual.position.y, 0.0, delta * 15.0)
+			_sincronizar_articulaciones_actuales(tiene_pivotes_legacy)
 			return
-		
+
 		# 2. Estado ACHIQUE_CRUZ_K: Posición de Cruz / "K" (Técnica Canaria) en 1vs1 (< 5m en el área)
 		if _estado == EstadoJugador.ACHIQUE_CRUZ_K or _en_achique_cruz_k:
 			var extiende_izq: bool = (_lado_atajada >= 0.0)
 			if extiende_izq:
 				# Pierna izquierda extendida hacia el costado y rodilla derecha en el suelo bloqueando el túnel entrepiernas
-				pivote_pierna_izq.rotation.x = lerpf(pivote_pierna_izq.rotation.x, 0.18, delta * 18.0)
-				pivote_pierna_izq.rotation.z = lerpf(pivote_pierna_izq.rotation.z, 1.08, delta * 18.0)
-				pivote_pierna_der.rotation.x = lerpf(pivote_pierna_der.rotation.x, 0.96, delta * 18.0)
-				pivote_pierna_der.rotation.z = lerpf(pivote_pierna_der.rotation.z, -0.22, delta * 18.0)
+				_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.18, delta * 18.0)
+				_ang_pierna_izq_z = lerpf(_ang_pierna_izq_z, 1.08, delta * 18.0)
+				_ang_pierna_der_x = lerpf(_ang_pierna_der_x, 0.96, delta * 18.0)
+				_ang_pierna_der_z = lerpf(_ang_pierna_der_z, -0.22, delta * 18.0)
+				_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, -0.10, delta * 18.0)
+				_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, -1.15, delta * 18.0)
 			else:
 				# Pierna derecha extendida hacia el costado y rodilla izquierda en el suelo bloqueando el túnel entrepiernas
-				pivote_pierna_der.rotation.x = lerpf(pivote_pierna_der.rotation.x, 0.18, delta * 18.0)
-				pivote_pierna_der.rotation.z = lerpf(pivote_pierna_der.rotation.z, -1.08, delta * 18.0)
-				pivote_pierna_izq.rotation.x = lerpf(pivote_pierna_izq.rotation.x, 0.96, delta * 18.0)
-				pivote_pierna_izq.rotation.z = lerpf(pivote_pierna_izq.rotation.z, 0.22, delta * 18.0)
-			
+				_ang_pierna_der_x = lerpf(_ang_pierna_der_x, 0.18, delta * 18.0)
+				_ang_pierna_der_z = lerpf(_ang_pierna_der_z, -1.08, delta * 18.0)
+				_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.96, delta * 18.0)
+				_ang_pierna_izq_z = lerpf(_ang_pierna_izq_z, 0.22, delta * 18.0)
+				_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, -0.10, delta * 18.0)
+				_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, -1.15, delta * 18.0)
+
 			# Torso recto erguido y brazos abiertos en cruz cubriendo ángulos altos y medios
-			pivote_brazo_izq.rotation.x = lerpf(pivote_brazo_izq.rotation.x, 0.35, delta * 18.0)
-			pivote_brazo_der.rotation.x = lerpf(pivote_brazo_der.rotation.x, 0.35, delta * 18.0)
-			pivote_brazo_izq.rotation.z = lerpf(pivote_brazo_izq.rotation.z, 0.96, delta * 18.0)
-			pivote_brazo_der.rotation.z = lerpf(pivote_brazo_der.rotation.z, -0.96, delta * 18.0)
+			_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, 0.35, delta * 18.0)
+			_ang_brazo_der_x = lerpf(_ang_brazo_der_x, 0.35, delta * 18.0)
+			_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, 0.96, delta * 18.0)
+			_ang_brazo_der_z = lerpf(_ang_brazo_der_z, -0.96, delta * 18.0)
 			if visual:
 				visual.rotation.x = lerpf(visual.rotation.x, -0.03, delta * 18.0)
 				visual.rotation.z = lerpf(visual.rotation.z, 0.0, delta * 18.0)
 				visual.position.y = lerpf(visual.position.y, -0.32, delta * 18.0)
+			_sincronizar_articulaciones_actuales(tiene_pivotes_legacy)
 			return
-		
+
 		# 3. Estados ATAJADA_BAJA (Pies/Piernas Estilo Hockey - Abanico/Espagat) y ATAJADA_MEDIA (Bloqueo Pecho/Rostro)
 		if _estado == EstadoJugador.ATAJADA_BAJA or _estado == EstadoJugador.ATAJADA_MEDIA or _t_anim_atajada > 0.0:
 			if _estado == EstadoJugador.ATAJADA_MEDIA or _tipo_atajada_actual == EstadoJugador.ATAJADA_MEDIA:
 				# Bloqueo con Pecho / Rostro: torso rígido frontal, brazos abiertos/atrás protegiendo sin recepción de manos
-				pivote_brazo_izq.rotation.x = lerpf(pivote_brazo_izq.rotation.x, 0.18, delta * 18.0)
-				pivote_brazo_der.rotation.x = lerpf(pivote_brazo_der.rotation.x, 0.18, delta * 18.0)
-				pivote_brazo_izq.rotation.z = lerpf(pivote_brazo_izq.rotation.z, 0.68, delta * 18.0)
-				pivote_brazo_der.rotation.z = lerpf(pivote_brazo_der.rotation.z, -0.68, delta * 18.0)
-				pivote_pierna_izq.rotation.x = lerpf(pivote_pierna_izq.rotation.x, 0.28, delta * 18.0)
-				pivote_pierna_der.rotation.x = lerpf(pivote_pierna_der.rotation.x, -0.22, delta * 18.0)
-				pivote_pierna_izq.rotation.z = lerpf(pivote_pierna_izq.rotation.z, 0.32, delta * 18.0)
-				pivote_pierna_der.rotation.z = lerpf(pivote_pierna_der.rotation.z, -0.32, delta * 18.0)
+				_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, 0.18, delta * 18.0)
+				_ang_brazo_der_x = lerpf(_ang_brazo_der_x, 0.18, delta * 18.0)
+				_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, 0.68, delta * 18.0)
+				_ang_brazo_der_z = lerpf(_ang_brazo_der_z, -0.68, delta * 18.0)
+				_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.28, delta * 18.0)
+				_ang_pierna_der_x = lerpf(_ang_pierna_der_x, -0.22, delta * 18.0)
+				_ang_pierna_izq_z = lerpf(_ang_pierna_izq_z, 0.32, delta * 18.0)
+				_ang_pierna_der_z = lerpf(_ang_pierna_der_z, -0.32, delta * 18.0)
+				_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, -0.25, delta * 18.0)
+				_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, -0.25, delta * 18.0)
 				if visual:
 					visual.rotation.x = lerpf(visual.rotation.x, -0.05, delta * 18.0)
 					visual.rotation.z = lerpf(visual.rotation.z, 0.0, delta * 18.0)
@@ -2396,92 +2889,148 @@ func _animar_extremidades(delta: float) -> void:
 				# Atajada con Pies y Piernas (Estilo Hockey / Espagat proyectando el pie hacia el poste, sin lanzarse de manos)
 				var proyecta_izq: bool = (_lado_atajada >= 0.0)
 				if proyecta_izq:
-					pivote_pierna_izq.rotation.x = lerpf(pivote_pierna_izq.rotation.x, 0.42, delta * 20.0)
-					pivote_pierna_izq.rotation.z = lerpf(pivote_pierna_izq.rotation.z, 1.25, delta * 20.0)
-					pivote_pierna_der.rotation.x = lerpf(pivote_pierna_der.rotation.x, 0.72, delta * 20.0)
-					pivote_pierna_der.rotation.z = lerpf(pivote_pierna_der.rotation.z, -0.38, delta * 20.0)
+					_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.42, delta * 20.0)
+					_ang_pierna_izq_z = lerpf(_ang_pierna_izq_z, 1.25, delta * 20.0)
+					_ang_pierna_der_x = lerpf(_ang_pierna_der_x, 0.72, delta * 20.0)
+					_ang_pierna_der_z = lerpf(_ang_pierna_der_z, -0.38, delta * 20.0)
+					_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, -0.08, delta * 20.0)
+					_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, -0.85, delta * 20.0)
 				else:
-					pivote_pierna_der.rotation.x = lerpf(pivote_pierna_der.rotation.x, 0.42, delta * 20.0)
-					pivote_pierna_der.rotation.z = lerpf(pivote_pierna_der.rotation.z, -1.25, delta * 20.0)
-					pivote_pierna_izq.rotation.x = lerpf(pivote_pierna_izq.rotation.x, 0.72, delta * 20.0)
-					pivote_pierna_izq.rotation.z = lerpf(pivote_pierna_izq.rotation.z, 0.38, delta * 20.0)
-				
+					_ang_pierna_der_x = lerpf(_ang_pierna_der_x, 0.42, delta * 20.0)
+					_ang_pierna_der_z = lerpf(_ang_pierna_der_z, -1.25, delta * 20.0)
+					_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.72, delta * 20.0)
+					_ang_pierna_izq_z = lerpf(_ang_pierna_izq_z, 0.38, delta * 20.0)
+					_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, -0.08, delta * 20.0)
+					_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, -0.85, delta * 20.0)
+
 				# Brazos equilibrando a media altura (sin estirarse hacia el suelo como en Fútbol 11)
-				pivote_brazo_izq.rotation.x = lerpf(pivote_brazo_izq.rotation.x, 0.40, delta * 18.0)
-				pivote_brazo_der.rotation.x = lerpf(pivote_brazo_der.rotation.x, 0.40, delta * 18.0)
-				pivote_brazo_izq.rotation.z = lerpf(pivote_brazo_izq.rotation.z, 0.78, delta * 18.0)
-				pivote_brazo_der.rotation.z = lerpf(pivote_brazo_der.rotation.z, -0.78, delta * 18.0)
+				_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, 0.40, delta * 18.0)
+				_ang_brazo_der_x = lerpf(_ang_brazo_der_x, 0.40, delta * 18.0)
+				_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, 0.78, delta * 18.0)
+				_ang_brazo_der_z = lerpf(_ang_brazo_der_z, -0.78, delta * 18.0)
 				if visual:
 					visual.rotation.x = lerpf(visual.rotation.x, -0.06, delta * 16.0)
 					visual.rotation.z = lerpf(visual.rotation.z, 0.0, delta * 16.0)
 					visual.position.y = lerpf(visual.position.y, -0.28, delta * 18.0)
+			_sincronizar_articulaciones_actuales(tiene_pivotes_legacy)
 			return
-		
+
 		# 4. Estado IDLE_ARQUERO y ESTADO_PORTERO_MANOS
 		_fase_carrera = fmod(_fase_carrera + delta * (4.2 + vel_plana * 1.8), TAU)
 		var balanceo_lat: float = sin(_fase_carrera) if not tiene_balon_en_manos else 0.0
 		var balon_actual: Balon3D = _obtener_balon_juego()
 		var seg_balon_z: float = clampf((balon_actual.global_position.z - global_position.z) * 0.08, -0.14, 0.14) if (balon_actual and not tiene_balon_en_manos) else 0.0
-		
-		pivote_pierna_izq.rotation.x = lerpf(pivote_pierna_izq.rotation.x, 0.26 + balanceo_lat * 0.12, delta * 12.0)
-		pivote_pierna_der.rotation.x = lerpf(pivote_pierna_der.rotation.x, -0.26 - balanceo_lat * 0.12, delta * 12.0)
-		pivote_pierna_izq.rotation.z = lerpf(pivote_pierna_izq.rotation.z, 0.15, delta * 12.0)
-		pivote_pierna_der.rotation.z = lerpf(pivote_pierna_der.rotation.z, -0.15, delta * 12.0)
-		
+
+		_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.26 + balanceo_lat * 0.12, delta * 12.0)
+		_ang_pierna_der_x = lerpf(_ang_pierna_der_x, -0.26 - balanceo_lat * 0.12, delta * 12.0)
+		_ang_pierna_izq_z = lerpf(_ang_pierna_izq_z, 0.15, delta * 12.0)
+		_ang_pierna_der_z = lerpf(_ang_pierna_der_z, -0.15, delta * 12.0)
+		_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, -0.32, delta * 12.0)
+		_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, -0.32, delta * 12.0)
+
 		if tiene_balon_en_manos or _estado == EstadoJugador.ESTADO_PORTERO_MANOS:
-			pivote_brazo_izq.rotation.x = lerpf(pivote_brazo_izq.rotation.x, 1.05, delta * 12.0)
-			pivote_brazo_der.rotation.x = lerpf(pivote_brazo_der.rotation.x, 1.05, delta * 12.0)
-			pivote_brazo_izq.rotation.z = lerpf(pivote_brazo_izq.rotation.z, 0.12, delta * 12.0)
-			pivote_brazo_der.rotation.z = lerpf(pivote_brazo_der.rotation.z, -0.12, delta * 12.0)
+			_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, 1.05, delta * 12.0)
+			_ang_brazo_der_x = lerpf(_ang_brazo_der_x, 1.05, delta * 12.0)
+			_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, 0.12, delta * 12.0)
+			_ang_brazo_der_z = lerpf(_ang_brazo_der_z, -0.12, delta * 12.0)
+			_ang_codo_izq_z = lerpf(_ang_codo_izq_z, 0.65, delta * 12.0)
+			_ang_codo_der_z = lerpf(_ang_codo_der_z, -0.65, delta * 12.0)
 			if visual:
 				visual.rotation.x = lerpf(visual.rotation.x, -0.04, delta * 12.0)
 				visual.rotation.z = lerpf(visual.rotation.z, 0.0, delta * 12.0)
 				visual.position.y = lerpf(visual.position.y, 0.0, delta * 12.0)
 		else:
-			pivote_brazo_izq.rotation.x = lerpf(pivote_brazo_izq.rotation.x, 0.52 + balanceo_lat * 0.08, delta * 12.0)
-			pivote_brazo_der.rotation.x = lerpf(pivote_brazo_der.rotation.x, 0.52 - balanceo_lat * 0.08, delta * 12.0)
-			pivote_brazo_izq.rotation.z = lerpf(pivote_brazo_izq.rotation.z, 0.44, delta * 12.0)
-			pivote_brazo_der.rotation.z = lerpf(pivote_brazo_der.rotation.z, -0.44, delta * 12.0)
+			_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, 0.52 + balanceo_lat * 0.08, delta * 12.0)
+			_ang_brazo_der_x = lerpf(_ang_brazo_der_x, 0.52 - balanceo_lat * 0.08, delta * 12.0)
+			_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, 0.44, delta * 12.0)
+			_ang_brazo_der_z = lerpf(_ang_brazo_der_z, -0.44, delta * 12.0)
+			_ang_codo_izq_z = lerpf(_ang_codo_izq_z, 0.48, delta * 12.0)
+			_ang_codo_der_z = lerpf(_ang_codo_der_z, -0.48, delta * 12.0)
 			if visual:
 				visual.rotation.x = lerpf(visual.rotation.x, -0.14, delta * 10.0)
 				visual.rotation.z = lerpf(visual.rotation.z, balanceo_lat * 0.06 + seg_balon_z, delta * 10.0)
-				visual.position.y = lerpf(visual.position.y, -0.08 + abs(cos(_fase_carrera)) * 0.025, delta * 12.0)
+				visual.position.y = lerpf(visual.position.y, abs(cos(_fase_carrera)) * 0.025, delta * 12.0)
+		_sincronizar_articulaciones_actuales(tiene_pivotes_legacy)
 		return
-	
+
 	# Resetear rotaciones Z laterales para jugadores de campo o durante ENTRADA
-	pivote_pierna_izq.rotation.z = lerpf(pivote_pierna_izq.rotation.z, 0.0, delta * 12.0)
-	pivote_pierna_der.rotation.z = lerpf(pivote_pierna_der.rotation.z, 0.0, delta * 12.0)
-	pivote_brazo_izq.rotation.z = lerpf(pivote_brazo_izq.rotation.z, 0.0, delta * 12.0)
-	pivote_brazo_der.rotation.z = lerpf(pivote_brazo_der.rotation.z, 0.0, delta * 12.0)
+	_ang_pierna_izq_z = lerpf(_ang_pierna_izq_z, 0.0, delta * 12.0)
+	_ang_pierna_der_z = lerpf(_ang_pierna_der_z, 0.0, delta * 12.0)
+	_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, 0.0, delta * 12.0)
+	_ang_brazo_der_z = lerpf(_ang_brazo_der_z, 0.0, delta * 12.0)
 	if visual:
 		visual.rotation.z = lerpf(visual.rotation.z, 0.0, delta * 12.0)
-	
+
 	# ==========================================================================
 	# B. ANIMACIONES DE JUGADORES DE CAMPO (Y TROTE DE ENTRADA)
 	# ==========================================================================
 	# 1. Pose de barrida deslizante
 	if _en_barrida:
-		pivote_pierna_der.rotation.x = lerpf(pivote_pierna_der.rotation.x, 1.15, delta * 18.0)
-		pivote_pierna_izq.rotation.x = lerpf(pivote_pierna_izq.rotation.x, -0.55, delta * 18.0)
-		pivote_brazo_izq.rotation.x = lerpf(pivote_brazo_izq.rotation.x, -0.7, delta * 18.0)
-		pivote_brazo_der.rotation.x = lerpf(pivote_brazo_der.rotation.x, -0.7, delta * 18.0)
+		_ang_pierna_der_x = lerpf(_ang_pierna_der_x, 1.15, delta * 18.0)
+		_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, -0.55, delta * 18.0)
+		_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, -0.10, delta * 18.0)
+		_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, -0.95, delta * 18.0)
+		_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, -0.7, delta * 18.0)
+		_ang_brazo_der_x = lerpf(_ang_brazo_der_x, -0.7, delta * 18.0)
 		if visual:
 			visual.rotation.x = lerpf(visual.rotation.x, 0.42, delta * 16.0)
 			visual.position.y = lerpf(visual.position.y, -0.18, delta * 16.0)
+		_sincronizar_articulaciones_actuales(tiene_pivotes_legacy)
 		return
-	
+
+	# 1b. Pose compacta de Barrera de Tiro Libre (hombro con hombro protegiendo zona media/baja)
+	if en_pose_barrera:
+		_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.14, delta * 14.0)
+		_ang_pierna_der_x = lerpf(_ang_pierna_der_x, 0.14, delta * 14.0)
+		_ang_pierna_izq_z = lerpf(_ang_pierna_izq_z, 0.04, delta * 14.0)
+		_ang_pierna_der_z = lerpf(_ang_pierna_der_z, -0.04, delta * 14.0)
+		_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, -0.22, delta * 14.0)
+		_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, -0.22, delta * 14.0)
+		_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, 0.42, delta * 14.0)
+		_ang_brazo_der_x = lerpf(_ang_brazo_der_x, 0.42, delta * 14.0)
+		_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, -0.24, delta * 14.0)
+		_ang_brazo_der_z = lerpf(_ang_brazo_der_z, 0.24, delta * 14.0)
+		_ang_codo_izq_z = lerpf(_ang_codo_izq_z, 0.88, delta * 14.0)
+		_ang_codo_der_z = lerpf(_ang_codo_der_z, -0.88, delta * 14.0)
+		if visual:
+			visual.rotation.x = lerpf(visual.rotation.x, -0.06, delta * 14.0)
+			visual.position.y = lerpf(visual.position.y, 0.0, delta * 14.0)
+		_sincronizar_articulaciones_actuales(tiene_pivotes_legacy)
+		return
+
+	# 1c. Carrera previa de Tiro Libre (2-3 pasos rápidos de aproximación antes del impacto)
+	if _en_carrera_tiro_libre:
+		_fase_carrera = fmod(_fase_carrera + delta * 25.0, TAU)
+		var onda_tl: float = sin(_fase_carrera)
+		_ang_pierna_izq_x = onda_tl * 0.82
+		_ang_pierna_der_x = -onda_tl * 0.82
+		_ang_rodilla_izq_x = -clampf(0.24 + maxf(0.0, -onda_tl) * 0.82, 0.16, 1.05)
+		_ang_rodilla_der_x = -clampf(0.24 + maxf(0.0, onda_tl) * 0.82, 0.16, 1.05)
+		_ang_brazo_izq_x = -onda_tl * 0.68
+		_ang_brazo_der_x = onda_tl * 0.68
+		_ang_codo_izq_z = lerpf(_ang_codo_izq_z, 0.65, delta * 16.0)
+		_ang_codo_der_z = lerpf(_ang_codo_der_z, -0.65, delta * 16.0)
+		if visual:
+			visual.rotation.x = lerpf(visual.rotation.x, -0.11, delta * 16.0)
+			visual.position.y = abs(cos(_fase_carrera)) * 0.042
+		_sincronizar_articulaciones_actuales(tiene_pivotes_legacy)
+		return
+
 	# 2. Animación de patada (tiro / pase / saque de banda con el pie)
 	if _t_anim_patada > 0.0:
 		var fase_patada: float = sin((_t_anim_patada / 0.28) * PI)
-		pivote_pierna_der.rotation.x = fase_patada * 1.25
-		pivote_pierna_izq.rotation.x = -fase_patada * 0.35
-		pivote_brazo_izq.rotation.x = fase_patada * 0.75
-		pivote_brazo_der.rotation.x = -fase_patada * 0.55
+		_ang_pierna_der_x = fase_patada * 1.25
+		_ang_pierna_izq_x = -fase_patada * 0.35
+		_ang_rodilla_der_x = -maxf(0.0, -fase_patada) * 0.65
+		_ang_rodilla_izq_x = -0.22 * absf(fase_patada)
+		_ang_brazo_izq_x = fase_patada * 0.75
+		_ang_brazo_der_x = -fase_patada * 0.55
 		if visual:
 			visual.rotation.x = lerpf(visual.rotation.x, 0.08 * fase_patada, delta * 15.0)
 			visual.position.y = lerpf(visual.position.y, 0.0, delta * 15.0)
+		_sincronizar_articulaciones_actuales(tiene_pivotes_legacy)
 		return
-	
+
 	# 3. Ciclo de carrera / trote de ENTRADA / conducción vs reposo
 	if vel_plana > 0.2 and not _en_posicion_saque:
 		var frec_zancada: float = 5.5 + vel_plana * 2.1
@@ -2489,25 +3038,49 @@ func _animar_extremidades(delta: float) -> void:
 		var onda: float = sin(_fase_carrera)
 		var amp_pierna: float = clampf(0.25 + vel_plana * 0.11, 0.25, 0.92)
 		var amp_brazo: float = amp_pierna * 0.78
-		
-		pivote_pierna_izq.rotation.x = onda * amp_pierna
-		pivote_pierna_der.rotation.x = -onda * amp_pierna
-		pivote_brazo_izq.rotation.x = -onda * amp_brazo
-		pivote_brazo_der.rotation.x = onda * amp_brazo
-		
+
+		_ang_pierna_izq_x = onda * amp_pierna
+		_ang_pierna_der_x = -onda * amp_pierna
+		_ang_rodilla_izq_x = -clampf(0.18 + maxf(0.0, -onda) * 0.75, 0.12, 0.95)
+		_ang_rodilla_der_x = -clampf(0.18 + maxf(0.0, onda) * 0.75, 0.12, 0.95)
+		_ang_brazo_izq_x = -onda * amp_brazo
+		_ang_brazo_der_x = onda * amp_brazo
+		_ang_codo_izq_z = lerpf(_ang_codo_izq_z, 0.58, delta * 10.0)
+		_ang_codo_der_z = lerpf(_ang_codo_der_z, -0.58, delta * 10.0)
+
 		if visual:
 			var inclinacion_carrera: float = -0.09 if sprint_activo else -0.05
 			visual.rotation.x = lerpf(visual.rotation.x, inclinacion_carrera, delta * 10.0)
 			visual.position.y = abs(cos(_fase_carrera)) * 0.038
 	else:
-		pivote_pierna_izq.rotation.x = lerpf(pivote_pierna_izq.rotation.x, 0.0, delta * 12.0)
-		pivote_pierna_der.rotation.x = lerpf(pivote_pierna_der.rotation.x, 0.0, delta * 12.0)
-		pivote_brazo_izq.rotation.x = lerpf(pivote_brazo_izq.rotation.x, 0.0, delta * 12.0)
-		pivote_brazo_der.rotation.x = lerpf(pivote_brazo_der.rotation.x, 0.0, delta * 12.0)
-		
+		_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.0, delta * 12.0)
+		_ang_pierna_der_x = lerpf(_ang_pierna_der_x, 0.0, delta * 12.0)
+		_ang_rodilla_izq_x = lerpf(_ang_rodilla_izq_x, 0.0, delta * 12.0)
+		_ang_rodilla_der_x = lerpf(_ang_rodilla_der_x, 0.0, delta * 12.0)
+		_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, 0.0, delta * 12.0)
+		_ang_brazo_der_x = lerpf(_ang_brazo_der_x, 0.0, delta * 12.0)
+		_ang_codo_izq_z = lerpf(_ang_codo_izq_z, 0.28, delta * 12.0)
+		_ang_codo_der_z = lerpf(_ang_codo_der_z, -0.28, delta * 12.0)
+
 		if visual:
 			visual.rotation.x = lerpf(visual.rotation.x, 0.0, delta * 12.0)
 			visual.position.y = lerpf(visual.position.y, 0.0, delta * 12.0)
+
+	_sincronizar_articulaciones_actuales(tiene_pivotes_legacy)
+
+
+func _sincronizar_articulaciones_actuales(tiene_pivotes_legacy: bool) -> void:
+	if esqueleto_humanoide != null:
+		_aplicar_pose_esqueleto_actual()
+	if tiene_pivotes_legacy:
+		pivote_pierna_izq.rotation.x = _ang_pierna_izq_x
+		pivote_pierna_der.rotation.x = _ang_pierna_der_x
+		pivote_pierna_izq.rotation.z = _ang_pierna_izq_z
+		pivote_pierna_der.rotation.z = _ang_pierna_der_z
+		pivote_brazo_izq.rotation.x = _ang_brazo_izq_x
+		pivote_brazo_der.rotation.x = _ang_brazo_der_x
+		pivote_brazo_izq.rotation.z = _ang_brazo_izq_z
+		pivote_brazo_der.rotation.z = _ang_brazo_der_z
 
 
 func get_media_ovr() -> int:
@@ -2529,6 +3102,12 @@ func get_media_ovr() -> int:
 		control_balon * 0.20
 	)
 	return int(round(suma_ponderada))
+
+
+## Retorna la velocidad máxima de sprint reglamentaria según el atributo OVR de vel_movimiento
+func obtener_velocidad_sprint_max() -> float:
+	var vel_base: float = 3.85 + (vel_movimiento / 99.0) * 1.75
+	return vel_base * multiplicador_sprint
 
 
 func establecer_sprint(activo: bool) -> void:
@@ -2555,70 +3134,474 @@ func _emitir_anuncio_hud(texto: String) -> void:
 
 
 func _actualizar_colores_uniforme() -> void:
-	if torso_mesh == null:
+	aplicar_atlas_y_dorsal_compartido()
+
+
+## Configura el sombreado suave (Smooth Shading) en mallas ArrayMesh y optimiza la proyección de sombras:
+## - Desactiva emisión de sombras secundarias complejas en accesorios pequeños (escudo, manos, medias, botines, etiquetas).
+## - Mantiene sombra direccional limpia únicamente en la silueta principal y proyecta sombra de contacto en el parquet.
+func _configurar_geometria_y_sombras_midpoly() -> void:
+	var mallas_silueta_principal: Array[MeshInstance3D] = [
+		malla_cuerpo_glb, malla_camiseta_glb, malla_short_glb,
+		torso_mesh, cabeza_mesh, pantalones_mesh,
+		manga_izq_mesh, brazo_izq_mesh, manga_der_mesh, brazo_der_mesh,
+		muslo_izq_mesh, pierna_izq_mesh, muslo_der_mesh, pierna_der_mesh
+	]
+	for m: MeshInstance3D in mallas_silueta_principal:
+		if m != null:
+			m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+	var mallas_sin_sombra_secundaria: Array[MeshInstance3D] = [
+		malla_pelo_glb, malla_pestanas_glb, malla_medias_glb, malla_botines_glb,
+		escudo_pecho, cuello_mesh, pelo_mesh,
+		mano_izq_mesh, mano_der_mesh,
+		media_izq_mesh, media_der_mesh,
+		botin_izq_mesh, botin_der_mesh,
+		indicador_control, cuerpo_flecha_mesh, punta_flecha_mesh,
+		sombra_contacto_piso
+	]
+	for m_sec: MeshInstance3D in mallas_sin_sombra_secundaria:
+		if m_sec != null:
+			m_sec.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+	if label_dorsal:
+		label_dorsal.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if label_nombre:
+		label_nombre.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+	# Si existe una malla unificada Mid-Poly importada (.glb / ArrayMesh), activar sombra limpia en ella
+	# y recalcular normales suaves (Smooth Shading) + tangentes para el Normal Map.
+	if malla_unificada_midpoly != null:
+		malla_unificada_midpoly.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if forzar_smooth_shading and malla_unificada_midpoly.mesh is ArrayMesh:
+			_recalcular_smooth_normals_array_mesh(malla_unificada_midpoly.mesh as ArrayMesh)
+
+
+## Fuerza Smooth Shading (grupo de suavizado continuo 0) y regenera tangentes MIKKT para Normal Map en un ArrayMesh
+func _recalcular_smooth_shading_array_mesh(malla: ArrayMesh) -> void:
+	_recalcular_smooth_normals_array_mesh(malla)
+
+
+func _recalcular_smooth_normals_array_mesh(malla: ArrayMesh) -> void:
+	if malla == null or malla.get_surface_count() == 0:
 		return
-	
+	var nueva_malla: ArrayMesh = ArrayMesh.new()
+	for idx_surf: int in range(malla.get_surface_count()):
+		var st: SurfaceTool = SurfaceTool.new()
+		st.create_from(malla, idx_surf)
+		st.set_smooth_group(0)
+		st.generate_normals()
+		st.generate_tangents()
+		st.commit(nueva_malla)
+	if malla_unificada_midpoly:
+		malla_unificada_midpoly.mesh = nueva_malla
+
+
+## Obtiene o crea el único ShaderMaterial compartido por el lote del equipo (`LOCAL_CAMPO`, `LOCAL_PORTERO`,
+## `VISITANTE_CAMPO`, `VISITANTE_PORTERO`). Garantiza que los jugadores del mismo equipo compartan la misma
+## instancia de recurso Material para ejecutarse en un solo lote (Draw Call Batching) sin `.duplicate()`.
+func _obtener_material_lote_equipo(clave_lote: String) -> ShaderMaterial:
+	if _pool_materiales_atlas.has(clave_lote):
+		var mat_existente: ShaderMaterial = _pool_materiales_atlas[clave_lote] as ShaderMaterial
+		if mat_existente != null and is_instance_valid(mat_existente):
+			return mat_existente
+
+	var nuevo_mat: ShaderMaterial = ShaderMaterial.new()
+	nuevo_mat.shader = SHADER_JUGADOR_MIDPOLY
+	_pool_materiales_atlas[clave_lote] = nuevo_mat
+	return nuevo_mat
+
+
+## Aplica el Texture Atlas compartido por equipo (`jugador_midpoly.gdshader`) y diferencia el dorsal,
+## variante de piel/cabello y zona UV de cada jugador mediante `set_instance_shader_parameter()`
+## SIN duplicar el recurso Material (preservando el Draw Call Batching en móviles).
+func aplicar_atlas_y_dorsal_compartido() -> void:
+	if (
+		malla_cuerpo_glb == null
+		and malla_camiseta_glb == null
+		and torso_mesh == null
+		and malla_unificada_midpoly == null
+	):
+		return
+
 	var es_loc: bool = (equipo == Equipo.LOCAL)
+	var es_portero: bool = (posicion_tactica == "PORTERO")
 	var info_eq: Dictionary = Futsal_3D.obtener_info_equipo(es_loc)
-	
-	# Paleta por defecto diferenciada: RFC (Rojo/Negro) vs ASF (Amarillo/Azul Marino)
+
+	# 1. Paleta base diferenciada por equipo: RFC (Rojo/Negro) vs ASF (Amarillo/Azul Marino)
 	var col_camiseta: Color = Color(0.85, 0.15, 0.15) if es_loc else Color(0.95, 0.85, 0.10)
 	var col_escudo: Color = Color(0.95, 0.80, 0.20) if es_loc else Color(0.12, 0.30, 0.65)
 	var col_short: Color = Color(0.10, 0.12, 0.18) if es_loc else Color(0.08, 0.14, 0.28)
-	
+	var col_medias: Color = col_camiseta
+	var col_botines: Color = Color(0.12, 0.14, 0.18)
+
 	if not info_eq.is_empty():
 		col_camiseta = Color.from_string(str(info_eq.get("color_primario", "")), col_camiseta)
 		col_escudo = Color.from_string(str(info_eq.get("color_secundario", "")), col_escudo)
 		col_short = Color.from_string(str(info_eq.get("color_short", "")), col_short)
-	
-	# Arqueros con uniforme alternativo visiblemente contrastante respecto a ambos equipos de campo
-	if posicion_tactica == "PORTERO":
+		col_medias = col_camiseta
+
+	# Arqueros con equipación alternativa contrastante
+	if es_portero:
 		var hex_gk: String = str(info_eq.get("color_arquero", ""))
 		if es_loc:
-			# Arquero Local: Verde Esmeralda brillante con pantalón verde oscuro
 			col_camiseta = Color.from_string(hex_gk, Color(0.10, 0.78, 0.28))
 			col_short = Color(0.06, 0.20, 0.12)
 		else:
-			# Arquero Visitante: Naranja Coral / Turquesa contrastante frente al Amarillo visitante y Rojo local
 			col_camiseta = Color.from_string(hex_gk, Color(0.96, 0.42, 0.08))
 			col_short = Color(0.12, 0.14, 0.22)
+		col_medias = col_camiseta
+
+	# 2. Recuperar el ShaderMaterial único compartido por el lote del equipo (0 duplicaciones por jugador)
+	var prefijo_eq: String = "LOCAL" if es_loc else "VISITANTE"
+	var sufijo_rol: String = "PORTERO" if es_portero else "CAMPO"
+	var clave_lote: String = "%s_%s" % [prefijo_eq, sufijo_rol]
+	var mat_compartido: ShaderMaterial = _obtener_material_lote_equipo(clave_lote)
+
+	mat_compartido.set_shader_parameter("color_camiseta", col_camiseta)
+	mat_compartido.set_shader_parameter("color_secundario", col_escudo)
+	mat_compartido.set_shader_parameter("color_short", col_short)
+	mat_compartido.set_shader_parameter("color_medias", col_medias)
+	mat_compartido.set_shader_parameter("color_botines", col_botines)
+
+	var tex_albedo_efectiva: Texture2D = (
+		textura_atlas_albedo
+		if textura_atlas_albedo != null
+		else _textura_glb_albedo_cache
+	)
+	if tex_albedo_efectiva != null:
+		mat_compartido.set_shader_parameter("textura_atlas_albedo", tex_albedo_efectiva)
+		mat_compartido.set_shader_parameter("mezcla_textura_atlas", 1.0)
+	else:
+		mat_compartido.set_shader_parameter("mezcla_textura_atlas", 0.0)
+
+	var tex_normal_efectiva: Texture2D = (
+		textura_atlas_normal
+		if textura_atlas_normal != null
+		else _textura_glb_normal_cache
+	)
+	if tex_normal_efectiva != null:
+		mat_compartido.set_shader_parameter("textura_atlas_normal", tex_normal_efectiva)
+	if textura_atlas_orm != null:
+		mat_compartido.set_shader_parameter("textura_atlas_orm", textura_atlas_orm)
+
+	# 3. Variante de piel/pelo y dorsal por instancia (vía Instance Uniforms sin clonar el Material)
+	var var_aspecto: int = variante_aspecto_facial if variante_aspecto_facial >= 0 else (absi(dorsal) % 4)
+
+	# A. Caso Malla Unificada Mid-Poly con UVs empaquetadas en los 4 cuadrantes del Atlas (id_zona_malla = 0)
+	if malla_unificada_midpoly != null:
+		malla_unificada_midpoly.material_override = mat_compartido
+		malla_unificada_midpoly.set_instance_shader_parameter("id_zona_malla", 0)
+		malla_unificada_midpoly.set_instance_shader_parameter("dorsal_jugador", dorsal)
+		malla_unificada_midpoly.set_instance_shader_parameter("variante_aspecto", var_aspecto)
+
+	# B. Caso Modelo Humanoide Importado (`Jugador_Futsal.glb`):
+	#    Conectar el shader `jugador_midpoly.gdshader` compartido a todas las mallas `Ch38_*`
+	#    (1:Piel/Rostro, 2:Pelo/Pestañas, 3:Camiseta, 5:Shorts, 6:Medias, 7:Botines)
+	_asignar_zona_instancia_malla(malla_cuerpo_glb, mat_compartido, 1, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(malla_pelo_glb, mat_compartido, 2, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(malla_pestanas_glb, mat_compartido, 2, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(malla_camiseta_glb, mat_compartido, 3, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(malla_short_glb, mat_compartido, 5, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(malla_medias_glb, mat_compartido, 6, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(malla_botines_glb, mat_compartido, 7, dorsal, var_aspecto)
+
+	# C. Fallback compatible para nodos modulares antiguos si estuvieran presentes
+	_asignar_zona_instancia_malla(torso_mesh, mat_compartido, 3, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(manga_izq_mesh, mat_compartido, 3, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(manga_der_mesh, mat_compartido, 3, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(escudo_pecho, mat_compartido, 4, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(pantalones_mesh, mat_compartido, 5, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(muslo_izq_mesh, mat_compartido, 5, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(muslo_der_mesh, mat_compartido, 5, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(media_izq_mesh, mat_compartido, 6, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(media_der_mesh, mat_compartido, 6, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(botin_izq_mesh, mat_compartido, 7, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(botin_der_mesh, mat_compartido, 7, dorsal, var_aspecto)
+
+	_asignar_zona_instancia_malla(cuello_mesh, mat_compartido, 1, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(cabeza_mesh, mat_compartido, 1, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(brazo_izq_mesh, mat_compartido, 1, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(brazo_der_mesh, mat_compartido, 1, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(pierna_izq_mesh, mat_compartido, 1, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(pierna_der_mesh, mat_compartido, 1, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(pelo_mesh, mat_compartido, 2, dorsal, var_aspecto)
+
+	# En porteros, las manos utilizan la zona 4/7 (guantes) en lugar de piel
+	var zona_manos: int = 4 if es_portero else 1
+	_asignar_zona_instancia_malla(mano_izq_mesh, mat_compartido, zona_manos, dorsal, var_aspecto)
+	_asignar_zona_instancia_malla(mano_der_mesh, mat_compartido, zona_manos, dorsal, var_aspecto)
+
+	if label_dorsal:
+		label_dorsal.text = str(dorsal)
+
+
+func _asignar_zona_instancia_malla(
+	malla: MeshInstance3D,
+	mat_lote: ShaderMaterial,
+	id_zona: int,
+	num_dorsal: int,
+	var_aspecto: int
+) -> void:
+	if malla == null:
+		return
+	malla.material_override = mat_lote
+	malla.set_instance_shader_parameter("id_zona_malla", id_zona)
+	malla.set_instance_shader_parameter("dorsal_jugador", num_dorsal)
+	malla.set_instance_shader_parameter("variante_aspecto", var_aspecto)
+
+
+# ==============================================================================
+# HITBOXES Y DETECCIÓN ANATÓMICA DE ATAJADAS DEL ARQUERO (FIFA / EFOOTBALL)
+# ==============================================================================
+
+## Configura las 4 zonas anatómicas de contacto del arquero (Manos, Pecho, Piernas, Cabeza)
+func _configurar_hitboxes_anatomicas_portero() -> void:
+	if not (es_arquero or posicion_tactica == "PORTERO"):
+		return
 	
-	var mat_torso: StandardMaterial3D = StandardMaterial3D.new()
-	mat_torso.roughness = 0.40
-	mat_torso.albedo_color = col_camiseta
-	torso_mesh.material_override = mat_torso
+	# 1. AreaManos: Cubriendo las manos y muñecas
+	area_manos = get_node_or_null("AreaManos") as Area3D
+	if area_manos == null and visual != null:
+		area_manos = visual.get_node_or_null("AreaManos") as Area3D
+	if area_manos == null:
+		area_manos = Area3D.new()
+		area_manos.name = "AreaManos"
+		var col_manos: CollisionShape3D = CollisionShape3D.new()
+		col_manos.name = "ShapeManos"
+		var box_manos: BoxShape3D = BoxShape3D.new()
+		box_manos.size = Vector3(0.95, 0.48, 0.42)
+		col_manos.shape = box_manos
+		col_manos.position = Vector3(0.0, 1.20, -0.38)
+		area_manos.add_child(col_manos)
+		add_child(area_manos)
+	_configurar_propiedades_hitbox(area_manos, "manos")
 	
-	if manga_izq_mesh:
-		manga_izq_mesh.material_override = mat_torso
-	if manga_der_mesh:
-		manga_der_mesh.material_override = mat_torso
-	if media_izq_mesh:
-		media_izq_mesh.material_override = mat_torso
-	if media_der_mesh:
-		media_der_mesh.material_override = mat_torso
+	# 2. AreaPecho: Cubriendo el torso superior
+	area_pecho = get_node_or_null("AreaPecho") as Area3D
+	if area_pecho == null and visual != null:
+		area_pecho = visual.get_node_or_null("AreaPecho") as Area3D
+	if area_pecho == null:
+		area_pecho = Area3D.new()
+		area_pecho.name = "AreaPecho"
+		var col_pecho: CollisionShape3D = CollisionShape3D.new()
+		col_pecho.name = "ShapePecho"
+		var box_pecho: BoxShape3D = BoxShape3D.new()
+		box_pecho.size = Vector3(0.62, 0.52, 0.38)
+		col_pecho.shape = box_pecho
+		col_pecho.position = Vector3(0.0, 1.25, -0.04)
+		area_pecho.add_child(col_pecho)
+		add_child(area_pecho)
+	_configurar_propiedades_hitbox(area_pecho, "pecho")
 	
-	var mat_short: StandardMaterial3D = StandardMaterial3D.new()
-	mat_short.roughness = 0.55
-	mat_short.albedo_color = col_short
-	if pantalones_mesh:
-		pantalones_mesh.material_override = mat_short
-	if muslo_izq_mesh:
-		muslo_izq_mesh.material_override = mat_short
-	if muslo_der_mesh:
-		muslo_der_mesh.material_override = mat_short
+	# 3. AreaPiernas: Cubriendo espinillas y botines
+	area_piernas = get_node_or_null("AreaPiernas") as Area3D
+	if area_piernas == null and visual != null:
+		area_piernas = visual.get_node_or_null("AreaPiernas") as Area3D
+	if area_piernas == null:
+		area_piernas = Area3D.new()
+		area_piernas.name = "AreaPiernas"
+		var col_piernas: CollisionShape3D = CollisionShape3D.new()
+		col_piernas.name = "ShapePiernas"
+		var box_piernas: BoxShape3D = BoxShape3D.new()
+		box_piernas.size = Vector3(0.75, 0.72, 0.45)
+		col_piernas.shape = box_piernas
+		col_piernas.position = Vector3(0.0, 0.40, -0.05)
+		area_piernas.add_child(col_piernas)
+		add_child(area_piernas)
+	_configurar_propiedades_hitbox(area_piernas, "piernas")
 	
-	if escudo_pecho:
-		var mat_escudo: StandardMaterial3D = StandardMaterial3D.new()
-		mat_escudo.roughness = 0.25
-		mat_escudo.albedo_color = col_escudo
-		escudo_pecho.material_override = mat_escudo
+	# 4. AreaCabeza: Cubriendo la cabeza
+	area_cabeza = get_node_or_null("AreaCabeza") as Area3D
+	if area_cabeza == null and visual != null:
+		area_cabeza = visual.get_node_or_null("AreaCabeza") as Area3D
+	if area_cabeza == null:
+		area_cabeza = Area3D.new()
+		area_cabeza.name = "AreaCabeza"
+		var col_cabeza: CollisionShape3D = CollisionShape3D.new()
+		col_cabeza.name = "ShapeCabeza"
+		var sphere_cabeza: SphereShape3D = SphereShape3D.new()
+		sphere_cabeza.radius = 0.24
+		col_cabeza.shape = sphere_cabeza
+		col_cabeza.position = Vector3(0.0, 1.68, 0.0)
+		area_cabeza.add_child(col_cabeza)
+		add_child(area_cabeza)
+	_configurar_propiedades_hitbox(area_cabeza, "cabeza")
+
+
+func _configurar_propiedades_hitbox(area: Area3D, zona: String) -> void:
+	if area == null:
+		return
+	area.set_meta("zona_cuerpo", zona)
+	area.set_meta("arquero", self)
+	if not area.is_in_group("hitbox_arquero"):
+		area.add_to_group("hitbox_arquero")
+	var grupo_zona: String = "zona_" + zona
+	if not area.is_in_group(grupo_zona):
+		area.add_to_group(grupo_zona)
 	
-	if posicion_tactica == "PORTERO":
-		var mat_guantes: StandardMaterial3D = StandardMaterial3D.new()
-		mat_guantes.roughness = 0.35
-		mat_guantes.albedo_color = Color(0.95, 0.96, 0.98)
-		if mano_izq_mesh:
-			mano_izq_mesh.material_override = mat_guantes
-		if mano_der_mesh:
-			mano_der_mesh.material_override = mat_guantes
+	area.collision_layer = 0
+	area.collision_mask = 1 # Capa 1: Balon3D RigidBody3D
+	area.monitoring = true
+	area.monitorable = true
+	
+	var cb: Callable = Callable(self, "_on_hitbox_arquero_body_entered").bind(zona)
+	if not area.body_entered.is_connected(cb):
+		area.body_entered.connect(cb)
+
+
+func _on_hitbox_arquero_body_entered(body: Node3D, zona: String) -> void:
+	if body is Balon3D:
+		var balon_obj: Balon3D = body as Balon3D
+		if balon_obj and not balon_obj.esta_fuera_de_juego:
+			match zona:
+				"piernas":
+					_tipo_atajada_actual = EstadoJugador.ATAJADA_BAJA
+					_t_anim_atajada = 0.50
+					_lado_atajada = 1.0 if body.global_position.z >= global_position.z else -1.0
+				"pecho", "cabeza":
+					_tipo_atajada_actual = EstadoJugador.ATAJADA_MEDIA
+					_t_anim_atajada = 0.46
+				"manos":
+					_t_anim_atajada = 0.35
+			
+			balon_obj.procesar_impacto_arquero(zona, self)
+
+
+## Sincroniza la posición de las hitboxes anatómicas ante cambios dinámicos de pose del arquero
+func _actualizar_hitboxes_portero() -> void:
+	if not (es_arquero or posicion_tactica == "PORTERO"):
+		return
+	if area_piernas == null or area_pecho == null:
+		return
+	
+	if _estado == EstadoJugador.ACHIQUE_CRUZ_K or _en_achique_cruz_k:
+		area_pecho.position = Vector3(0.0, 0.98, -0.12)
+		area_piernas.position = Vector3(0.0, 0.28, _lado_atajada * 0.25)
+		if area_manos:
+			area_manos.position = Vector3(0.0, 0.95, -0.42)
+	elif _estado == EstadoJugador.ATAJADA_BAJA or (_t_anim_atajada > 0.0 and _tipo_atajada_actual == EstadoJugador.ATAJADA_BAJA):
+		area_piernas.position = Vector3(0.0, 0.30, _lado_atajada * 0.38)
+		area_pecho.position = Vector3(0.0, 1.25, -0.04)
+		if area_manos:
+			area_manos.position = Vector3(0.0, 1.15, -0.32)
+	else:
+		area_pecho.position = Vector3(0.0, 1.25, -0.04)
+		area_piernas.position = Vector3(0.0, 0.40, -0.05)
+		if area_manos:
+			area_manos.position = Vector3(0.0, 1.20, -0.38)
+		if area_cabeza:
+			area_cabeza.position = Vector3(0.0, 1.68, 0.0)
+
+
+## Configura el sistema de colisiones segmentado de la barrera defensiva:
+## a) Grupo "Torso_Legs_Head": cabeza, tronco, muslos y piernas (bloqueo reglamentario).
+## b) Grupo "Arms_Hands": antebrazos, brazos y manos sobresalientes en T-Pose (infracción de mano).
+func _configurar_hitboxes_barrera() -> void:
+	if area_torso_piernas_cabeza != null and area_brazos_manos != null:
+		return
+
+	# 1. AreaTorsoLegsHead (Bloqueo legal: cabeza, tronco, muslos y piernas)
+	area_torso_piernas_cabeza = get_node_or_null("AreaTorsoLegsHead") as Area3D
+	if area_torso_piernas_cabeza == null and visual != null:
+		area_torso_piernas_cabeza = visual.get_node_or_null("AreaTorsoLegsHead") as Area3D
+	if area_torso_piernas_cabeza == null:
+		area_torso_piernas_cabeza = Area3D.new()
+		area_torso_piernas_cabeza.name = "AreaTorsoLegsHead"
+		var col_torso: CollisionShape3D = CollisionShape3D.new()
+		col_torso.name = "ShapeTorsoLegsHead"
+		var capsule_torso: CapsuleShape3D = CapsuleShape3D.new()
+		capsule_torso.radius = 0.28
+		capsule_torso.height = 1.82
+		col_torso.shape = capsule_torso
+		col_torso.position = Vector3(0.0, 0.91, 0.0)
+		area_torso_piernas_cabeza.add_child(col_torso)
+		add_child(area_torso_piernas_cabeza)
+
+	area_torso_piernas_cabeza.set_meta("zona_cuerpo", "Torso_Legs_Head")
+	area_torso_piernas_cabeza.set_meta("defensor", self)
+	if not area_torso_piernas_cabeza.is_in_group("Torso_Legs_Head"):
+		area_torso_piernas_cabeza.add_to_group("Torso_Legs_Head")
+	if not area_torso_piernas_cabeza.is_in_group("hitbox_defensor"):
+		area_torso_piernas_cabeza.add_to_group("hitbox_defensor")
+	if not area_torso_piernas_cabeza.is_in_group("barrera_bloqueo"):
+		area_torso_piernas_cabeza.add_to_group("barrera_bloqueo")
+
+	area_torso_piernas_cabeza.collision_layer = 2
+	area_torso_piernas_cabeza.collision_mask = 1
+	area_torso_piernas_cabeza.monitoring = en_pose_barrera
+	area_torso_piernas_cabeza.monitorable = en_pose_barrera
+
+	var cb_torso: Callable = Callable(self, "_on_hitbox_barrera_body_entered").bind("Torso_Legs_Head")
+	if not area_torso_piernas_cabeza.body_entered.is_connected(cb_torso):
+		area_torso_piernas_cabeza.body_entered.connect(cb_torso)
+
+	# 2. AreaArmsHands (Infracción de mano en T-Pose: brazos, antebrazos y manos sobresalientes)
+	area_brazos_manos = get_node_or_null("AreaArmsHands") as Area3D
+	if area_brazos_manos == null and visual != null:
+		area_brazos_manos = visual.get_node_or_null("AreaArmsHands") as Area3D
+	if area_brazos_manos == null:
+		area_brazos_manos = Area3D.new()
+		area_brazos_manos.name = "AreaArmsHands"
+
+		# Brazo / mano izquierda sobresaliente
+		var col_brazo_izq: CollisionShape3D = CollisionShape3D.new()
+		col_brazo_izq.name = "ShapeBrazoIzq"
+		var box_izq: BoxShape3D = BoxShape3D.new()
+		box_izq.size = Vector3(0.56, 0.24, 0.26)
+		col_brazo_izq.shape = box_izq
+		col_brazo_izq.position = Vector3(-0.56, 1.35, 0.0)
+		area_brazos_manos.add_child(col_brazo_izq)
+
+		# Brazo / mano derecha sobresaliente
+		var col_brazo_der: CollisionShape3D = CollisionShape3D.new()
+		col_brazo_der.name = "ShapeBrazoDer"
+		var box_der: BoxShape3D = BoxShape3D.new()
+		box_der.size = Vector3(0.56, 0.24, 0.26)
+		col_brazo_der.shape = box_der
+		col_brazo_der.position = Vector3(0.56, 1.35, 0.0)
+		area_brazos_manos.add_child(col_brazo_der)
+
+		add_child(area_brazos_manos)
+
+	area_brazos_manos.set_meta("zona_cuerpo", "Arms_Hands")
+	area_brazos_manos.set_meta("defensor", self)
+	if not area_brazos_manos.is_in_group("Arms_Hands"):
+		area_brazos_manos.add_to_group("Arms_Hands")
+	if not area_brazos_manos.is_in_group("hitbox_defensor"):
+		area_brazos_manos.add_to_group("hitbox_defensor")
+	if not area_brazos_manos.is_in_group("barrera_mano"):
+		area_brazos_manos.add_to_group("barrera_mano")
+
+	establecer_sancion_manos_barrera(sancionar_manos_barrera)
+
+	var cb_brazos: Callable = Callable(self, "_on_hitbox_barrera_body_entered").bind("Arms_Hands")
+	if not area_brazos_manos.body_entered.is_connected(cb_brazos):
+		area_brazos_manos.body_entered.connect(cb_brazos)
+
+
+## Inhabilita o habilita la capa de colisión de los brazos/manos.
+## Al desactivarse, el tiro solo responde a la silueta del torso y piernas cerradas
+## (emulando la postura real de barrera con manos pegadas a la espalda).
+func establecer_sancion_manos_barrera(habilitar: bool) -> void:
+	if area_brazos_manos == null:
+		return
+	if habilitar and en_pose_barrera:
+		area_brazos_manos.collision_layer = 2
+		area_brazos_manos.collision_mask = 1
+		area_brazos_manos.monitoring = true
+		area_brazos_manos.monitorable = true
+	else:
+		area_brazos_manos.collision_layer = 0
+		area_brazos_manos.collision_mask = 0
+		area_brazos_manos.monitoring = false
+		area_brazos_manos.monitorable = false
+
+
+func _on_hitbox_barrera_body_entered(body: Node3D, zona: String) -> void:
+	if body is Balon3D:
+		var balon_obj: Balon3D = body as Balon3D
+		if balon_obj and not balon_obj.esta_fuera_de_juego:
+			balon_obj.procesar_impacto_barrera(zona, self, balon_obj.global_position)
+
 

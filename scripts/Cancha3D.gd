@@ -131,6 +131,8 @@ func _on_gol_arco_izquierdo(body: Node3D) -> void:
 		var portador: Jugador3D = balon.portador_actual as Jugador3D
 		if portador and (portador.posicion_tactica == "PORTERO" or portador.tiene_balon_en_manos):
 			return
+	if gestor and not gestor.validar_y_procesar_gol(1):
+		return
 	
 	var nombre_vis: String = str(Futsal_3D.obtener_info_equipo(false).get("nombre", "VISITANTE")).to_upper()
 	_emitir_anuncio("¡¡GOOOOL DE %s!!" % nombre_vis)
@@ -149,6 +151,8 @@ func _on_gol_arco_derecho(body: Node3D) -> void:
 		var portador: Jugador3D = balon.portador_actual as Jugador3D
 		if portador and (portador.posicion_tactica == "PORTERO" or portador.tiene_balon_en_manos):
 			return
+	if gestor and not gestor.validar_y_procesar_gol(0):
+		return
 	
 	var nombre_loc: String = str(Futsal_3D.obtener_info_equipo(true).get("nombre", "LOCAL")).to_upper()
 	_emitir_anuncio("¡¡GOOOOL DE %s!!" % nombre_loc)

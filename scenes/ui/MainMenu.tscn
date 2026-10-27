@@ -325,6 +325,15 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_btn_jugar")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_jugar")
 text = "¡JUGAR PARTIDO AHORA!"
 
+[node name="BotonEntrenamiento" type="Button" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido/VBox"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.92, 1, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_accion")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_btn_accion")
+text = "🎯 MODO ENTRENAMIENTO (BALÓN PARADO)"
+
 [node name="BotonAccesoRapido" type="Button" parent="MargenPrincipal/MosaicoContenedor/TarjetaPartidoRapido"]
 visible = false
 layout_mode = 2
