@@ -1404,7 +1404,18 @@ func _obtener_companero_apuntado(dir: Vector3) -> Jugador3D:
 ## en tiros bombeados y activando la "Cucharita" (backspin regresivo) si el trazo vertical es muy pronunciado.
 func _calcular_y_disparar_swipe(_p0: Vector2, _p1: Vector2, delta_vec: Vector2) -> void:
 	var pot_norm: float = clampf(_potencia_swipe_actual, 0.35, 1.0)
-	var rapidez_base: float = lerpf(14.5, 27.5, pot_norm)
+	var ejecutor: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
+	var pot_stat: float = ejecutor.potencia_tiro if (ejecutor and "potencia_tiro" in ejecutor) else 80.0
+	var f_pot: float = ejecutor.factor_stat(pot_stat) if (ejecutor and ejecutor.has_method("factor_stat")) else 0.68
+	var rapidez_max: float = lerpf(19.0, 31.5, f_pot)
+	if ejecutor and ejecutor.has_method("tiene_rasgo") and ejecutor.tiene_rasgo("Cañonero"):
+		rapidez_max *= 1.08
+	var rapidez_base: float = lerpf(rapidez_max * 0.55, rapidez_max, pot_norm)
+
+	var f_efecto: float = ejecutor.factor_stat(ejecutor.efecto) if (ejecutor and "efecto" in ejecutor and ejecutor.has_method("factor_stat")) else 0.65
+	var f_bp: float = ejecutor.factor_stat(ejecutor.balon_parado) if (ejecutor and "balon_parado" in ejecutor and ejecutor.has_method("factor_stat")) else 0.65
+	var factor_comba_stat: float = lerpf(0.80, 1.25, (f_efecto * 0.6 + f_bp * 0.4))
+	var comba_ajustada: float = _comba_swipe_actual * factor_comba_stat
 
 	var view_rect: Rect2 = get_viewport().get_visible_rect()
 	var desvio_x_norm: float = clampf(delta_vec.x / (view_rect.size.x * 0.32), -1.0, 1.0)
@@ -1436,11 +1447,11 @@ func _calcular_y_disparar_swipe(_p0: Vector2, _p1: Vector2, delta_vec: Vector2) 
 	# 4. Dirección 3D combinando vector frontal, desviación lateral del trazo y apertura inicial de comba
 	var dir_horiz: Vector3 = (
 		vector_frontal
-		+ vector_lateral * (desvio_x_norm * 0.36 - _comba_swipe_actual * 0.16)
+		+ vector_lateral * (desvio_x_norm * 0.36 - comba_ajustada * 0.16)
 	).normalized()
 	var dir_tiro_3d: Vector3 = Vector3(dir_horiz.x, comp_vertical_y, dir_horiz.z).normalized()
 
-	_iniciar_secuencia_carrera_y_disparo(dir_tiro_3d, rapidez_efectiva, _comba_swipe_actual, es_cucharita)
+	_iniciar_secuencia_carrera_y_disparo(dir_tiro_3d, rapidez_efectiva, comba_ajustada, es_cucharita)
 
 	var tw: Tween = create_tween()
 	tw.tween_interval(0.35)

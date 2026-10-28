@@ -91,70 +91,81 @@ var area_brazos_manos: Area3D = null
 		if is_node_ready() and indicador_control:
 			indicador_control.visible = valor or es_opcion_de_pase
 
-@export_group("Atributos de Campo Estilo FC Mobile (1-99)")
-@export_range(1.0, 99.0, 1.0) var ovr: int = 80
-@export_range(1.0, 99.0, 1.0) var ritmo: float = 80.0:
+@export_group("Atributos de Campo Estilo FC Mobile (40-99)")
+@export_range(40, 99, 1) var ovr: int = 80
+@export_range(40.0, 99.0, 1.0) var ritmo: float = 80.0
+@export_range(40.0, 99.0, 1.0) var tiro: float = 78.0
+@export_range(40.0, 99.0, 1.0) var pase: float = 82.0
+@export_range(40.0, 99.0, 1.0) var regate: float = 84.0
+@export_range(40.0, 99.0, 1.0) var defensa: float = 76.0
+@export_range(40.0, 99.0, 1.0) var fisico: float = 80.0
+
+@export_group("Sub-atributos de Jugador de Campo (40-99)")
+## Ritmo: aceleración en corto y velocidad máxima
+@export_range(40.0, 99.0, 1.0) var aceleracion: float = 80.0
+@export_range(40.0, 99.0, 1.0) var velocidad: float = 80.0:
 	set(v):
-		ritmo = v
+		velocidad = v
 		vel_movimiento = v
-@export_range(1.0, 99.0, 1.0) var tiro: float = 78.0:
+## Tiro: finalización, potencia de impacto, efecto Magnus y balón parado
+@export_range(40.0, 99.0, 1.0) var finalizacion: float = 78.0:
 	set(v):
-		tiro = v
-		potencia_tiro = v
-		precision_tiro = clampf(v * 0.96, 50.0, 99.0)
-@export_range(1.0, 99.0, 1.0) var pase: float = 82.0:
+		finalizacion = v
+		precision_tiro = v
+@export_range(40.0, 99.0, 1.0) var potencia_tiro: float = 80.0
+@export_range(40.0, 99.0, 1.0) var efecto: float = 75.0
+@export_range(40.0, 99.0, 1.0) var balon_parado: float = 75.0
+## Pase: pase raso tenso, filtrado al hueco y visión periférica
+@export_range(40.0, 99.0, 1.0) var pase_raso: float = 82.0
+@export_range(40.0, 99.0, 1.0) var pase_hueco: float = 80.0
+@export_range(40.0, 99.0, 1.0) var vision: float = 80.0:
 	set(v):
-		pase = v
+		vision = v
 		vision_pase = v
-@export_range(1.0, 99.0, 1.0) var regate: float = 84.0:
+## Regate: control de balón en recepción, drible y equilibrio en giros
+@export_range(40.0, 99.0, 1.0) var control_balon: float = 84.0
+@export_range(40.0, 99.0, 1.0) var drible: float = 82.0
+@export_range(40.0, 99.0, 1.0) var equilibrio: float = 80.0
+## Defensa: actitud defensiva y entrada limpia / barrida
+@export_range(40.0, 99.0, 1.0) var actitud_defensiva: float = 76.0
+@export_range(40.0, 99.0, 1.0) var entrada: float = 76.0:
 	set(v):
-		regate = v
-		control_balon = v
-@export_range(1.0, 99.0, 1.0) var defensa: float = 76.0:
-	set(v):
-		defensa = v
+		entrada = v
 		defensa_recuperacion = v
-@export_range(1.0, 99.0, 1.0) var fisico: float = 80.0
+## Físico: contacto cuerpo a cuerpo y resistencia al cansancio
+@export_range(40.0, 99.0, 1.0) var contacto_fisico: float = 80.0
+@export_range(40.0, 99.0, 1.0) var resistencia: float = 80.0
 
-@export_group("Atributos Internos de Gameplay")
-## Velocidad de movimiento y aceleración (afecta velocidad punta y sprint).
-@export_range(1.0, 99.0, 1.0) var vel_movimiento: float = 80.0
-## Potencia de impacto al disparar a portería.
-@export_range(1.0, 99.0, 1.0) var potencia_tiro: float = 80.0
-## Precisión para colocar el balón en los postes y reducir dispersión.
-@export_range(1.0, 99.0, 1.0) var precision_tiro: float = 78.0
-## Visión y curvatura para pases al pie y filtrados al hueco.
-@export_range(1.0, 99.0, 1.0) var vision_pase: float = 82.0
-## Firmeza magnética y equilibrio al conducir bajo presión.
-@export_range(1.0, 99.0, 1.0) var control_balon: float = 84.0
-## Capacidad defensiva de recuperación, barrida, presión y robo de pelota.
-@export_range(1.0, 99.0, 1.0) var defensa_recuperacion: float = 76.0
+@export_group("Rasgos Especiales (Traits)")
+@export var rasgos: Array[String] = []
 
-@export_group("Atributos de Arquero de Futsal (1-99)")
-## Precisión para ubicarse en la bisectriz del ángulo de tiro y distancia óptima de achique (2.0 a 3.2m del arco).
-@export_range(1.0, 99.0, 1.0) var gk_posicionamiento: float = 84.0
-## Tiempo de reacción ante remates cercanos o desvíos (lerp 0.22 a 0.03s) y recuperación para Doble Atajada.
-@export_range(1.0, 99.0, 1.0) var gk_reflejos: float = 85.0
-## Velocidad de deslizamiento lateral en Barrida en L y extensión efectiva de piernas en La Cruz.
-@export_range(1.0, 99.0, 1.0) var gk_alcance_achique: float = 86.0
-## Probabilidad de embolsar tiros moderados o desviar tiros potentes hacia bandas/córner.
-@export_range(1.0, 99.0, 1.0) var gk_bloqueo_control: float = 82.0
-## Velocidad para sacar la pierna en abanico ante tiros rasos cruzados.
-@export_range(1.0, 99.0, 1.0) var gk_juego_pies: float = 80.0
+@export_group("Atributos de Arquero de Futsal (40-99)")
+## Precisión para ubicarse en la bisectriz del ángulo de tiro y distancia de achique (1.2 a 3.0m).
+@export_range(40.0, 99.0, 1.0) var gk_posicionamiento: float = 84.0
+## Tiempo de reacción ante remates a quemarropa y recuperación de Segunda Atajada.
+@export_range(40.0, 99.0, 1.0) var gk_reflejos: float = 85.0
+## Amplitud y velocidad de piernas en La Cruz y Despliegue en L (Spagat).
+@export_range(40.0, 99.0, 1.0) var gk_alcance_achique: float = 86.0
+## Probabilidad de embolsar tiros o desviar rebotes fuertes hacia bandas/córner.
+@export_range(40.0, 99.0, 1.0) var gk_bloqueo_control: float = 82.0
+## Velocidad de salida y despeje en abanico con los pies a ras de suelo.
+@export_range(40.0, 99.0, 1.0) var gk_juego_pies: float = 80.0
+## Alcance y precisión en saques con la mano al pívot o al espacio libre.
+@export_range(40.0, 99.0, 1.0) var gk_saque: float = 80.0
 
-# Aliases de compatibilidad de arquero
-@export_range(1.0, 99.0, 1.0) var gk_estirada: float = 85.0:
+# Aliases de compatibilidad interna y legacy
+@export_range(40.0, 99.0, 1.0) var vel_movimiento: float = 80.0
+@export_range(40.0, 99.0, 1.0) var precision_tiro: float = 78.0
+@export_range(40.0, 99.0, 1.0) var vision_pase: float = 82.0
+@export_range(40.0, 99.0, 1.0) var defensa_recuperacion: float = 76.0
+@export_range(40.0, 99.0, 1.0) var gk_estirada: float = 85.0:
 	set(v):
 		gk_estirada = v
 		gk_alcance_achique = v
-@export_range(1.0, 99.0, 1.0) var gk_manejo: float = 82.0:
+@export_range(40.0, 99.0, 1.0) var gk_manejo: float = 82.0:
 	set(v):
 		gk_manejo = v
 		gk_bloqueo_control = v
-@export_range(1.0, 99.0, 1.0) var gk_saque: float = 80.0:
-	set(v):
-		gk_saque = v
-		gk_juego_pies = v
 
 @export_group("Física Base")
 @export var velocidad_giro: float = 16.0
@@ -1129,6 +1140,16 @@ func _procesar_carrera_al_espacio(delta: float) -> void:
 		llegada_espacio_libre.emit(global_position)
 
 
+## Normaliza una estadística técnica en escala 40-99 a un factor continuo normalizado [0.0, 1.0]
+func factor_stat(valor: float) -> float:
+	return clampf((valor - 40.0) / 59.0, 0.0, 1.0)
+
+
+## Retorna true si el jugador posee el rasgo especial (Trait) indicado en su ficha
+func tiene_rasgo(nombre_rasgo: String) -> bool:
+	return rasgos.has(nombre_rasgo)
+
+
 ## Carga la identidad, dorsal y estadísticas individuales desde la base de datos Futsal_3D
 func _cargar_ficha_futsal_3d() -> void:
 	var es_loc: bool = (equipo == Equipo.LOCAL)
@@ -1140,6 +1161,13 @@ func _cargar_ficha_futsal_3d() -> void:
 	if not ficha.is_empty():
 		nombre_jugador = str(ficha.get("nombre", posicion_tactica))
 		dorsal = int(ficha.get("dorsal", dorsal))
+		
+		# Cargar rasgos especiales (traits)
+		var r_list: Array = ficha.get("rasgos", []) as Array
+		rasgos.clear()
+		for r: Variant in r_list:
+			rasgos.append(str(r))
+		
 		if posicion_tactica == "PORTERO":
 			ovr = int(ficha.get("ovr", 84))
 			ritmo = float(ficha.get("ritmo", 65.0))
@@ -1148,9 +1176,9 @@ func _cargar_ficha_futsal_3d() -> void:
 			gk_alcance_achique = float(ficha.get("gk_alcance_achique", ficha.get("gk_estirada", 85.0)))
 			gk_bloqueo_control = float(ficha.get("gk_bloqueo_control", ficha.get("gk_manejo", 82.0)))
 			gk_juego_pies = float(ficha.get("gk_juego_pies", ficha.get("gk_saque", 80.0)))
+			gk_saque = float(ficha.get("gk_saque", 80.0))
 			gk_estirada = gk_alcance_achique
 			gk_manejo = gk_bloqueo_control
-			gk_saque = gk_juego_pies
 			vision_pase = gk_juego_pies
 			control_balon = gk_bloqueo_control
 			defensa_recuperacion = gk_reflejos
@@ -1162,6 +1190,24 @@ func _cargar_ficha_futsal_3d() -> void:
 			regate = float(ficha.get("regate", regate))
 			defensa = float(ficha.get("defensa", defensa))
 			fisico = float(ficha.get("fisico", fisico))
+			
+			var subs: Dictionary = ficha.get("sub_atributos", {}) as Dictionary
+			aceleracion = float(subs.get("aceleracion", ritmo))
+			velocidad = float(subs.get("velocidad", ritmo))
+			finalizacion = float(subs.get("finalizacion", tiro))
+			potencia_tiro = float(subs.get("potencia_tiro", tiro))
+			efecto = float(subs.get("efecto", tiro))
+			balon_parado = float(subs.get("balon_parado", tiro))
+			pase_raso = float(subs.get("pase_raso", pase))
+			pase_hueco = float(subs.get("pase_hueco", pase))
+			vision = float(subs.get("vision", pase))
+			control_balon = float(subs.get("control_balon", regate))
+			drible = float(subs.get("drible", regate))
+			equilibrio = float(subs.get("equilibrio", regate))
+			actitud_defensiva = float(subs.get("actitud_defensiva", defensa))
+			entrada = float(subs.get("entrada", defensa))
+			contacto_fisico = float(subs.get("contacto_fisico", fisico))
+			resistencia = float(subs.get("resistencia", fisico))
 	
 	ovr = get_media_ovr()
 	if label_dorsal:
@@ -1610,14 +1656,15 @@ func _chequear_proximidad_balon() -> void:
 	if balon.esta_fuera_de_juego:
 		return
 	
-	# Si el balón está completamente libre, se toma con facilidad al tocarlo
+	# Si el balón está completamente libre, se toma con facilidad al tocarlo según control_balon
 	if not balon.esta_siendo_conducido():
 		var dist: float = global_position.distance_to(balon.global_position)
-		var radio_captura: float = 0.95
+		var factor_ctrl: float = factor_stat(control_balon)
+		var radio_captura: float = lerpf(0.75, 1.25, factor_ctrl)
 		if balon.receptor_destino == self:
-			radio_captura = 1.25
+			radio_captura = maxf(radio_captura * 1.2, 1.25)
 		elif es_controlado and balon.ultimo_toque_equipo == int(equipo):
-			radio_captura = 1.15
+			radio_captura = maxf(radio_captura * 1.1, 1.15)
 		if dist < radio_captura:
 			if posicion_tactica == "PORTERO":
 				Portero.procesar_recepcion(self, balon)
@@ -1936,7 +1983,10 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 			objetivo_z = -1.12 if randf() > 0.5 else 1.12
 	
 	var presion: float = calcular_presion_rival()
-	var error_dispersion: float = ((99.0 - precision_tiro) / 99.0 * 0.28) + (presion * 0.22)
+	var factor_fin: float = factor_stat(finalizacion)
+	var error_dispersion: float = ((1.0 - factor_fin * 0.85) * 0.28) + (presion * 0.22)
+	if tiene_rasgo("Finalizador Letal") or tiene_rasgo("Remate al primer toque"):
+		error_dispersion *= 0.75
 	if tipo_tiro == TipoTiro.COLOCADO:
 		# Mayor precisión en Tiro de Calidad
 		error_dispersion *= 0.42
@@ -1961,14 +2011,18 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 		var destino_poste_lejano: Vector3 = Vector3(arco_x, elevacion_colocado, z_apertura)
 		var dir_tiro: Vector3 = (destino_poste_lejano - pos_origen_tiro).normalized()
 		
-		var fuerza_colocado: float = (11.2 + (potencia_tiro / 99.0) * 5.0 + (potencia * 12.5)) * 0.86
+		var vel_max_tiro: float = lerpf(19.0, 31.5, factor_stat(potencia_tiro))
+		if tiene_rasgo("Cañonero"):
+			vel_max_tiro *= 1.08
+		var fuerza_colocado: float = (vel_max_tiro * 0.55 + potencia * vel_max_tiro * 0.45) * 0.86
 		var impulso_colocado: Vector3 = dir_tiro * fuerza_colocado + Vector3(0.0, 0.68 + potencia * 0.42, 0.0)
 		
 		var dir_plana_avance: Vector3 = Vector3(dir_tiro.x, 0.0, dir_tiro.z).normalized()
 		var dir_perp_a_poste: Vector3 = Vector3(0.0, 0.0, signo_curva)
 		# Componente puramente perpendicular al eje inicial de avance en el plano XZ
 		dir_perp_a_poste = (dir_perp_a_poste - dir_plana_avance * dir_perp_a_poste.dot(dir_plana_avance)).normalized()
-		var magnitud_curva: float = 2.35 + (precision_tiro / 99.0) * 0.85
+		var factor_efecto_curl: float = lerpf(0.8, 1.3, factor_stat(efecto))
+		var magnitud_curva: float = (2.2 + factor_stat(efecto) * 1.2) * factor_efecto_curl
 		_balon_referencia.liberar_con_efecto_magnus(impulso_colocado, dir_perp_a_poste * magnitud_curva, int(equipo))
 		if equipo == Equipo.LOCAL:
 			_emitir_anuncio_hud("¡TIRO COLOCADO CON ROSCA!")
@@ -1995,7 +2049,10 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 			elevacion_y = randf_range(1.35, 2.05)
 		var destino_tiro: Vector3 = Vector3(arco_x, elevacion_y, z_colocado)
 		var vector_tiro: Vector3 = (destino_tiro - pos_origen_tiro).normalized()
-		var fuerza_total: float = 10.5 + (potencia_tiro / 99.0) * 5.5 + (potencia * 15.5)
+		var vel_max_tiro: float = lerpf(19.0, 31.5, factor_stat(potencia_tiro))
+		if tiene_rasgo("Cañonero"):
+			vel_max_tiro *= 1.08
+		var fuerza_total: float = (vel_max_tiro * 0.45 + potencia * vel_max_tiro * 0.55)
 		var impulso_final: Vector3 = vector_tiro * fuerza_total + Vector3(0.0, 0.65 + potencia * 0.55, 0.0)
 		_balon_referencia.liberar(impulso_final, int(equipo), false)
 	
@@ -2003,21 +2060,33 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 		cambiar_a_mas_cercano_al_balon(false)
 
 
-## Calcula la velocidad de salida de un pase raso de futsal según la potencia cargada:
-## - Toque rápido (< 0.25): 14.0 a 16.0 m/s
-## - Carga media (0.25 a 0.70): 18.0 a 22.0 m/s
-## - Carga alta (> 0.70): 24.0 a 27.0 m/s
+## Calcula la velocidad de salida de un pase raso de futsal según la potencia cargada y el sub-atributo pase_raso:
+## - Toque rápido (< 0.25): 14.0 a 18.0 m/s
+## - Carga media (0.25 a 0.70): 18.0 a 23.0 m/s
+## - Carga alta (> 0.70): 23.0 a 27.0 m/s
 func _calcular_velocidad_pase_raso(potencia_norm: float) -> float:
 	var p: float = clampf(potencia_norm, 0.0, 1.0)
+	var f_stat: float = factor_stat(pase_raso)
+	var v_min: float = lerpf(14.0, 17.0, f_stat)
+	var v_max: float = lerpf(22.0, 27.0, f_stat)
 	if p < 0.25:
 		var t: float = p / 0.25
-		return lerpf(14.0, 16.0, t)
+		return lerpf(v_min, v_min + 2.0, t)
 	elif p <= 0.70:
 		var t: float = (p - 0.25) / 0.45
-		return lerpf(18.0, 22.0, t)
+		return lerpf(v_min + 2.0, v_max - 3.0, t)
 	else:
 		var t: float = (p - 0.70) / 0.30
-		return lerpf(24.0, 27.0, t)
+		return lerpf(v_max - 3.0, v_max, t)
+
+
+## Calcula la velocidad de pase al hueco según la potencia cargada y el sub-atributo pase_hueco
+func _calcular_velocidad_pase_hueco(potencia_norm: float) -> float:
+	var p: float = clampf(potencia_norm, 0.0, 1.0)
+	var f_stat: float = factor_stat(pase_hueco)
+	var v_min: float = lerpf(15.0, 18.0, f_stat)
+	var v_max: float = lerpf(23.0, 28.5, f_stat)
+	return lerpf(v_min, v_max, p)
 
 
 ## Pase con soporte para:
@@ -2051,8 +2120,11 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 	var mejor_companero: Jugador3D = _buscar_mejor_receptor(dir_busqueda, potencia)
 	
 	var presion: float = calcular_presion_rival()
-	var stat_precision: float = gk_saque if era_saque_mano else vision_pase
-	var error_total_rad: float = ((99.0 - stat_precision) / 99.0 * 0.12) + (presion * 0.12)
+	var stat_precision: float = gk_saque if era_saque_mano else vision
+	var f_vis: float = factor_stat(stat_precision)
+	var error_total_rad: float = (1.0 - f_vis) * 0.12 + (presion * 0.12)
+	if tiene_rasgo("Pase al Primer Toque") or tiene_rasgo("Pase magistral"):
+		error_total_rad *= 0.85
 	var desvio_angulo: float = randf_range(-error_total_rad, error_total_rad)
 	
 	_en_posicion_saque = false
@@ -2279,15 +2351,18 @@ func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
 		
 		var pos_companero: Vector3 = companero.global_position
 		var dist_inicial: float = pos_origen.distance_to(pos_companero)
-		var vel_media_pase: float = _calcular_velocidad_pase_raso(potencia)
+		var vel_media_pase: float = _calcular_velocidad_pase_hueco(potencia)
 		var t_trayectoria: float = clampf((dist_inicial / maxf(1.0, vel_media_pase)) + 0.25 + potencia * 0.35, 0.35, 1.20)
 		
 		# Calcular el punto óptimo mediante Conos de Pase y múltiples PhysicsRayQueryParameters3D
 		var p_destino: Vector3 = _calcular_mejor_punto_hueco_conos(pos_origen, companero, t_trayectoria)
 		
 		var presion: float = calcular_presion_rival()
-		var stat_vis: float = gk_saque if era_saque_mano else vision_pase
-		var error_total_rad: float = ((99.0 - stat_vis) / 99.0 * 0.08) + (presion * 0.08)
+		var stat_vis: float = gk_saque if era_saque_mano else vision
+		var f_vis: float = factor_stat(stat_vis)
+		var error_total_rad: float = (1.0 - f_vis) * 0.08 + (presion * 0.08)
+		if tiene_rasgo("Pase al Primer Toque") or tiene_rasgo("Pase magistral"):
+			error_total_rad *= 0.85
 		var desvio_angulo: float = randf_range(-error_total_rad, error_total_rad)
 		
 		var avance_ofensivo: Vector3 = Vector3(1.0, 0.0, 0.0) if equipo == Equipo.LOCAL else Vector3(-1.0, 0.0, 0.0)
@@ -2297,7 +2372,7 @@ func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
 		var dir_hueco: Vector3 = vector_hacia_hueco.rotated(Vector3.UP, desvio_angulo).normalized() if dist_hueco > 0.1 else avance_ofensivo
 		
 		# Impulso limpio y físicamente calculado: el balón llega al hueco rodando a velocidad fluida e interceptable (6.0 a 10.0 m/s)
-		var vel_llegada_hueco: float = 6.0 + clampf(potencia, 0.0, 1.0) * 4.0
+		var vel_llegada_hueco: float = lerpf(6.0, 10.0, factor_stat(pase_hueco)) * (0.8 + clampf(potencia, 0.0, 1.0) * 0.4)
 		var fuerza: float = _balon_referencia.calcular_impulso_rodado(dist_hueco, vel_llegada_hueco)
 		
 		_en_posicion_saque = false
@@ -2464,14 +2539,20 @@ func _chequear_impacto_barrida() -> bool:
 		return false
 	
 	var dist_balon: float = global_position.distance_to(balon.global_position)
-	if dist_balon < 1.6:
+	var radio_limpio: float = lerpf(0.65, 1.15, factor_stat(entrada))
+	if tiene_rasgo("Entrada Limpia"):
+		radio_limpio *= 1.12
+	var radio_max_barrida: float = radio_limpio * 1.38
+	
+	if dist_balon < radio_max_barrida:
 		if balon.esta_siendo_conducido() and balon.portador_actual != self:
 			var portador: Jugador3D = balon.portador_actual as Jugador3D
 			if portador and portador.equipo != equipo:
 				if portador.puede_ser_robado() and puede_tomar_balon():
 					portador.soltar_posesion()
 					portador._t_bloqueo_recaptura = t_bloqueo_recaptura
-					if randf() < 0.65:
+					var prob_retencion: float = lerpf(0.55, 0.85, factor_stat(control_balon))
+					if randf() < prob_retencion:
 						tomar_posesion(balon)
 					else:
 						var dir_despeje: Vector3 = -global_transform.basis.z.normalized() * 9.0 + Vector3(0, 1.2, 0)
@@ -2493,23 +2574,28 @@ func _chequear_falta_barrida() -> bool:
 	var grupo_rivales: String = "equipo_visitante" if equipo == Equipo.LOCAL else "equipo_local"
 	var rivales: Array[Node] = get_tree().get_nodes_in_group(grupo_rivales)
 	
+	var prob_falta: float = lerpf(0.65, 0.12, factor_stat(entrada))
+	if tiene_rasgo("Entrada Limpia"):
+		prob_falta *= 0.70
+	
 	for n: Node in rivales:
 		var rival: Jugador3D = n as Jugador3D
 		if rival == null or rival.posicion_tactica == "PORTERO" or rival.esta_expulsado:
 			continue
 		var dist: float = global_position.distance_to(rival.global_position)
 		if dist < 1.3:
-			_barrida_toco_balon = false
-			_barrida_cometio_falta = true
-			_en_barrida = false
-			_tiempo_barrida = 0.0
-			_t_aturdimiento = t_cooldown_barrida_fallida
-			rival._t_aturdimiento = 0.5
-			rival._cooldown_falta_contacto = 1.5
-			if rival.tiene_posesion:
-				rival.soltar_posesion()
-			_notificar_falta_arbitro(self, rival.global_position, rival, true)
-			return true
+			if randf() < prob_falta:
+				_barrida_toco_balon = false
+				_barrida_cometio_falta = true
+				_en_barrida = false
+				_tiempo_barrida = 0.0
+				_t_aturdimiento = t_cooldown_barrida_fallida
+				rival._t_aturdimiento = 0.5
+				rival._cooldown_falta_contacto = 1.5
+				if rival.tiene_posesion:
+					rival.soltar_posesion()
+				_notificar_falta_arbitro(self, rival.global_position, rival, true)
+				return true
 	return false
 
 
@@ -3540,10 +3626,13 @@ func _aplicar_movimiento(delta: float) -> void:
 			rotation.y = lerp_angle(rotation.y, angulo_apuntado, clampf(velocidad_giro * delta, 0.0, 1.0))
 		return
 	
-	# Velocidad calibrada para un ritmo de partido táctico, realista y totalmente controlable
-	var vel_base: float = 3.85 + (vel_movimiento / 99.0) * 1.75
-	var acel_base: float = 26.0 + (vel_movimiento / 99.0) * 10.0
-	var vel_max_efectiva: float = vel_base * (1.22 if sprint_activo else 1.0)
+	# Velocidad y aceleración calibradas con factores normalizados de sub-atributos (velocidad y aceleración)
+	var f_vel: float = factor_stat(velocidad)
+	var f_acel: float = factor_stat(aceleracion)
+	var vel_trote: float = lerpf(3.4, 4.8, f_vel)
+	var vel_sprint: float = lerpf(5.2, 7.3, f_vel)
+	var vel_max_efectiva: float = vel_sprint if sprint_activo else vel_trote
+	var acel_base: float = lerpf(9.0, 18.0, f_acel)
 	
 	# Solo reducir velocidad si el jugador está aturdido tras fallar una barrida
 	if _t_aturdimiento > 0.0:
@@ -3556,7 +3645,8 @@ func _aplicar_movimiento(delta: float) -> void:
 		vel_horizontal = vel_horizontal.move_toward(vel_objetivo, acel_base * delta)
 		
 		var angulo_objetivo: float = atan2(-_direccion_deseada.x, -_direccion_deseada.z)
-		rotation.y = lerp_angle(rotation.y, angulo_objetivo, clampf(velocidad_giro * delta, 0.0, 1.0))
+		var giro_efectivo: float = lerpf(12.0, 22.0, factor_stat(drible)) if tiene_posesion else velocidad_giro
+		rotation.y = lerp_angle(rotation.y, angulo_objetivo, clampf(giro_efectivo * delta, 0.0, 1.0))
 	else:
 		vel_horizontal = vel_horizontal.move_toward(Vector3.ZERO, 30.0 * delta)
 		if (es_opcion_de_pase or _estado_ia == EstadoIA.DESMARQUE_APOYO) and not es_controlado:
@@ -3895,29 +3985,54 @@ func _sincronizar_articulaciones_actuales(tiene_pivotes_legacy: bool) -> void:
 func get_media_ovr() -> int:
 	if posicion_tactica == "PORTERO":
 		var media_gk: float = (
-			gk_posicionamiento * 0.25 +
-			gk_reflejos * 0.25 +
-			gk_alcance_achique * 0.20 +
-			gk_bloqueo_control * 0.15 +
-			gk_juego_pies * 0.15
+			gk_reflejos * 0.28 +
+			gk_posicionamiento * 0.24 +
+			gk_alcance_achique * 0.22 +
+			gk_bloqueo_control * 0.14 +
+			gk_juego_pies * 0.07 +
+			gk_saque * 0.05
 		)
 		return int(round(media_gk))
 	
-	var suma_ponderada: float = (
-		ritmo * 0.20 +
-		tiro * 0.20 +
-		pase * 0.20 +
-		regate * 0.15 +
-		defensa * 0.15 +
-		fisico * 0.10
-	)
-	return int(round(suma_ponderada))
+	match posicion_tactica:
+		"CIERRE":
+			var ovr_cierre: float = (
+				defensa * 0.35 +
+				fisico * 0.20 +
+				pase * 0.20 +
+				ritmo * 0.15 +
+				regate * 0.05 +
+				tiro * 0.05
+			)
+			return int(round(ovr_cierre))
+		"ALA_IZQ", "ALA_DER":
+			var ovr_ala: float = (
+				ritmo * 0.28 +
+				regate * 0.27 +
+				pase * 0.20 +
+				tiro * 0.15 +
+				defensa * 0.05 +
+				fisico * 0.05
+			)
+			return int(round(ovr_ala))
+		"PIVOT":
+			var ovr_pivot: float = (
+				tiro * 0.35 +
+				fisico * 0.25 +
+				regate * 0.20 +
+				pase * 0.10 +
+				ritmo * 0.05 +
+				defensa * 0.05
+			)
+			return int(round(ovr_pivot))
+		_:
+			var ovr_gen: float = (ritmo + tiro + pase + regate + defensa + fisico) / 6.0
+			return int(round(ovr_gen))
 
 
-## Retorna la velocidad máxima de sprint reglamentaria según el atributo OVR de vel_movimiento
+## Retorna la velocidad máxima de sprint reglamentaria según el factor normalizado del sub-atributo de velocidad
 func obtener_velocidad_sprint_max() -> float:
-	var vel_base: float = 3.85 + (vel_movimiento / 99.0) * 1.75
-	return vel_base * multiplicador_sprint
+	return lerpf(5.2, 7.3, factor_stat(velocidad))
 
 
 func establecer_sprint(activo: bool) -> void:
@@ -4395,7 +4510,7 @@ func _procesar_impacto_hueso_arquero(balon: Balon3D, zona: String, punto_balon: 
 	if balon == null or _tiempo_paradon_reciente > 0.0:
 		return
 	
-	_tiempo_paradon_reciente = lerpf(0.55, 0.18, gk_reflejos / 99.0)
+	_tiempo_paradon_reciente = lerpf(0.55, 0.18, factor_stat(gk_reflejos))
 	_doble_atajada_activa = true
 	_lado_pose_arquero = 1.0 if (punto_balon.z >= global_position.z) else -1.0
 	_lado_atajada = _lado_pose_arquero
@@ -4412,22 +4527,22 @@ func _procesar_impacto_hueso_arquero(balon: Balon3D, zona: String, punto_balon: 
 	match zona:
 		"manos":
 			var vel_tiro: float = balon.linear_velocity.length()
-			var puede_embolsar: bool = (vel_tiro < 12.0 or (gk_bloqueo_control > 75.0 and randf() < (gk_bloqueo_control / 100.0) * 0.75))
+			var puede_embolsar: bool = (vel_tiro < 12.0 or randf() < factor_stat(gk_bloqueo_control) * 0.80)
 			if puede_embolsar and Portero.puede_usar_manos(self, balon):
 				atrapar_con_manos(balon)
 				pose_arquero_actual = PoseArquero.MANOS_SEGURAS
 				_t_anim_atajada = 0.55
-				_emitir_anuncio_hud("¡%s ATRAPA Y ASEGURA EL BALÓN!" % nombre_jugador.to_upper())
+				_emitir_anuncio_hud("¡PARADÓN Y BALÓN ASEGURADO!")
 			else:
 				pose_arquero_actual = PoseArquero.ESTIRADA_ALTA if punto_balon.y > 1.1 else PoseArquero.GUARDIA_BAJA
 				_t_anim_atajada = 0.45
 				balon.procesar_impacto_arquero("manos", self)
-				_emitir_anuncio_hud("¡PARADÓN A MANO CAMBIADA DE %s!" % nombre_jugador.to_upper())
+				_emitir_anuncio_hud("¡DESVÍO PROVIDENCIAL A CÓRNER!")
 		"pecho":
 			pose_arquero_actual = PoseArquero.BLOQUEO_PECHO
 			_t_anim_atajada = 0.48
 			balon.procesar_impacto_arquero("pecho", self)
-			_emitir_anuncio_hud("¡BLOQUEO DE PECHO DE %s!" % nombre_jugador.to_upper())
+			_emitir_anuncio_hud("¡BLOQUEO DE PECHO!")
 		"piernas":
 			if abs(punto_balon.z - global_position.z) > 0.8:
 				pose_arquero_actual = PoseArquero.DESPLIEGUE_L
@@ -4435,7 +4550,7 @@ func _procesar_impacto_hueso_arquero(balon: Balon3D, zona: String, punto_balon: 
 				pose_arquero_actual = PoseArquero.DESPEJE_PIE
 			_t_anim_atajada = 0.50
 			balon.procesar_impacto_arquero("piernas", self)
-			_emitir_anuncio_hud("¡ATAJADA CON LOS PIES DE %s!" % nombre_jugador.to_upper())
+			_emitir_anuncio_hud("¡PARADA CON EL PIE / ACHIQUE EN CRUZ!")
 
 
 func _obtener_pos_global_hueso(idx: int) -> Vector3:

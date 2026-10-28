@@ -290,8 +290,11 @@ func procesar_impacto_arquero(zona: String, arquero: Jugador3D) -> void:
 	
 	match zona:
 		"manos":
-			if vel_tiro < 12.0:
-				# Velocidad baja (< 12 m/s): El arquero embolsa (bloquea y toma posesión inmediata del balón)
+			var prob_embolsar: float = 0.55
+			if arquero and is_instance_valid(arquero) and arquero.has_method("factor_stat"):
+				prob_embolsar = arquero.factor_stat(arquero.gk_bloqueo_control) * 0.80
+			if vel_tiro < 12.0 or randf() < prob_embolsar:
+				# Velocidad baja (< 12 m/s) o alto bloqueo_control: El arquero embolsa (bloquea y asegura posesión)
 				linear_velocity = Vector3.ZERO
 				angular_velocity = Vector3.ZERO
 				if arquero and is_instance_valid(arquero):
