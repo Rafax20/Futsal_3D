@@ -98,6 +98,10 @@ var es_tiro_indirecto: bool = false
 var toques_en_jugada: int = 0
 var ultimo_ejecutor_saque: Node3D = null
 
+# Control estricto de auto-recepción del pasador (cooldown de doble toque en pases rasos y saques)
+var ultimo_pasador: Node3D = null
+var _t_bloqueo_pasador: float = 0.0
+
 # Indicador de pase al hueco en curso (para seguimiento de cámara/IA, sin frenado magnético artificial)
 var _en_pase_hueco: bool = false
 var _punto_objetivo_hueco: Vector3 = Vector3.ZERO
@@ -133,6 +137,10 @@ func _physics_process(delta: float) -> void:
 		_t_cooldown_impacto_barrera -= delta
 	if _t_sin_captura > 0.0:
 		_t_sin_captura -= delta
+	if _t_bloqueo_pasador > 0.0:
+		_t_bloqueo_pasador -= delta
+		if _t_bloqueo_pasador <= 0.0:
+			ultimo_pasador = null
 	if estado == EstadoBalon.LIBRE:
 		_verificar_colision_alta_velocidad_raycast(delta)
 		_aplicar_curva_tiro_colocado(delta)
@@ -195,9 +203,14 @@ func _configurar_fisicas() -> void:
 func registrar_contacto_jugador(jugador: Node3D) -> void:
 	if jugador == null or not is_instance_valid(jugador):
 		return
-	if toques_en_jugada >= 1 and jugador != ultimo_ejecutor_saque:
-		toques_en_jugada += 1
-		ultimo_ejecutor_saque = null
+	if jugador != ultimo_pasador and jugador != ultimo_ejecutor_saque:
+		if ultimo_pasador != null and is_instance_valid(ultimo_pasador) and ultimo_pasador.has_method("desbloquear_recaptura"):
+			ultimo_pasador.desbloquear_recaptura()
+		ultimo_pasador = null
+		_t_bloqueo_pasador = 0.0
+		if toques_en_jugada >= 1:
+			toques_en_jugada += 1
+			ultimo_ejecutor_saque = null
 
 
 func _on_cuerpo_contactado(body: Node) -> void:
@@ -431,9 +444,14 @@ func _limpiar_portadores_previos(excepto: Node3D = null) -> void:
 
 ## Pasa el balón al estado de posesión magnética con el jugador indicado
 func capturar_por(jugador: Node3D) -> void:
-	if toques_en_jugada >= 1 and jugador != null and jugador != ultimo_ejecutor_saque:
-		toques_en_jugada += 1
-		ultimo_ejecutor_saque = null
+	if jugador != null and jugador != ultimo_pasador and jugador != ultimo_ejecutor_saque:
+		if ultimo_pasador != null and is_instance_valid(ultimo_pasador) and ultimo_pasador.has_method("desbloquear_recaptura"):
+			ultimo_pasador.desbloquear_recaptura()
+		ultimo_pasador = null
+		_t_bloqueo_pasador = 0.0
+		if toques_en_jugada >= 1:
+			toques_en_jugada += 1
+			ultimo_ejecutor_saque = null
 	_limpiar_portadores_previos(jugador)
 	estado = EstadoBalon.CONDUCIDO
 	_en_pase_hueco = false
@@ -480,18 +498,32 @@ func conducir_hacia(pos_socket: Vector3, delta: float, firmeza: float, conductor
 	angular_velocity = Vector3.ZERO
 
 
+## Registra al jugador pasador y bloquea su recaptura hasta que expire el cooldown o intervenga otro jugador
+func registrar_pasador(pasador: Node3D, duracion: float = 1.0) -> void:
+	ultimo_pasador = pasador
+	_t_bloqueo_pasador = duracion
+
+
 ## Libera el balón del portador y aplica un impulso físico limpio, contabilizando `toques_en_jugada`
-func liberar(impulso: Vector3, equipo_origen: int = -1, es_pase_pie_companero: bool = false) -> void:
+func liberar(impulso: Vector3, equipo_origen: int = -1, es_pase_pie_companero: bool = false, pasador: Node3D = null) -> void:
+	var ejecutante: Node3D = pasador
+	if ejecutante == null:
+		ejecutante = portador_actual if portador_actual != null else sacador_autorizado
+	
+	if ejecutante != null:
+		registrar_pasador(ejecutante, 1.0)
+	
 	if equipo_origen != -1:
 		ultimo_toque_equipo = equipo_origen
 	elif portador_actual and "equipo" in portador_actual:
 		ultimo_toque_equipo = int(portador_actual.equipo)
+	elif ejecutante and "equipo" in ejecutante:
+		ultimo_toque_equipo = int(ejecutante.equipo)
 	
 	# Contabilizar toques en jugada para la regla de Tiro Indirecto y Doble Toque
-	if toques_en_jugada == 0:
+	if toques_en_jugada == 0 or sacador_autorizado != null:
 		toques_en_jugada = 1
-		if ultimo_ejecutor_saque == null:
-			ultimo_ejecutor_saque = sacador_autorizado if sacador_autorizado != null else portador_actual
+		ultimo_ejecutor_saque = ejecutante
 	else:
 		toques_en_jugada += 1
 		ultimo_ejecutor_saque = null
@@ -661,9 +693,9 @@ func liberar_al_hueco(impulso: Vector3, punto_objetivo: Vector3, equipo_origen: 
 ## - linear_damp = 0.3 (fricción de parqué) y amortiguación angular (1.3)
 ## - anulación de componente vertical (Y = 0) para rodadura limpia a ras de suelo
 ## - registro de cesión intencional (es_cesion_pie_companero = true) y cómputo de toques en jugada
-func liberar_pase_raso(impulso: Vector3, equipo_origen: int = 0) -> void:
+func liberar_pase_raso(impulso: Vector3, equipo_origen: int = 0, es_pase_pie_companero: bool = true, pasador: Node3D = null) -> void:
 	var imp_raso: Vector3 = Vector3(impulso.x, 0.0, impulso.z)
-	liberar(imp_raso, equipo_origen, true)
+	liberar(imp_raso, equipo_origen, es_pase_pie_companero, pasador)
 	linear_damp = 0.3
 	angular_damp = 1.3
 	linear_velocity.y = 0.0
@@ -673,10 +705,13 @@ func liberar_pase_raso(impulso: Vector3, equipo_origen: int = 0) -> void:
 ## - Mientras el saque no se haya ejecutado (`sacador_autorizado != null`), solo el sacador autorizado puede tomarlo.
 ## - Regla del Doble Toque (FIFA/IFAB): el pateador (`ultimo_ejecutor_saque`) NO puede volver a contactar
 ##   el balón hasta que `toques_en_jugada >= 2` (tocado por otro jugador o arquero).
+## - Cooldown estricto de auto-recepción del pasador (`_t_bloqueo_pasador > 0.0` y `ultimo_pasador`).
 func puede_ser_capturado_por(j: Jugador3D) -> bool:
 	if not puede_ser_capturado():
 		return false
 	if sacador_autorizado != null and j != sacador_autorizado:
+		return false
+	if _t_bloqueo_pasador > 0.0 and ultimo_pasador != null and j == ultimo_pasador:
 		return false
 	if toques_en_jugada == 1 and ultimo_ejecutor_saque != null and j == ultimo_ejecutor_saque:
 		return false
@@ -732,6 +767,8 @@ func colocar_en_reanudacion(nueva_posicion: Vector3) -> void:
 	es_tiro_indirecto = false
 	toques_en_jugada = 0
 	ultimo_ejecutor_saque = null
+	ultimo_pasador = null
+	_t_bloqueo_pasador = 0.0
 	sacador_autorizado = null
 	linear_damp = amortiguacion_lineal
 	portador_actual = null

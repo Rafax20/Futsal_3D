@@ -678,37 +678,15 @@ func _iniciar_estado_ejecucion() -> void:
 		balon.configurar_saque_reglamentario(pos_balon_ejecucion, lanzador, es_tiro_indirecto)
 		balon.freeze = true
 
-	# 2. Dirección hacia el centro del arco rival
-	var dir_arco: Vector3 = (pos_arco_rival - pos_balon_ejecucion).normalized()
-	dir_arco.y = 0.0
-	dir_arco = dir_arco.normalized()
-	_base_forward_tl = dir_arco
-	_direccion_apuntado_tactico = dir_arco
-
-	# 3. Situar al lanzador en el offset relativo correcto respecto al balón (1.5 m detrás mirando al arco)
-	# NUNCA directamente encima de las coordenadas del balón o reemplazándolo
-	var pos_lanzador: Vector3 = pos_balon_ejecucion - dir_arco * 1.5
-	pos_lanzador.y = 0.0
-	_pos_fija_lanzador = pos_lanzador
-
+	# 2. Configuración y posicionamiento del lanzador con setup_kicker_transform centralizado
 	var pateador: Jugador3D = lanzador
-	_jugador_activo_actual = pateador
-	if pateador:
-		pateador.es_controlado = true
-		pateador.soltar_posesion()
-		pateador.set_congelado(false)
-		pateador.global_position = pos_lanzador
-		pateador.look_at(pos_balon_ejecucion + dir_arco * 5.0, Vector3.UP)
-		pateador.rotation.x = 0.0
-		pateador.rotation.z = 0.0
-		pateador.velocity = Vector3.ZERO
-		pateador.fijar_en_saque(true, pos_lanzador)
+	setup_kicker_transform(pateador, pos_balon_ejecucion, pos_arco_rival)
 
-	# 4. Posicionar la formación defensiva según el modo reglamentario (Barrera a 5.0m o 6ª falta sin barrera)
-	_posicionar_barrera_rival_5m(pos_balon_ejecucion, pos_arco_rival, dir_arco)
+	# 3. Posicionar la formación defensiva según el modo reglamentario (Barrera a 5.0m o 6ª falta sin barrera)
+	_posicionar_barrera_rival_5m(pos_balon_ejecucion, pos_arco_rival, _base_forward_tl)
 
-	# 5. Posicionar a los compañeros de equipo en líneas de pase viables fuera de la barrera (Uniforme Rojo)
-	_posicionar_companeros_tiro_libre(pos_balon_ejecucion, pos_arco_rival, dir_arco)
+	# 4. Posicionar a los compañeros de equipo en líneas de pase viables fuera de la barrera (Uniforme Rojo)
+	_posicionar_companeros_tiro_libre(pos_balon_ejecucion, pos_arco_rival, _base_forward_tl)
 
 	# 6. Conmutación inteligente de vista y controles según distancia a portería (Estilo eFootball):
 	# - Si la infracción ocurre detrás de umbral_distancia_remate (> 15.0m): vista por defecto táctica/cenital,
@@ -731,6 +709,96 @@ func _iniciar_estado_ejecucion() -> void:
 			timer_saque_4s.wait_time = tiempo_saque
 			timer_saque_4s.start(tiempo_saque)
 		_actualizar_hud_cuenta_4s(tiempo_saque, true)
+
+
+## Configura de forma estricta y centralizada el Transform3D del lanzador de tiro libre:
+## - El vector Forward apunta estrictamente hacia el centro de la portería rival en el plano horizontal (XZ).
+## - El lanzador se sitúa en el offset relativo correcto (1.5m detrás del balón) sin superponerse a la pelota.
+## - El modelo queda con el pecho hacia los postes y el dorsal/espalda hacia la cámara trasera OTS (NUNCA de cara a la cámara).
+## - Se valida contra rotaciones invertidas de 180° y se limpian vectores residuales de movimiento.
+func setup_kicker_transform(pateador: Jugador3D, pos_balon: Vector3, pos_arco: Vector3) -> void:
+	if pateador == null or not is_instance_valid(pateador):
+		return
+
+	# 1. Dirección hacia el centro del arco rival en el plano horizontal (XZ)
+	var dir_to_goal: Vector3 = (pos_arco - pos_balon).normalized()
+	dir_to_goal.y = 0.0
+	if dir_to_goal.length_squared() < 0.001:
+		dir_to_goal = Vector3(1.0, 0.0, 0.0)
+	else:
+		dir_to_goal = dir_to_goal.normalized()
+
+	_base_forward_tl = dir_to_goal
+	_direccion_apuntado_tactico = dir_to_goal
+
+	# 2. Situar al lanzador a 1.5 m detrás del balón mirando hacia el arco
+	var pos_lanzador: Vector3 = pos_balon - dir_to_goal * 1.5
+	pos_lanzador.y = 0.0
+	_pos_fija_lanzador = pos_lanzador
+
+	_jugador_activo_actual = pateador
+	pateador.es_controlado = true
+	pateador.soltar_posesion()
+	pateador.set_congelado(false)
+	pateador.global_position = pos_lanzador
+	pateador.velocity = Vector3.ZERO
+
+	# 3. Orientar al lanzador estrictamente hacia el arco rival (pecho al arco, espalda a la cámara OTS)
+	pateador.look_at(pos_lanzador + dir_to_goal * 10.0, Vector3.UP)
+	pateador.rotation.x = 0.0
+	pateador.rotation.z = 0.0
+
+	# 4. Verificación de seguridad anatómica contra rotación invertida de 180° de cara a la cámara:
+	# En Godot el vector frontal natural del nodo es -basis.z.
+	if (-pateador.global_transform.basis.z).dot(dir_to_goal) < 0.5:
+		pateador.rotation.y += PI
+
+	# Asegurar alineación del nodo visual interno (Visual / ModeloJugador)
+	if pateador.visual != null:
+		pateador.visual.rotation.x = 0.0
+		pateador.visual.rotation.z = 0.0
+	if pateador.modelo_jugador != null:
+		pateador.modelo_jugador.rotation = Vector3(0.0, PI, 0.0)
+
+	# 5. Sincronizar vectores internos de dirección deseada para evitar giros involuntarios
+	pateador._direccion_deseada = dir_to_goal
+	pateador.direccion_virtual = Vector2(dir_to_goal.x, dir_to_goal.z)
+	pateador.fijar_en_saque(true, pos_lanzador)
+
+
+## Reactiva de forma inmediata y completa a todos los compañeros de equipo en el momento
+## en que el balón recibe impulso (disparo o pase) o tras el rebote en la barrera/portero (JUEGO_ACTIVO).
+## Quita estados de congelado o fijado, habilita physics_process y desata desmarques y apoyos ofensivos.
+func _reactivar_companeros_ia_tiro_libre() -> void:
+	var companeros: Array[Jugador3D] = []
+	if companero_banda and is_instance_valid(companero_banda):
+		companeros.append(companero_banda)
+	if companero_frontal and is_instance_valid(companero_frontal):
+		companeros.append(companero_frontal)
+
+	var nodos_locales: Array[Node] = get_tree().get_nodes_in_group("equipo_local")
+	for n: Node in nodos_locales:
+		var j: Jugador3D = n as Jugador3D
+		if j and is_instance_valid(j) and j != _jugador_activo_actual and j != lanzador and not (j in companeros):
+			companeros.append(j)
+
+	var pos_b: Vector3 = balon.global_position if balon != null else _pos_ejecucion_efectiva
+
+	for comp: Jugador3D in companeros:
+		comp.set_congelado(false)
+		comp.fijar_en_saque(false)
+		comp.set_physics_process(true)
+		comp.es_opcion_de_pase = true
+		if comp.indicador_control:
+			comp.indicador_control.visible = true
+
+		# Si el compañero no es el receptor activo de un pase en tránsito, activar desmarque y apoyo ofensivo
+		if not comp._esperando_recepcion_pase and not comp._corriendo_al_espacio:
+			comp._t_desmarque_ofensivo = randf_range(2.0, 3.5)
+			comp._estado_ia = Jugador3D.EstadoIA.DESMARQUE_APOYO
+			if comp.has_method("_comportamiento_ataque_local") and balon != null:
+				comp._comportamiento_ataque_local(pos_b, balon)
+
 
 
 ## Posiciona la formación defensiva aplicando las Reglas Oficiales de Futsal (FIFA/IFAB):
@@ -861,6 +929,7 @@ func _posicionar_companeros_tiro_libre(pos_balon: Vector3, _pos_arco: Vector3, _
 		companero_banda.rotation.x = 0.0
 		companero_banda.rotation.z = 0.0
 		companero_banda.fijar_en_saque(false)
+		companero_banda.set_physics_process(true)
 		companero_banda.velocity = Vector3.ZERO
 		companero_banda.es_opcion_de_pase = true
 		if companero_banda.indicador_control:
@@ -882,6 +951,7 @@ func _posicionar_companeros_tiro_libre(pos_balon: Vector3, _pos_arco: Vector3, _
 		companero_frontal.rotation.x = 0.0
 		companero_frontal.rotation.z = 0.0
 		companero_frontal.fijar_en_saque(false)
+		companero_frontal.set_physics_process(true)
 		companero_frontal.velocity = Vector3.ZERO
 		companero_frontal.es_opcion_de_pase = true
 		if companero_frontal.indicador_control:
@@ -1097,10 +1167,15 @@ func _actualizar_paneo_camara(pos: Vector2) -> void:
 		if pateador != null and is_instance_valid(pateador) and balon != null:
 			var pos_lanzador: Vector3 = balon.global_position - dir_apuntado * 1.5
 			pos_lanzador.y = 0.0
+			_pos_fija_lanzador = pos_lanzador
 			pateador.global_position = pos_lanzador
-			pateador.look_at(balon.global_position + dir_apuntado * 5.0, Vector3.UP)
+			pateador.look_at(pos_lanzador + dir_apuntado * 10.0, Vector3.UP)
 			pateador.rotation.x = 0.0
 			pateador.rotation.z = 0.0
+			if (-pateador.global_transform.basis.z).dot(dir_apuntado) < 0.5:
+				pateador.rotation.y += PI
+			pateador._direccion_deseada = dir_apuntado
+			pateador.direccion_virtual = Vector2(dir_apuntado.x, dir_apuntado.z)
 			pateador.fijar_en_saque(true, pos_lanzador)
 
 
@@ -1373,8 +1448,19 @@ func ejecutar_pase_al_pie(companero: Jugador3D) -> void:
 	pateador.soltar_posesion()
 	pateador.fijar_en_saque(false)
 
-	# 2. El receptor activa recepción de pase entrante orientándose dinámicamente al balón
+	# 2. Reactivar de inmediato a toda la IA de compañeros y preparar al receptor para avance activo
+	_reactivar_companeros_ia_tiro_libre()
+	companero.set_congelado(false)
+	companero.fijar_en_saque(false)
+	companero.set_physics_process(true)
 	companero.iniciar_recepcion_pase_entrante(balon, false)
+	var vec_hacia_balon: Vector3 = (balon.global_position - companero.global_position).normalized()
+	vec_hacia_balon.y = 0.0
+	companero.look_at(companero.global_position + vec_hacia_balon * 5.0, Vector3.UP)
+	companero.rotation.x = 0.0
+	companero.rotation.z = 0.0
+	companero._direccion_deseada = vec_hacia_balon
+	companero.velocity = vec_hacia_balon * 4.2
 
 	# 3. Aplica un impulso raso directo (VEL_PASE = 8.5 m/s)
 	var impulso_pase: Vector3 = dir_pase * (VEL_PASE_AL_PIE * balon.mass)
@@ -1437,7 +1523,11 @@ func ejecutar_pase_al_hueco(hit_suelo: Vector3, companero: Jugador3D) -> void:
 	pateador.soltar_posesion()
 	pateador.fijar_en_saque(false)
 
-	# 2. El compañero seleccionado activa de inmediato rutina de recepción al hueco en sprint
+	# 2. Reactivar IA de compañeros y poner al receptor en sprint hacia el espacio
+	_reactivar_companeros_ia_tiro_libre()
+	companero.set_congelado(false)
+	companero.fijar_en_saque(false)
+	companero.set_physics_process(true)
 	companero.iniciar_recepcion_pase_entrante(balon, true, punto_destino)
 
 	# 3. El balón se dispara con mayor aceleración hacia el espacio libre (VEL_PASE = 11.5 m/s)
@@ -1592,8 +1682,19 @@ func _ejecutar_pase_tactico(potencia: float, tipo_pase: int = Jugador3D.TipoPase
 	pateador.soltar_posesion()
 	pateador.fijar_en_saque(false)
 
-	# 3. El receptor prepara recepción continua y orientada al balón
+	# 3. Reactivar compañeros de equipo y preparar al receptor para avance activo
+	_reactivar_companeros_ia_tiro_libre()
+	receptor.set_congelado(false)
+	receptor.fijar_en_saque(false)
+	receptor.set_physics_process(true)
 	receptor.iniciar_recepcion_pase_entrante(balon, false)
+	var vec_hacia_b: Vector3 = (balon.global_position - receptor.global_position).normalized()
+	vec_hacia_b.y = 0.0
+	receptor.look_at(receptor.global_position + vec_hacia_b * 5.0, Vector3.UP)
+	receptor.rotation.x = 0.0
+	receptor.rotation.z = 0.0
+	receptor._direccion_deseada = vec_hacia_b
+	receptor.velocity = vec_hacia_b * 4.2
 
 	# 4. Impulso físico directo al balón
 	if balon.linear_velocity.length() < 1.0:
@@ -1658,7 +1759,11 @@ func _ejecutar_pase_hueco_tactico(potencia: float) -> void:
 	pateador.soltar_posesion()
 	pateador.fijar_en_saque(false)
 
-	# 4. El receptor inicia carrera y búsqueda de intercepción al hueco
+	# 4. Reactivar compañeros de equipo y lanzar al receptor hacia el hueco
+	_reactivar_companeros_ia_tiro_libre()
+	receptor.set_congelado(false)
+	receptor.fijar_en_saque(false)
+	receptor.set_physics_process(true)
 	receptor.iniciar_recepcion_pase_entrante(balon, true, punto_hueco)
 
 	# 5. Impulso en profundidad al balón
@@ -1871,6 +1976,9 @@ func _aplicar_impacto_balon_post_carrera() -> void:
 		balon.liberar(_impulso_pendiente, 0, false)
 	toques_en_jugada = balon.toques_en_jugada
 
+	# Reactivación inmediata e integral de IA de compañeros para disputar rechace o jugada viva
+	_reactivar_companeros_ia_tiro_libre()
+
 
 func _on_capa_trazo_swipe_draw() -> void:
 	if capa_trazo_swipe == null or estado_actual != EstadoEntrenamiento.EJECUCION:
@@ -2022,18 +2130,7 @@ func _aplicar_modo_vista_tactica_o_tiro(es_tactica: bool, inmediato: bool = fals
 	_swipe_puntos.clear()
 
 	# Reactivar IA de desmarques y apoyos en compañeros sin congelamiento
-	if companero_banda and is_instance_valid(companero_banda):
-		companero_banda.set_congelado(false)
-		companero_banda.fijar_en_saque(false)
-		companero_banda.es_opcion_de_pase = true
-		if companero_banda.indicador_control:
-			companero_banda.indicador_control.visible = true
-	if companero_frontal and is_instance_valid(companero_frontal):
-		companero_frontal.set_congelado(false)
-		companero_frontal.fijar_en_saque(false)
-		companero_frontal.es_opcion_de_pase = true
-		if companero_frontal.indicador_control:
-			companero_frontal.indicador_control.visible = true
+	_reactivar_companeros_ia_tiro_libre()
 
 	if es_tactica:
 		# Vista Táctica / Cenital (Orientada a la creación de juego con HUD estándar TouchControls)
@@ -2062,6 +2159,9 @@ func _aplicar_modo_vista_tactica_o_tiro(es_tactica: bool, inmediato: bool = fals
 			btn_cambiar_vista.text = "🎥 VISTA DISPARO"
 	else:
 		# Vista Trasera OTS (Disparo directo con trazo curvo / Magnus)
+		var pateador_ots: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
+		setup_kicker_transform(pateador_ots, balon.global_position if balon != null else _pos_ejecucion_efectiva, Vector3(20.0, 0.0, 0.0))
+
 		if _indicador_cono_pase:
 			_indicador_cono_pase.visible = false
 		if camara:
@@ -2104,15 +2204,14 @@ func _activar_continuidad_juego_activo(motivo: String = "¡BALÓN EN JUEGO!") ->
 		lanzador.set_congelado(false)
 		lanzador.establecer_pose_barrera(false)
 		lanzador.en_pose_barrera = false
-	if companero_banda and is_instance_valid(companero_banda):
-		companero_banda.set_congelado(false)
-	if companero_frontal and is_instance_valid(companero_frontal):
-		companero_frontal.set_congelado(false)
 	for def: Jugador3D in _defensores_barrera:
 		if def and is_instance_valid(def):
 			def.fijar_en_saque(false)
 			def.establecer_pose_barrera(false)
 			def.set_congelado(false)
+
+	# Reactivación completa de compañeros de equipo (IA ofensiva activa, desmarques y apoyos)
+	_reactivar_companeros_ia_tiro_libre()
 
 	# 2. Conmutar cámara a vista de transmisión / seguimiento dinámico
 	if camara:
@@ -2227,19 +2326,8 @@ func _on_elegir_lanzador_pressed() -> void:
 	if actual != nuevo_lanzador and balon != null:
 		var pos_antigua_nuevo: Vector3 = nuevo_lanzador.global_position
 
-		var dir_arco: Vector3 = (Vector3(20.0, 0.0, 0.0) - balon.global_position).normalized()
-		dir_arco.y = 0.0
-		dir_arco = dir_arco.normalized()
-
-		nuevo_lanzador.es_controlado = true
-		nuevo_lanzador.set_congelado(false)
-		nuevo_lanzador.global_position = balon.global_position - dir_arco * 1.5
-		nuevo_lanzador.global_position.y = 0.0
-		_pos_fija_lanzador = nuevo_lanzador.global_position
-		nuevo_lanzador.look_at(balon.global_position + dir_arco * 5.0, Vector3.UP)
-		nuevo_lanzador.rotation.x = 0.0
-		nuevo_lanzador.rotation.z = 0.0
-		nuevo_lanzador.fijar_en_saque(true, nuevo_lanzador.global_position)
+		# Configurar al nuevo lanzador con setup_kicker_transform centralizado
+		setup_kicker_transform(nuevo_lanzador, balon.global_position, Vector3(20.0, 0.0, 0.0))
 		nuevo_lanzador.es_opcion_de_pase = false
 
 		actual.es_controlado = false
@@ -2250,6 +2338,7 @@ func _on_elegir_lanzador_pressed() -> void:
 		actual.rotation.z = 0.0
 		actual.fijar_en_saque(false)
 		actual.set_congelado(false)
+		actual.set_physics_process(true)
 		actual.es_opcion_de_pase = true
 
 		_jugador_activo_actual = nuevo_lanzador
@@ -2320,6 +2409,19 @@ func _physics_process(delta: float) -> void:
 				pateador.rotation.z = 0.0
 				pateador._direccion_deseada = _direccion_apuntado_tactico
 				pateador.direccion_virtual = Vector2(_direccion_apuntado_tactico.x, _direccion_apuntado_tactico.z)
+			else:
+				# En Vista Trasera OTS: Mantener la orientación del lanzador hacia el objetivo de la cámara o al arco rival (NUNCA de cara a la cámara)
+				var dir_ots: Vector3 = camara.obtener_direccion_apuntado_tl() if camara != null else _base_forward_tl
+				dir_ots.y = 0.0
+				if dir_ots.length_squared() > 0.01:
+					dir_ots = dir_ots.normalized()
+					pateador.rotation.y = atan2(-dir_ots.x, -dir_ots.z)
+					pateador.rotation.x = 0.0
+					pateador.rotation.z = 0.0
+					if (-pateador.global_transform.basis.z).dot(dir_ots) < 0.5:
+						pateador.rotation.y += PI
+					pateador._direccion_deseada = dir_ots
+					pateador.direccion_virtual = Vector2(dir_ots.x, dir_ots.z)
 		
 		# 3. Actualizar indicador visual de puntería (flecha en el suelo en la posición del balón)
 		if _indicador_cono_pase and is_instance_valid(_indicador_cono_pase) and balon:

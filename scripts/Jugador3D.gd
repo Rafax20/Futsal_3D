@@ -617,7 +617,7 @@ func _procesar_recepcion_pase(delta: float) -> void:
 	if dist_b > 0.05:
 		var dir_mira_b: Vector3 = vec_hacia_b.normalized()
 		var ang_b: float = atan2(-dir_mira_b.x, -dir_mira_b.z)
-		rotation.y = lerp_angle(rotation.y, ang_b, clampf(18.0 * delta, 0.0, 1.0))
+		rotation.y = lerp_angle(rotation.y, ang_b, clampf(20.0 * delta, 0.0, 1.0))
 		rotation.x = 0.0
 		rotation.z = 0.0
 	
@@ -629,9 +629,9 @@ func _procesar_recepcion_pase(delta: float) -> void:
 		sprint_activo = _sprint_tactil_mantenido
 	else:
 		if not _es_recepcion_hueco:
-			if dist_b > 0.45:
+			if dist_b > 0.40:
 				_direccion_deseada = vec_hacia_b.normalized()
-				sprint_activo = dist_b > 2.8
+				sprint_activo = dist_b > 2.2
 			else:
 				_direccion_deseada = Vector3.ZERO
 				sprint_activo = false
@@ -800,6 +800,13 @@ func puede_tomar_balon() -> bool:
 	return true
 
 
+## Desbloquea inmediatamente la recaptura del balón cuando otro jugador (compañero o rival) toca la pelota
+func desbloquear_recaptura() -> void:
+	_t_bloqueo_recaptura = 0.0
+	if control_balon_area:
+		control_balon_area.set_deferred("monitoring", true)
+
+
 ## Fija el estado de congelamiento del jugador y fuerza el estado PAUSA
 func set_congelado(v: bool) -> void:
 	_congelado = v
@@ -945,6 +952,9 @@ func _physics_process(delta: float) -> void:
 		_tiempo_paradon_reciente -= delta
 	if _t_bloqueo_recaptura > 0.0:
 		_t_bloqueo_recaptura -= delta
+		if _t_bloqueo_recaptura <= 0.0:
+			if control_balon_area:
+				control_balon_area.set_deferred("monitoring", true)
 	if _t_aturdimiento > 0.0:
 		_t_aturdimiento -= delta
 	
@@ -1107,7 +1117,7 @@ func _conectar_sensores_balon() -> void:
 func _on_control_balon_area_body_entered(body: Node3D) -> void:
 	if body is Balon3D:
 		var balon: Balon3D = body as Balon3D
-		if not puede_tomar_balon():
+		if _t_bloqueo_recaptura > 0.0 or not puede_tomar_balon():
 			return
 		if not balon.esta_siendo_conducido() and not balon.esta_fuera_de_juego:
 			if posicion_tactica == "PORTERO":
@@ -1132,7 +1142,7 @@ func _esta_en_area_propia(pos: Vector3) -> bool:
 
 ## Recoge el balón si está libre en las cercanías
 func _chequear_proximidad_balon() -> void:
-	if tiene_posesion or _en_barrida:
+	if tiene_posesion or _en_barrida or _t_bloqueo_recaptura > 0.0:
 		return
 	if not puede_tomar_balon():
 		return
@@ -1448,7 +1458,9 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 	_en_posicion_saque = false
 	_t_anim_patada = 0.28
 	soltar_posesion()
-	_t_bloqueo_recaptura = 0.4
+	_t_bloqueo_recaptura = 1.0
+	if control_balon_area:
+		control_balon_area.set_deferred("monitoring", false)
 	
 	if tipo_tiro == TipoTiro.COLOCADO:
 		# SWIPE DOWN -> TIRO COLOCADO CON CURVA BALÍSTICA NATURAL HACIA EL SEGUNDO POSTE:
@@ -1548,33 +1560,49 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 		if era_saque_mano:
 			_balon_referencia.global_position = pos_origen_balon
 		var dist_comp: float = pos_origen_balon.distance_to(target)
-		fuerza_pase = clampf(maxf(fuerza_pase, dist_comp * 1.12), 7.8, 21.0)
 		var dir_pase: Vector3 = (target - pos_origen_balon).rotated(Vector3.UP, desvio_angulo).normalized()
 		dir_pase.y = 0.0
 		dir_pase = dir_pase.normalized()
 		
+		# Velocidad de pase raso firme y fluida (~8.5 a 11.5 m/s) para futsal reglamentario
+		var vel_pase: float = clampf(8.8 + (potencia * 2.2) + (dist_comp * 0.10), 8.5, 11.5)
+		if era_saque_mano:
+			vel_pase = clampf(7.5 + (potencia * 3.0) + (dist_comp * 0.12), 7.5, 12.5)
+		
 		var impulso_vertical: float = 0.14
 		if tipo_pase == TipoPase.ELEVADO:
 			# SWIPE UP -> PASE ELEVADO / SOMBRERITO por encima de defensores
-			fuerza_pase = clampf(dist_comp * 0.78 + 4.2 + potencia * 3.5, 6.5, 15.0)
+			vel_pase = clampf(dist_comp * 0.78 + 4.2 + potencia * 3.5, 6.5, 15.0)
 			impulso_vertical = clampf(3.85 + dist_comp * 0.12 + potencia * 1.25, 3.85, 6.2)
 			if equipo == Equipo.LOCAL:
 				_emitir_anuncio_hud("¡PASE ELEVADO / SOMBRERITO!")
 		
 		soltar_posesion()
-		_t_bloqueo_recaptura = 0.4
+		_t_bloqueo_recaptura = 1.0
+		if control_balon_area:
+			control_balon_area.set_deferred("monitoring", false)
+		
+		# Notificar inmediatamente al compañero receptor para anticipar y dar 1-2 pasos al encuentro del balón
+		mejor_companero.iniciar_recepcion_pase_entrante(_balon_referencia, false)
+		
 		if tipo_pase == TipoPase.ELEVADO:
 			var cam_pase: Camera3D = get_viewport().get_camera_3d() if get_viewport() else null
-			var imp_base_elev: Vector3 = dir_pase * (fuerza_pase * _balon_referencia.mass * 1.45) + Vector3(0.0, impulso_vertical * _balon_referencia.mass, 0.0)
+			var imp_base_elev: Vector3 = dir_pase * (vel_pase * _balon_referencia.mass * 1.35) + Vector3(0.0, impulso_vertical * _balon_referencia.mass, 0.0)
 			_balon_referencia.liberar_cucharita(imp_base_elev, cam_pase, int(equipo), es_pase_pie_campo)
 		else:
-			_balon_referencia.liberar(dir_pase * fuerza_pase + Vector3(0.0, impulso_vertical, 0.0), int(equipo), es_pase_pie_campo)
+			var impulso_pase: Vector3 = dir_pase * (vel_pase * _balon_referencia.mass)
+			_balon_referencia.liberar_pase_raso(impulso_pase, int(equipo), es_pase_pie_campo, self)
+		
+		# Si estábamos en saque de centro, notificar inmediatamente al gestor de partido para inicio de reloj neto
+		var gestor_sc: Node = get_tree().get_first_node_in_group("gestor_partido")
+		if gestor_sc and gestor_sc.has_method("notificar_toque_saque_centro"):
+			gestor_sc.notificar_toque_saque_centro()
 		
 		# Activar mecánica "Pasa y Corre" (Give-and-Go) antes de transferir el control al receptor
 		if era_controlado_local and mejor_companero.posicion_tactica != "PORTERO":
 			iniciar_pasa_y_corre(dir_intencion_joystick)
 		
-		# Transferir el foco al receptor (si es jugador de campo; si se pasa al arquero, el arquero toma el foco al recibirla)
+		# Transferir el foco y control de usuario de inmediato al receptor
 		if equipo == Equipo.LOCAL and es_controlado:
 			if mejor_companero.posicion_tactica != "PORTERO":
 				_transferir_control_a(mejor_companero)
@@ -1582,13 +1610,18 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 				cambiar_a_mas_cercano_al_balon(false)
 	else:
 		var dir_defecto: Vector3 = dir_por_defecto.rotated(Vector3.UP, desvio_angulo).normalized()
-		var imp_vert_def: float = 4.2 if tipo_pase == TipoPase.ELEVADO else 0.14
-		var fuerza_def: float = fuerza_pase * (0.75 if tipo_pase == TipoPase.ELEVADO else 1.0)
+		var vel_def: float = clampf(8.8 + potencia * 2.2, 8.5, 11.0)
+		var imp_def: Vector3 = dir_defecto * (vel_def * _balon_referencia.mass)
 		if era_saque_mano:
 			_balon_referencia.global_position = global_position + Vector3(0.0, 0.25, 0.0)
 		soltar_posesion()
-		_t_bloqueo_recaptura = 0.4
-		_balon_referencia.liberar(dir_defecto * fuerza_def + Vector3(0.0, imp_vert_def, 0.0), int(equipo), es_pase_pie_campo)
+		_t_bloqueo_recaptura = 1.0
+		if control_balon_area:
+			control_balon_area.set_deferred("monitoring", false)
+		_balon_referencia.liberar_pase_raso(imp_def, int(equipo), es_pase_pie_campo, self)
+		var gestor_sc2: Node = get_tree().get_first_node_in_group("gestor_partido")
+		if gestor_sc2 and gestor_sc2.has_method("notificar_toque_saque_centro"):
+			gestor_sc2.notificar_toque_saque_centro()
 		if posicion_tactica == "PORTERO" and equipo == Equipo.LOCAL and es_controlado:
 			cambiar_a_mas_cercano_al_balon(false)
 
@@ -1759,8 +1792,16 @@ func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
 			_t_anim_patada = 0.26
 		
 		soltar_posesion()
-		_t_bloqueo_recaptura = 0.4
+		_t_bloqueo_recaptura = 1.0
+		if control_balon_area:
+			control_balon_area.set_deferred("monitoring", false)
+		_balon_referencia.registrar_pasador(self, 1.0)
 		_balon_referencia.liberar_al_hueco(dir_hueco * fuerza + Vector3(0.0, 0.10, 0.0), p_destino, int(equipo), es_pase_pie_campo)
+		
+		# Si estábamos en saque de centro, notificar inmediatamente al gestor de partido
+		var gestor_sc: Node = get_tree().get_first_node_in_group("gestor_partido")
+		if gestor_sc and gestor_sc.has_method("notificar_toque_saque_centro"):
+			gestor_sc.notificar_toque_saque_centro()
 		
 		# Activar "Pasa y Corre" en el pasador y ordenar al receptor atacar el hueco filtrado
 		if era_controlado_local:

@@ -381,6 +381,11 @@ func iniciar_saque_centro(equipo_sacador: int = 0) -> void:
 			j.global_position = Vector3(3.6 * signo_campo, 0.0, 0.0)
 		
 		var dir_mirada: Vector3 = Vector3(-signo_campo, 0.0, 0.0)
+		if es_equipo_sacador and (j.posicion_tactica == "ALA_IZQ" or j.posicion_tactica == "ALA_DER"):
+			var hacia_centro: Vector3 = _pos_saque - j.global_position
+			hacia_centro.y = 0.0
+			if hacia_centro.length_squared() > 0.01:
+				dir_mirada = hacia_centro.normalized()
 		j.rotation.y = atan2(-dir_mirada.x, -dir_mirada.z)
 		j.velocity = Vector3.ZERO
 	
@@ -1172,6 +1177,8 @@ func _finalizar_reanudacion() -> void:
 			var j: Jugador3D = n as Jugador3D
 			if j and is_instance_valid(j):
 				j.fijar_en_saque(false)
+				j.set_physics_process(true)
+				j.es_opcion_de_pase = true
 				if j._congelado:
 					j.set_congelado(false)
 		
