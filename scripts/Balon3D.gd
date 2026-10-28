@@ -36,14 +36,14 @@ var _t_cooldown_impacto_barrera: float = 0.0
 		if is_node_ready() and physics_material_override:
 			physics_material_override.friction = valor
 
-## Amortiguación lineal constante que simula la resistencia en pista de fútsal (linear_damp = 0.3).
-@export_range(0.0, 10.0, 0.05) var amortiguacion_lineal: float = 0.3:
+## Amortiguación lineal constante que simula la resistencia en pista de fútsal (linear_damp = 0.12).
+@export_range(0.0, 10.0, 0.05) var amortiguacion_lineal: float = 0.12:
 	set(valor):
 		amortiguacion_lineal = valor
 		linear_damp = valor
 
 ## Desaceleración suave y constante de rodadura sobre el parqué (m/s²).
-@export var desaceleracion_rodadura: float = 1.15
+@export var desaceleracion_rodadura: float = 0.85
 
 ## Amortiguación angular que frena la rotación del balón sobre su propio eje (angular_damp = 1.3).
 @export_range(0.0, 10.0, 0.05) var amortiguacion_giro: float = 1.3:
@@ -88,6 +88,7 @@ var ultimo_toque_equipo: int = 0 # 0: Local, 1: Visitante
 var esta_fuera_de_juego: bool = false
 var _t_sin_captura: float = 0.0
 var sacador_autorizado: Jugador3D = null
+var receptor_destino: Node3D = null
 
 # Regla Oficial de Futsal: Cesión al Portero con el pie de un compañero
 var es_cesion_pie_companero: bool = false
@@ -214,6 +215,8 @@ func registrar_contacto_jugador(jugador: Node3D) -> void:
 
 
 func _on_cuerpo_contactado(body: Node) -> void:
+	if body != null and body != receptor_destino:
+		receptor_destino = null
 	if body != null and (body.is_in_group("postes_arco") or body.name == "MarcoPostes"):
 		# Impacto con poste o travesaño: cancelar efecto Magnus para rebote balístico 100% natural
 		_efecto_magnus_activo = false
@@ -227,6 +230,9 @@ func _on_cuerpo_contactado(body: Node) -> void:
 ## Controla la fricción de rodadura constante y orgánica sobre la pista sin frenazos artificiales
 func _controlar_rodadura_y_velocidad(delta: float = 0.016) -> void:
 	var vel_actual: float = linear_velocity.length()
+	
+	if vel_actual < 1.2:
+		receptor_destino = null
 	
 	if _en_pase_hueco:
 		_tiempo_pase_hueco += delta
@@ -267,6 +273,7 @@ func procesar_impacto_arquero(zona: String, arquero: Jugador3D) -> void:
 	
 	_t_cooldown_impacto_arquero = 0.35
 	_efecto_magnus_activo = false
+	receptor_destino = null
 	toques_en_jugada += 1
 	sleeping = false
 	
@@ -331,6 +338,7 @@ func procesar_impacto_barrera(zona: String, defensor: Jugador3D, punto_impacto: 
 		return
 	_t_cooldown_impacto_barrera = 0.35
 	_efecto_magnus_activo = false
+	receptor_destino = null
 	toques_en_jugada += 1
 	sleeping = false
 
@@ -455,6 +463,7 @@ func capturar_por(jugador: Node3D) -> void:
 	_limpiar_portadores_previos(jugador)
 	estado = EstadoBalon.CONDUCIDO
 	_en_pase_hueco = false
+	receptor_destino = null
 	_efecto_magnus_activo = false
 	linear_damp = amortiguacion_lineal
 	portador_actual = jugador
@@ -688,19 +697,20 @@ func liberar_al_hueco(impulso: Vector3, punto_objetivo: Vector3, equipo_origen: 
 	_en_pase_hueco = true
 	_punto_objetivo_hueco = punto_objetivo
 	_tiempo_pase_hueco = 0.0
-	# Mantenemos la amortiguación lineal natural y constante del RigidBody3D
-	linear_damp = amortiguacion_lineal
+	# Fricción de rodadura para pase fluido en parqué de futsal
+	linear_damp = 0.08
+	angular_damp = 0.8
 
 
 ## Libera el balón en pase raso firme hacia los pies de un compañero con física reglamentaria de fútsal:
-## - linear_damp = 0.3 (fricción de parqué) y amortiguación angular (1.3)
+## - linear_damp = 0.08 (fricción de parqué veloz) y amortiguación angular (0.8)
 ## - anulación de componente vertical (Y = 0) para rodadura limpia a ras de suelo
 ## - registro de cesión intencional (es_cesion_pie_companero = true) y cómputo de toques en jugada
 func liberar_pase_raso(impulso: Vector3, equipo_origen: int = 0, es_pase_pie_companero: bool = true, pasador: Node3D = null) -> void:
 	var imp_raso: Vector3 = Vector3(impulso.x, 0.0, impulso.z)
 	liberar(imp_raso, equipo_origen, es_pase_pie_companero, pasador)
-	linear_damp = 0.3
-	angular_damp = 1.3
+	linear_damp = 0.08
+	angular_damp = 0.8
 	linear_velocity.y = 0.0
 
 

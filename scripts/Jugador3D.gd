@@ -288,6 +288,7 @@ var _esperando_recepcion_pase: bool = false
 var _tiempo_espera_recepcion: float = 0.0
 var _es_recepcion_hueco: bool = false
 var _punto_recepcion_hueco: Vector3 = Vector3.ZERO
+var vector_control_orientado: Vector3 = Vector3.ZERO
 
 # Rutina de sprint al espacio libre en reanudaciones y tiro libre
 var _corriendo_al_espacio: bool = false
@@ -595,6 +596,89 @@ func iniciar_recepcion_pase_entrante(nodo_balon: Balon3D, es_hueco: bool = false
 				rotation.z = 0.0
 
 
+## Recepción Asistida Inteligente (Estilo eFootball / Receiver Lock):
+## Bloquea que el joystick desvíe al jugador fuera de la línea de pase entrante.
+## Calcula la intercepción perpendicular sobre la trayectoria del balón y orienta el cuerpo hacia él.
+## Almacena el vector del joystick en `vector_control_orientado` para ejecutar el control orientado en el primer toque.
+func _procesar_recepcion_asistida(delta: float, balon: Balon3D) -> void:
+	if balon == null or not is_instance_valid(balon):
+		_esperando_recepcion_pase = false
+		return
+	
+	var vel_balon: Vector3 = balon.linear_velocity
+	var rapidez_balon: float = vel_balon.length()
+	
+	# Si el balón se frenó casi por completo, liberar asistencia
+	if rapidez_balon < 1.0:
+		balon.receptor_destino = null
+		_esperando_recepcion_pase = false
+		return
+	
+	# Capturar intención de dirección del usuario en la cola de control orientado (sin sacarlo de la trayectoria)
+	var input_usuario: Vector3 = _obtener_input_direccion_usuario()
+	if input_usuario.length_squared() > 0.02:
+		vector_control_orientado = input_usuario.normalized()
+	
+	var pos_balon: Vector3 = balon.global_position
+	var vec_hacia_balon: Vector3 = pos_balon - global_position
+	vec_hacia_balon.y = 0.0
+	var dist_balon: float = vec_hacia_balon.length()
+	
+	# 1. Orientación continua en tiempo real hacia el balón entrante (Look-At horizontal)
+	if dist_balon > 0.05:
+		var dir_mira_balon: Vector3 = vec_hacia_balon.normalized()
+		var ang_balon: float = atan2(-dir_mira_balon.x, -dir_mira_balon.z)
+		rotation.y = lerp_angle(rotation.y, ang_balon, clampf(24.0 * delta, 0.0, 1.0))
+		rotation.x = 0.0
+		rotation.z = 0.0
+	
+	# 2. Trayectoria lineal del balón y cálculo de intercepción perpendicular
+	var dir_balon: Vector3 = vel_balon
+	dir_balon.y = 0.0
+	if dir_balon.length_squared() < 0.01:
+		dir_balon = -vec_hacia_balon
+	if dir_balon.length_squared() < 0.001:
+		dir_balon = -global_transform.basis.z
+	dir_balon = dir_balon.normalized()
+	
+	var vec_desde_balon: Vector3 = global_position - pos_balon
+	vec_desde_balon.y = 0.0
+	var proy_dist: float = vec_desde_balon.dot(dir_balon)
+	var punto_intercepcion: Vector3 = pos_balon + dir_balon * maxf(0.0, proy_dist)
+	punto_intercepcion.y = global_position.y
+	
+	var vec_desfase: Vector3 = global_position - punto_intercepcion
+	var dist_desfase: float = vec_desfase.length()
+	
+	# 3. Desplazamiento asistido eFootball
+	if dist_desfase < 0.55:
+		# Alineado con la trayectoria: dar paso corto de apoyo hacia el balón o frenar para amortiguar
+		if dist_balon > 0.35:
+			_direccion_deseada = vec_hacia_balon.normalized()
+			sprint_activo = false
+		else:
+			_direccion_deseada = Vector3.ZERO
+			sprint_activo = false
+	elif dist_desfase <= 4.0:
+		# Desfasado lateralmente: correr hacia la trayectoria para interceptar limpiamente
+		var vec_hacia_intercepcion: Vector3 = punto_intercepcion - global_position
+		vec_hacia_intercepcion.y = 0.0
+		if vec_hacia_intercepcion.length_squared() > 0.01:
+			_direccion_deseada = vec_hacia_intercepcion.normalized()
+			sprint_activo = dist_desfase > 1.2 or dist_balon > 2.5
+		else:
+			_direccion_deseada = Vector3.ZERO
+			sprint_activo = false
+	else:
+		# Fuera de rango de intercepción razonable (> 4m), cancelar asistencia
+		balon.receptor_destino = null
+		_esperando_recepcion_pase = false
+	
+	# 4. Captura física proactiva si el balón entra en el radio ampliado de recepción
+	if dist_balon < 1.25 and puede_tomar_balon():
+		tomar_posesion(balon)
+
+
 ## Procesa la anticipación activa de recepción: el receptor reconoce la trayectoria del balón,
 ## se orienta en tiempo real (Look-At) y se desplaza hacia el balón para controlar de primera
 func _procesar_recepcion_pase(delta: float) -> void:
@@ -617,35 +701,34 @@ func _procesar_recepcion_pase(delta: float) -> void:
 	if dist_b > 0.05:
 		var dir_mira_b: Vector3 = vec_hacia_b.normalized()
 		var ang_b: float = atan2(-dir_mira_b.x, -dir_mira_b.z)
-		rotation.y = lerp_angle(rotation.y, ang_b, clampf(20.0 * delta, 0.0, 1.0))
+		rotation.y = lerp_angle(rotation.y, ang_b, clampf(24.0 * delta, 0.0, 1.0))
 		rotation.x = 0.0
 		rotation.z = 0.0
 	
-	# 2. Desplazamiento activo hacia el balón (intercepción / control en avance)
-	var joy: Vector2 = direccion_virtual
-	if joy.length_squared() > 0.15:
-		# Si el usuario ya está dirigiendo el joystick, respetar la intención del usuario
-		_direccion_deseada = Vector3(joy.x, 0.0, joy.y).normalized()
-		sprint_activo = _sprint_tactil_mantenido
-	else:
-		if not _es_recepcion_hueco:
-			if dist_b > 0.40:
-				_direccion_deseada = vec_hacia_b.normalized()
-				sprint_activo = dist_b > 2.2
-			else:
-				_direccion_deseada = Vector3.ZERO
-				sprint_activo = false
-		else:
-			var hacia_punto: Vector3 = _punto_recepcion_hueco - global_position
-			hacia_punto.y = 0.0
-			if hacia_punto.length() > 0.35:
-				_direccion_deseada = hacia_punto.normalized()
-				sprint_activo = true
-			else:
-				_direccion_deseada = Vector3.ZERO
-				sprint_activo = false
+	# 2. Guardar intención del usuario en cola de control orientado sin salir de la trayectoria
+	var input_usr: Vector3 = _obtener_input_direccion_usuario()
+	if input_usr.length_squared() > 0.02:
+		vector_control_orientado = input_usr.normalized()
 	
-	# 3. Control automático al alcanzar radio de recepción
+	# 3. Desplazamiento activo hacia el balón (intercepción / control en avance)
+	if not _es_recepcion_hueco:
+		if dist_b > 0.35:
+			_direccion_deseada = vec_hacia_b.normalized()
+			sprint_activo = dist_b > 2.2
+		else:
+			_direccion_deseada = Vector3.ZERO
+			sprint_activo = false
+	else:
+		var hacia_punto: Vector3 = _punto_recepcion_hueco - global_position
+		hacia_punto.y = 0.0
+		if hacia_punto.length() > 0.35:
+			_direccion_deseada = hacia_punto.normalized()
+			sprint_activo = true
+		else:
+			_direccion_deseada = Vector3.ZERO
+			sprint_activo = false
+	
+	# 4. Control automático al alcanzar radio de recepción
 	if dist_b < 1.25 and puede_tomar_balon():
 		tomar_posesion(nodo_b)
 		_esperando_recepcion_pase = false
@@ -998,7 +1081,12 @@ func _physics_process(delta: float) -> void:
 				if not _barrida_toco_balon:
 					_t_aturdimiento = t_cooldown_barrida_fallida
 		_:
-			if _corriendo_al_espacio:
+			var b_actual: Balon3D = _obtener_balon_juego()
+			var es_mi_recepcion: bool = (b_actual != null and is_instance_valid(b_actual) and b_actual.receptor_destino == self and not tiene_posesion)
+			
+			if es_mi_recepcion:
+				_procesar_recepcion_asistida(delta, b_actual)
+			elif _corriendo_al_espacio:
 				_procesar_carrera_al_espacio(delta)
 			elif _esperando_recepcion_pase:
 				_procesar_recepcion_pase(delta)
@@ -1157,7 +1245,11 @@ func _chequear_proximidad_balon() -> void:
 	# Si el balón está completamente libre, se toma con facilidad al tocarlo
 	if not balon.esta_siendo_conducido():
 		var dist: float = global_position.distance_to(balon.global_position)
-		var radio_captura: float = 1.15 if (es_controlado and balon.ultimo_toque_equipo == int(equipo)) else 0.95
+		var radio_captura: float = 0.95
+		if balon.receptor_destino == self:
+			radio_captura = 1.25
+		elif es_controlado and balon.ultimo_toque_equipo == int(equipo):
+			radio_captura = 1.15
 		if dist < radio_captura:
 			if posicion_tactica == "PORTERO":
 				Portero.procesar_recepcion(self, balon)
@@ -1175,6 +1267,24 @@ func tomar_posesion(balon: Balon3D) -> void:
 	tiene_balon_en_manos = false
 	_tiempo_inmunidad_robo = t_proteccion_recepcion
 	balon.capturar_por(self)
+	
+	if balon.receptor_destino == self:
+		balon.receptor_destino = null
+	_esperando_recepcion_pase = false
+	
+	# Cola de orientación al primer toque (Control Orientado con Joystick estilo eFootball)
+	if vector_control_orientado.length_squared() > 0.02:
+		var dir_salida: Vector3 = vector_control_orientado.normalized()
+		dir_salida.y = 0.0
+		if dir_salida.length_squared() > 0.01:
+			dir_salida = dir_salida.normalized()
+			var ang_salida: float = atan2(-dir_salida.x, -dir_salida.z)
+			rotation.y = ang_salida
+			rotation.x = 0.0
+			rotation.z = 0.0
+			velocity = dir_salida * (obtener_velocidad_sprint_max() * 0.75)
+			_direccion_deseada = dir_salida
+	vector_control_orientado = Vector3.ZERO
 	
 	# Si el jugador que toma posesión pertenece al equipo LOCAL, darle siempre el control activo al usuario
 	if equipo == Equipo.LOCAL and not es_controlado:
@@ -1314,7 +1424,8 @@ func _gestionar_conduccion_y_robos(delta: float) -> void:
 		_balon_referencia.conducir_hacia(pos_destino, delta, control_balon, self)
 
 
-func _procesar_input_jugador() -> void:
+## Obtiene el vector de dirección horizontal del usuario (joystick virtual o teclado WASD/flechas)
+func _obtener_input_direccion_usuario() -> Vector3:
 	var dx: float = 0.0
 	var dz: float = 0.0
 	
@@ -1327,20 +1438,22 @@ func _procesar_input_jugador() -> void:
 	if Input.is_key_pressed(KEY_S) or Input.is_action_pressed("ui_down"):
 		dz += 1.0
 	
+	if direccion_virtual.length_squared() > 0.01:
+		return Vector3(direccion_virtual.x, 0.0, direccion_virtual.y).normalized()
+	var dir_plana: Vector2 = Vector2(dx, dz)
+	if dir_plana.length_squared() > 0.0:
+		dir_plana = dir_plana.normalized()
+		return Vector3(dir_plana.x, 0.0, dir_plana.y)
+	return Vector3.ZERO
+
+
+func _procesar_input_jugador() -> void:
 	if Input.is_key_pressed(KEY_SHIFT):
 		sprint_activo = true
 	elif not _sprint_tactil_mantenido:
 		sprint_activo = false
 	
-	if direccion_virtual.length_squared() > 0.01:
-		_direccion_deseada = Vector3(direccion_virtual.x, 0.0, direccion_virtual.y).normalized()
-	else:
-		var dir_plana: Vector2 = Vector2(dx, dz)
-		if dir_plana.length_squared() > 0.0:
-			dir_plana = dir_plana.normalized()
-			_direccion_deseada = Vector3(dir_plana.x, 0.0, dir_plana.y)
-		else:
-			_direccion_deseada = Vector3.ZERO
+	_direccion_deseada = _obtener_input_direccion_usuario()
 	
 	# En Modo Sin Balón (Defensa), el botón ESPRINTAR + PRESIÓN orienta o asiste la carrera rápida hacia el balón
 	if _presion_sprint_defensivo and not tiene_posesion and not _en_posicion_saque:
@@ -1522,6 +1635,23 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 		cambiar_a_mas_cercano_al_balon(false)
 
 
+## Calcula la velocidad de salida de un pase raso de futsal según la potencia cargada:
+## - Toque rápido (< 0.25): 14.0 a 16.0 m/s
+## - Carga media (0.25 a 0.70): 18.0 a 22.0 m/s
+## - Carga alta (> 0.70): 24.0 a 27.0 m/s
+func _calcular_velocidad_pase_raso(potencia_norm: float) -> float:
+	var p: float = clampf(potencia_norm, 0.0, 1.0)
+	if p < 0.25:
+		var t: float = p / 0.25
+		return lerpf(14.0, 16.0, t)
+	elif p <= 0.70:
+		var t: float = (p - 0.25) / 0.45
+		return lerpf(18.0, 22.0, t)
+	else:
+		var t: float = (p - 0.70) / 0.30
+		return lerpf(24.0, 27.0, t)
+
+
 ## Pase con soporte para:
 ## - TipoPase.RASO: Pase raso firme directo al pie.
 ## - TipoPase.ELEVADO (Swipe Up): Pase bombeado / sombrerito por el aire para superar piernas estiradas de defensores.
@@ -1550,15 +1680,12 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 		dir_por_defecto = Vector3(1.0 if equipo == Equipo.LOCAL else -1.0, 0.0, 0.0)
 	
 	var dir_busqueda: Vector3 = _direccion_deseada if _direccion_deseada.length_squared() > 0.01 else dir_por_defecto
-	var mejor_companero: Jugador3D = _buscar_mejor_receptor(dir_busqueda)
+	var mejor_companero: Jugador3D = _buscar_mejor_receptor(dir_busqueda, potencia)
 	
 	var presion: float = calcular_presion_rival()
 	var stat_precision: float = gk_saque if era_saque_mano else vision_pase
 	var error_total_rad: float = ((99.0 - stat_precision) / 99.0 * 0.12) + (presion * 0.12)
 	var desvio_angulo: float = randf_range(-error_total_rad, error_total_rad)
-	
-	# Potencia escalada por carga de botón
-	var fuerza_pase: float = 8.0 + (potencia * 11.5) + (stat_precision / 99.0) * 2.5
 	
 	_en_posicion_saque = false
 	if era_saque_mano:
@@ -1577,19 +1704,20 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 		dir_pase.y = 0.0
 		dir_pase = dir_pase.normalized()
 		
-		# Velocidad de pase raso firme y fluida (~8.5 a 11.5 m/s) para futsal reglamentario
-		var vel_pase: float = clampf(8.8 + (potencia * 2.2) + (dist_comp * 0.10), 8.5, 11.5)
+		# Velocidad de pase raso firme y tensa de futsal (14.0 a 27.0 m/s)
+		var vel_pase: float = _calcular_velocidad_pase_raso(potencia)
 		if era_saque_mano:
-			vel_pase = clampf(7.5 + (potencia * 3.0) + (dist_comp * 0.12), 7.5, 12.5)
+			vel_pase = clampf(vel_pase * 0.85, 9.5, 18.0)
 		
 		var impulso_vertical: float = 0.14
 		if tipo_pase == TipoPase.ELEVADO:
 			# SWIPE UP -> PASE ELEVADO / SOMBRERITO por encima de defensores
-			vel_pase = clampf(dist_comp * 0.78 + 4.2 + potencia * 3.5, 6.5, 15.0)
+			vel_pase = clampf(dist_comp * 0.78 + 4.2 + potencia * 3.5, 8.5, 18.0)
 			impulso_vertical = clampf(3.85 + dist_comp * 0.12 + potencia * 1.25, 3.85, 6.2)
 			if equipo == Equipo.LOCAL:
 				_emitir_anuncio_hud("¡PASE ELEVADO / SOMBRERITO!")
 		
+		_balon_referencia.receptor_destino = mejor_companero
 		soltar_posesion()
 		_t_bloqueo_recaptura = 1.0
 		if control_balon_area:
@@ -1622,8 +1750,9 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 			elif posicion_tactica == "PORTERO":
 				cambiar_a_mas_cercano_al_balon(false)
 	else:
+		_balon_referencia.receptor_destino = null
 		var dir_defecto: Vector3 = dir_busqueda.rotated(Vector3.UP, desvio_angulo).normalized()
-		var vel_def: float = clampf(8.8 + potencia * 2.2, 8.5, 11.0)
+		var vel_def: float = _calcular_velocidad_pase_raso(potencia)
 		var imp_def: Vector3 = dir_defecto * (vel_def * _balon_referencia.mass)
 		if era_saque_mano:
 			_balon_referencia.global_position = global_position + Vector3(0.0, 0.25, 0.0)
@@ -1772,17 +1901,18 @@ func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
 		dir_por_defecto = Vector3(1.0 if equipo == Equipo.LOCAL else -1.0, 0.0, 0.0)
 	
 	var dir_busqueda: Vector3 = _direccion_deseada if _direccion_deseada.length_squared() > 0.01 else dir_por_defecto
-	var companero: Jugador3D = _buscar_mejor_receptor(dir_busqueda)
+	var companero: Jugador3D = _buscar_mejor_receptor(dir_busqueda, potencia)
 	
 	if companero != null and companero.posicion_tactica != "PORTERO":
+		_balon_referencia.receptor_destino = companero
 		var pos_origen: Vector3 = global_position + Vector3(0.0, 0.25, 0.0) if era_saque_mano else _balon_referencia.global_position
 		if era_saque_mano:
 			_balon_referencia.global_position = pos_origen
 		
 		var pos_companero: Vector3 = companero.global_position
 		var dist_inicial: float = pos_origen.distance_to(pos_companero)
-		var vel_media_pase: float = 10.8 + potencia * 6.5
-		var t_trayectoria: float = clampf((dist_inicial / maxf(1.0, vel_media_pase)) + 0.32 + potencia * 0.42, 0.45, 1.30)
+		var vel_media_pase: float = _calcular_velocidad_pase_raso(potencia)
+		var t_trayectoria: float = clampf((dist_inicial / maxf(1.0, vel_media_pase)) + 0.25 + potencia * 0.35, 0.35, 1.20)
 		
 		# Calcular el punto óptimo mediante Conos de Pase y múltiples PhysicsRayQueryParameters3D
 		var p_destino: Vector3 = _calcular_mejor_punto_hueco_conos(pos_origen, companero, t_trayectoria)
@@ -1798,8 +1928,8 @@ func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
 		var dist_hueco: float = vector_hacia_hueco.length()
 		var dir_hueco: Vector3 = vector_hacia_hueco.rotated(Vector3.UP, desvio_angulo).normalized() if dist_hueco > 0.1 else avance_ofensivo
 		
-		# Impulso limpio y físicamente calculado: el balón llega al hueco rodando a velocidad interceptable (4.5 a 7 m/s)
-		var vel_llegada_hueco: float = 4.5 + clampf(potencia, 0.0, 1.0) * 2.5
+		# Impulso limpio y físicamente calculado: el balón llega al hueco rodando a velocidad fluida e interceptable (6.0 a 10.0 m/s)
+		var vel_llegada_hueco: float = 6.0 + clampf(potencia, 0.0, 1.0) * 4.0
 		var fuerza: float = _balon_referencia.calcular_impulso_rodado(dist_hueco, vel_llegada_hueco)
 		
 		_en_posicion_saque = false
@@ -2168,7 +2298,7 @@ func calcular_presion_rival() -> float:
 	return clampf(presion_acumulada, 0.0, 1.0)
 
 
-func _buscar_mejor_receptor(direccion: Vector3) -> Jugador3D:
+func _buscar_mejor_receptor(direccion: Vector3, potencia_norm: float = 0.5) -> Jugador3D:
 	var grupo_amigos: String = "equipo_local" if equipo == Equipo.LOCAL else "equipo_visitante"
 	var companeros: Array[Node] = get_tree().get_nodes_in_group(grupo_amigos)
 	
@@ -2207,7 +2337,11 @@ func _buscar_mejor_receptor(direccion: Vector3) -> Jugador3D:
 		var presion_comp: float = jug.calcular_presion_rival()
 		var bonus_desmarque: float = (1.0 - presion_comp) * 0.45
 		var bonus_pasa_y_corre: float = 0.90 if jug.es_opcion_de_pase else 0.0
-		var puntaje: float = similitud_angulo * 2.2 - (dist * 0.025) + bonus_desmarque + bonus_pasa_y_corre + (vision_pase * 0.005)
+		# Ponderación dinámica de distancia según carga de potencia:
+		# Potencia baja (< 0.55): mayor prioridad a compañero cercano (-dist * 0.10)
+		# Potencia alta (>= 0.55): mayor prioridad al segundo o más lejano en la misma línea (+dist * 0.12)
+		var peso_distancia: float = -dist * 0.10 if potencia_norm < 0.55 else dist * 0.12
+		var puntaje: float = similitud_angulo * 2.2 + peso_distancia + bonus_desmarque + bonus_pasa_y_corre + (vision_pase * 0.005)
 		
 		if puntaje > mejor_puntaje_fallback:
 			mejor_puntaje_fallback = puntaje

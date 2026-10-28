@@ -700,7 +700,7 @@ func _iniciar_toque_pase(touch_idx: int, pos_inicial: Vector2) -> void:
 		return
 	
 	_accion_cargando = "PASE"
-	_potencia_acumulada = 0.18
+	_potencia_acumulada = 0.12
 
 
 ## Evalúa el desplazamiento vertical del dedo en el botón PASE:
@@ -787,7 +787,7 @@ func _on_hueco_down() -> void:
 		return
 	
 	_accion_cargando = "HUECO"
-	_potencia_acumulada = 0.18
+	_potencia_acumulada = 0.12
 
 
 func _on_hueco_up() -> void:
