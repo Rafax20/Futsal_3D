@@ -101,11 +101,11 @@ static func _obtener_datos_por_defecto() -> Dictionary:
 			}
 		},
 		"arqueros": [
-			{"id": "GK_01", "nombre": "T. Courtois", "equipo_id": "LOCAL", "dorsal": 1, "posicion_tactica": "PORTERO", "ovr": 84, "ritmo": 64, "gk_estirada": 85, "gk_reflejos": 86, "gk_manejo": 82, "gk_posicionamiento": 84, "gk_saque": 80},
-			{"id": "GK_02", "nombre": "E. Martínez", "equipo_id": "VISITANTE", "dorsal": 1, "posicion_tactica": "PORTERO", "ovr": 83, "ritmo": 66, "gk_estirada": 84, "gk_reflejos": 85, "gk_manejo": 80, "gk_posicionamiento": 82, "gk_saque": 83},
-			{"id": "GK_03", "nombre": "J. Oblak", "equipo_id": "RESERVA", "dorsal": 13, "posicion_tactica": "PORTERO", "ovr": 85, "ritmo": 62, "gk_estirada": 83, "gk_reflejos": 87, "gk_manejo": 86, "gk_posicionamiento": 86, "gk_saque": 77},
-			{"id": "GK_04", "nombre": "M. Ter Stegen", "equipo_id": "RESERVA", "dorsal": 12, "posicion_tactica": "PORTERO", "ovr": 82, "ritmo": 65, "gk_estirada": 81, "gk_reflejos": 84, "gk_manejo": 79, "gk_posicionamiento": 81, "gk_saque": 88},
-			{"id": "GK_05", "nombre": "G. Donnarumma", "equipo_id": "RESERVA", "dorsal": 99, "posicion_tactica": "PORTERO", "ovr": 83, "ritmo": 67, "gk_estirada": 86, "gk_reflejos": 86, "gk_manejo": 78, "gk_posicionamiento": 80, "gk_saque": 76}
+			{"id": "GK_01", "nombre": "T. Courtois", "equipo_id": "LOCAL", "dorsal": 1, "posicion_tactica": "PORTERO", "ovr": 84, "ritmo": 64, "gk_posicionamiento": 86, "gk_reflejos": 85, "gk_alcance_achique": 87, "gk_bloqueo_control": 83, "gk_juego_pies": 78, "gk_estirada": 85, "gk_manejo": 82, "gk_saque": 80},
+			{"id": "GK_02", "nombre": "E. Martínez", "equipo_id": "VISITANTE", "dorsal": 1, "posicion_tactica": "PORTERO", "ovr": 83, "ritmo": 66, "gk_posicionamiento": 83, "gk_reflejos": 86, "gk_alcance_achique": 84, "gk_bloqueo_control": 82, "gk_juego_pies": 81, "gk_estirada": 84, "gk_manejo": 80, "gk_saque": 83},
+			{"id": "GK_03", "nombre": "J. Oblak", "equipo_id": "RESERVA", "dorsal": 13, "posicion_tactica": "PORTERO", "ovr": 85, "ritmo": 62, "gk_posicionamiento": 87, "gk_reflejos": 88, "gk_alcance_achique": 82, "gk_bloqueo_control": 86, "gk_juego_pies": 79, "gk_estirada": 83, "gk_manejo": 86, "gk_saque": 77},
+			{"id": "GK_04", "nombre": "M. Ter Stegen", "equipo_id": "RESERVA", "dorsal": 12, "posicion_tactica": "PORTERO", "ovr": 82, "ritmo": 65, "gk_posicionamiento": 81, "gk_reflejos": 83, "gk_alcance_achique": 80, "gk_bloqueo_control": 80, "gk_juego_pies": 87, "gk_estirada": 81, "gk_manejo": 79, "gk_saque": 88},
+			{"id": "GK_05", "nombre": "G. Donnarumma", "equipo_id": "RESERVA", "dorsal": 99, "posicion_tactica": "PORTERO", "ovr": 83, "ritmo": 67, "gk_posicionamiento": 82, "gk_reflejos": 86, "gk_alcance_achique": 88, "gk_bloqueo_control": 81, "gk_juego_pies": 76, "gk_estirada": 86, "gk_manejo": 78, "gk_saque": 76}
 		],
 		"jugadores_campo": {
 			"LOCAL": [

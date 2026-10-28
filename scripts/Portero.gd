@@ -95,3 +95,71 @@ static func despejar_con_pie(portero: Jugador3D, balon: Balon3D) -> void:
 	
 	if int(portero.equipo) == 0:
 		portero._emitir_anuncio_hud("¡DESPEJE CON EL PIE DEL ARQUERO!")
+
+
+# ==============================================================================
+# GEOMETRÍA DE BISECTRIZ Y ACHIQUE DE FUTSAL REAL (ARCO 3x2 M)
+# ==============================================================================
+
+const RADIO_PIERNA: float = 0.16
+const RADIO_TORSO: float = 0.26
+const RADIO_BRAZO: float = 0.15
+
+
+## Calcula la posición óptima del arquero sobre la bisectriz geométrica del arco
+## (entre el centro del arco y los dos postes ±1.5m respecto al balón):
+## - Si el balón está lejos (> 9.0 m): no sale más de 1.2 a 1.6 m para no quedar expuesto a vaselina.
+## - Si está en zona intermedia (4.5 a 9.0 m): adelanta entre 1.6 y 2.6 m.
+## - Si está a quemarropa (< 4.5 m): achica hasta 3.2 m manteniendo 2.0 a 2.8 m respecto al balón.
+static func calcular_posicion_bisectriz(linea_meta_x: float, pos_balon: Vector3, gk_posicionamiento: float) -> Vector3:
+	var centro_arco: Vector3 = Vector3(linea_meta_x, 0.0, 0.0)
+	var p_b: Vector3 = Vector3(pos_balon.x, 0.0, pos_balon.z)
+	
+	var poste_izq: Vector3 = Vector3(linea_meta_x, 0.0, -1.5)
+	var poste_der: Vector3 = Vector3(linea_meta_x, 0.0, 1.5)
+	
+	var v_izq: Vector3 = (poste_izq - p_b).normalized()
+	var v_der: Vector3 = (poste_der - p_b).normalized()
+	var dir_bisectriz: Vector3 = -(v_izq + v_der)
+	dir_bisectriz.y = 0.0
+	
+	if dir_bisectriz.length_squared() < 0.001:
+		dir_bisectriz = (p_b - centro_arco)
+		dir_bisectriz.y = 0.0
+	if dir_bisectriz.length_squared() < 0.001:
+		dir_bisectriz = Vector3(1.0 if linea_meta_x < 0.0 else -1.0, 0.0, 0.0)
+	dir_bisectriz = dir_bisectriz.normalized()
+	
+	var dist_balon_arco: float = centro_arco.distance_to(p_b)
+	var factor_pos: float = clampf(gk_posicionamiento / 99.0, 0.5, 1.0)
+	
+	var avance: float = 1.35
+	if dist_balon_arco > 9.0:
+		avance = lerpf(1.20, 1.60, factor_pos)
+	elif dist_balon_arco >= 4.5:
+		var t_dist: float = (dist_balon_arco - 4.5) / 4.5
+		avance = lerpf(2.60, 1.60, t_dist) * factor_pos
+	else:
+		avance = clampf(dist_balon_arco * 0.65, 1.80, 3.20) * factor_pos
+	
+	var pos_deseada: Vector3 = centro_arco + dir_bisectriz * avance
+	pos_deseada.y = 0.0
+	pos_deseada.z = clampf(pos_deseada.z, -1.65, 1.65)
+	
+	if linea_meta_x < 0.0:
+		pos_deseada.x = clampf(pos_deseada.x, -19.4, -15.5)
+	else:
+		pos_deseada.x = clampf(pos_deseada.x, 15.5, 19.4)
+	
+	return pos_deseada
+
+
+## Evalúa la lectura de Mano a Mano (1vs1):
+## El arquero "aguanta" en Guardia Baja a 2.0 - 2.8m y NO se tira al piso antes de tiempo;
+## solo despliega La Cruz (K-Block) cuando el delantero arma el disparo o intenta avanzar a menos de 2.4m.
+static func evaluar_lectura_mano_a_mano(dist_al_balon: float, disparo_inminente: bool, tiempo_cruz_activo: float) -> bool:
+	if tiempo_cruz_activo > 0.0:
+		return true
+	if disparo_inminente or dist_al_balon < 2.4:
+		return true
+	return false

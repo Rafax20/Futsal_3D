@@ -89,6 +89,7 @@ var esta_fuera_de_juego: bool = false
 var _t_sin_captura: float = 0.0
 var sacador_autorizado: Jugador3D = null
 var receptor_destino: Node3D = null
+var pos_previa: Vector3 = Vector3.ZERO
 
 # Regla Oficial de Futsal: Cesión al Portero con el pie de un compañero
 var es_cesion_pie_companero: bool = false
@@ -132,6 +133,8 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if pos_previa == Vector3.ZERO:
+		pos_previa = global_position
 	if _t_cooldown_impacto_arquero > 0.0:
 		_t_cooldown_impacto_arquero -= delta
 	if _t_cooldown_impacto_barrera > 0.0:
@@ -146,6 +149,8 @@ func _physics_process(delta: float) -> void:
 		_verificar_colision_alta_velocidad_raycast(delta)
 		_aplicar_curva_tiro_colocado(delta)
 		_controlar_rodadura_y_velocidad(delta)
+	
+	pos_previa = global_position
 
 
 ## Aplica la curva balística del Tiro Colocado / Swipe mediante la fuerza Magnus proporcional a la masa

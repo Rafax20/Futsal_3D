@@ -91,7 +91,32 @@ var area_brazos_manos: Area3D = null
 		if is_node_ready() and indicador_control:
 			indicador_control.visible = valor or es_opcion_de_pase
 
-@export_group("Atributos y Estadísticas OVR (1-99)")
+@export_group("Atributos de Campo Estilo FC Mobile (1-99)")
+@export_range(1.0, 99.0, 1.0) var ovr: int = 80
+@export_range(1.0, 99.0, 1.0) var ritmo: float = 80.0:
+	set(v):
+		ritmo = v
+		vel_movimiento = v
+@export_range(1.0, 99.0, 1.0) var tiro: float = 78.0:
+	set(v):
+		tiro = v
+		potencia_tiro = v
+		precision_tiro = clampf(v * 0.96, 50.0, 99.0)
+@export_range(1.0, 99.0, 1.0) var pase: float = 82.0:
+	set(v):
+		pase = v
+		vision_pase = v
+@export_range(1.0, 99.0, 1.0) var regate: float = 84.0:
+	set(v):
+		regate = v
+		control_balon = v
+@export_range(1.0, 99.0, 1.0) var defensa: float = 76.0:
+	set(v):
+		defensa = v
+		defensa_recuperacion = v
+@export_range(1.0, 99.0, 1.0) var fisico: float = 80.0
+
+@export_group("Atributos Internos de Gameplay")
 ## Velocidad de movimiento y aceleración (afecta velocidad punta y sprint).
 @export_range(1.0, 99.0, 1.0) var vel_movimiento: float = 80.0
 ## Potencia de impacto al disparar a portería.
@@ -105,12 +130,31 @@ var area_brazos_manos: Area3D = null
 ## Capacidad defensiva de recuperación, barrida, presión y robo de pelota.
 @export_range(1.0, 99.0, 1.0) var defensa_recuperacion: float = 76.0
 
-@export_group("Estadísticas de Arquero (1-99)")
-@export_range(1.0, 99.0, 1.0) var gk_estirada: float = 82.0
-@export_range(1.0, 99.0, 1.0) var gk_reflejos: float = 84.0
-@export_range(1.0, 99.0, 1.0) var gk_manejo: float = 80.0
-@export_range(1.0, 99.0, 1.0) var gk_posicionamiento: float = 82.0
-@export_range(1.0, 99.0, 1.0) var gk_saque: float = 80.0
+@export_group("Atributos de Arquero de Futsal (1-99)")
+## Precisión para ubicarse en la bisectriz del ángulo de tiro y distancia óptima de achique (2.0 a 3.2m del arco).
+@export_range(1.0, 99.0, 1.0) var gk_posicionamiento: float = 84.0
+## Tiempo de reacción ante remates cercanos o desvíos (lerp 0.22 a 0.03s) y recuperación para Doble Atajada.
+@export_range(1.0, 99.0, 1.0) var gk_reflejos: float = 85.0
+## Velocidad de deslizamiento lateral en Barrida en L y extensión efectiva de piernas en La Cruz.
+@export_range(1.0, 99.0, 1.0) var gk_alcance_achique: float = 86.0
+## Probabilidad de embolsar tiros moderados o desviar tiros potentes hacia bandas/córner.
+@export_range(1.0, 99.0, 1.0) var gk_bloqueo_control: float = 82.0
+## Velocidad para sacar la pierna en abanico ante tiros rasos cruzados.
+@export_range(1.0, 99.0, 1.0) var gk_juego_pies: float = 80.0
+
+# Aliases de compatibilidad de arquero
+@export_range(1.0, 99.0, 1.0) var gk_estirada: float = 85.0:
+	set(v):
+		gk_estirada = v
+		gk_alcance_achique = v
+@export_range(1.0, 99.0, 1.0) var gk_manejo: float = 82.0:
+	set(v):
+		gk_manejo = v
+		gk_bloqueo_control = v
+@export_range(1.0, 99.0, 1.0) var gk_saque: float = 80.0:
+	set(v):
+		gk_saque = v
+		gk_juego_pies = v
 
 @export_group("Física Base")
 @export var velocidad_giro: float = 16.0
@@ -216,25 +260,66 @@ var malla_botines_glb: MeshInstance3D = null
 var malla_pelo_glb: MeshInstance3D = null
 var malla_pestanas_glb: MeshInstance3D = null
 
+# Índices y transformaciones de reposo del rig humanoide Mixamo (mixamorig5_*)
+var _idx_hips: int = -1
+var _idx_spine: int = -1
+var _idx_spine1: int = -1
+var _idx_spine2: int = -1
+var _idx_neck: int = -1
+var _idx_head: int = -1
+var _idx_left_shoulder: int = -1
+var _idx_right_shoulder: int = -1
 var _idx_left_arm: int = -1
 var _idx_right_arm: int = -1
 var _idx_left_forearm: int = -1
 var _idx_right_forearm: int = -1
+var _idx_left_hand: int = -1
+var _idx_right_hand: int = -1
 var _idx_left_upleg: int = -1
 var _idx_right_upleg: int = -1
 var _idx_left_leg: int = -1
 var _idx_right_leg: int = -1
-var _idx_spine: int = -1
+var _idx_left_foot: int = -1
+var _idx_right_foot: int = -1
 
+var _rest_hips_pos: Vector3 = Vector3.ZERO
+var _rest_hips: Quaternion = Quaternion.IDENTITY
+var _rest_spine: Quaternion = Quaternion.IDENTITY
+var _rest_spine1: Quaternion = Quaternion.IDENTITY
+var _rest_spine2: Quaternion = Quaternion.IDENTITY
+var _rest_neck: Quaternion = Quaternion.IDENTITY
+var _rest_head: Quaternion = Quaternion.IDENTITY
+var _rest_left_shoulder: Quaternion = Quaternion.IDENTITY
+var _rest_right_shoulder: Quaternion = Quaternion.IDENTITY
 var _rest_left_arm: Quaternion = Quaternion.IDENTITY
 var _rest_right_arm: Quaternion = Quaternion.IDENTITY
 var _rest_left_forearm: Quaternion = Quaternion.IDENTITY
 var _rest_right_forearm: Quaternion = Quaternion.IDENTITY
+var _rest_left_hand: Quaternion = Quaternion.IDENTITY
+var _rest_right_hand: Quaternion = Quaternion.IDENTITY
 var _rest_left_upleg: Quaternion = Quaternion.IDENTITY
 var _rest_right_upleg: Quaternion = Quaternion.IDENTITY
 var _rest_left_leg: Quaternion = Quaternion.IDENTITY
 var _rest_right_leg: Quaternion = Quaternion.IDENTITY
-var _rest_spine: Quaternion = Quaternion.IDENTITY
+var _rest_left_foot: Quaternion = Quaternion.IDENTITY
+var _rest_right_foot: Quaternion = Quaternion.IDENTITY
+
+# Sistema de Poses Esqueléticas Procedurales del Arquero de Futsal
+enum PoseArquero {
+	GUARDIA_BAJA,
+	LA_CRUZ,
+	DESPLIEGUE_L,
+	DESPEJE_PIE,
+	BLOQUEO_PECHO,
+	ESTIRADA_ALTA,
+	MANOS_SEGURAS
+}
+
+var pose_arquero_actual: int = PoseArquero.GUARDIA_BAJA
+var _t_pose_arquero: float = 0.0
+var _lado_pose_arquero: float = 1.0 # 1.0 izquierda, -1.0 derecha
+var _reaccion_tiro_retardo: float = 0.0
+var _doble_atajada_activa: bool = false
 
 # Ángulos interpolados para animación esqueletal humanoide
 var _ang_pierna_izq_x: float = 0.0
@@ -410,18 +495,46 @@ func _inicializar_nodos_modelo_glb() -> void:
 				if std_mat.normal_texture != null:
 					_textura_glb_normal_cache = std_mat.normal_texture
 
-	# Cachear índices y poses de reposo de los huesos principales del rig Mixamo (`mixamorig5:*`)
+	# Cachear índices y poses de reposo de los huesos principales del rig Mixamo (`mixamorig5_*`)
 	if esqueleto_humanoide != null:
-		_idx_left_arm = _buscar_hueso_humanoide(["mixamorig5:LeftArm", "mixamorig:LeftArm", "LeftArm"])
-		_idx_right_arm = _buscar_hueso_humanoide(["mixamorig5:RightArm", "mixamorig:RightArm", "RightArm"])
-		_idx_left_forearm = _buscar_hueso_humanoide(["mixamorig5:LeftForeArm", "mixamorig:LeftForeArm", "LeftForeArm"])
-		_idx_right_forearm = _buscar_hueso_humanoide(["mixamorig5:RightForeArm", "mixamorig:RightForeArm", "RightForeArm"])
-		_idx_left_upleg = _buscar_hueso_humanoide(["mixamorig5:LeftUpLeg", "mixamorig:LeftUpLeg", "LeftUpLeg"])
-		_idx_right_upleg = _buscar_hueso_humanoide(["mixamorig5:RightUpLeg", "mixamorig:RightUpLeg", "RightUpLeg"])
-		_idx_left_leg = _buscar_hueso_humanoide(["mixamorig5:LeftLeg", "mixamorig:LeftLeg", "LeftLeg"])
-		_idx_right_leg = _buscar_hueso_humanoide(["mixamorig5:RightLeg", "mixamorig:RightLeg", "RightLeg"])
-		_idx_spine = _buscar_hueso_humanoide(["mixamorig5:Spine1", "mixamorig5:Spine", "mixamorig:Spine1", "Spine1", "Spine"])
+		_idx_hips = _buscar_hueso_humanoide(["mixamorig5_Hips", "mixamorig5:Hips", "mixamorig:Hips", "Hips"])
+		_idx_spine = _buscar_hueso_humanoide(["mixamorig5_Spine", "mixamorig5:Spine", "mixamorig:Spine", "Spine"])
+		_idx_spine1 = _buscar_hueso_humanoide(["mixamorig5_Spine1", "mixamorig5:Spine1", "mixamorig:Spine1", "Spine1"])
+		_idx_spine2 = _buscar_hueso_humanoide(["mixamorig5_Spine2", "mixamorig5:Spine2", "mixamorig:Spine2", "Spine2"])
+		_idx_neck = _buscar_hueso_humanoide(["mixamorig5_Neck", "mixamorig5:Neck", "mixamorig:Neck", "Neck"])
+		_idx_head = _buscar_hueso_humanoide(["mixamorig5_Head", "mixamorig5:Head", "mixamorig:Head", "Head"])
+		_idx_left_shoulder = _buscar_hueso_humanoide(["mixamorig5_LeftShoulder", "mixamorig5:LeftShoulder", "LeftShoulder"])
+		_idx_right_shoulder = _buscar_hueso_humanoide(["mixamorig5_RightShoulder", "mixamorig5:RightShoulder", "RightShoulder"])
+		_idx_left_arm = _buscar_hueso_humanoide(["mixamorig5_LeftArm", "mixamorig5:LeftArm", "LeftArm"])
+		_idx_right_arm = _buscar_hueso_humanoide(["mixamorig5_RightArm", "mixamorig5:RightArm", "RightArm"])
+		_idx_left_forearm = _buscar_hueso_humanoide(["mixamorig5_LeftForeArm", "mixamorig5:LeftForeArm", "LeftForeArm"])
+		_idx_right_forearm = _buscar_hueso_humanoide(["mixamorig5_RightForeArm", "mixamorig5:RightForeArm", "RightForeArm"])
+		_idx_left_hand = _buscar_hueso_humanoide(["mixamorig5_LeftHand", "mixamorig5:LeftHand", "LeftHand"])
+		_idx_right_hand = _buscar_hueso_humanoide(["mixamorig5_RightHand", "mixamorig5:RightHand", "RightHand"])
+		_idx_left_upleg = _buscar_hueso_humanoide(["mixamorig5_LeftUpLeg", "mixamorig5:LeftUpLeg", "LeftUpLeg"])
+		_idx_right_upleg = _buscar_hueso_humanoide(["mixamorig5_RightUpLeg", "mixamorig5:RightUpLeg", "RightUpLeg"])
+		_idx_left_leg = _buscar_hueso_humanoide(["mixamorig5_LeftLeg", "mixamorig5:LeftLeg", "LeftLeg"])
+		_idx_right_leg = _buscar_hueso_humanoide(["mixamorig5_RightLeg", "mixamorig5:RightLeg", "RightLeg"])
+		_idx_left_foot = _buscar_hueso_humanoide(["mixamorig5_LeftFoot", "mixamorig5:LeftFoot", "LeftFoot"])
+		_idx_right_foot = _buscar_hueso_humanoide(["mixamorig5_RightFoot", "mixamorig5:RightFoot", "RightFoot"])
 
+		if _idx_hips >= 0:
+			_rest_hips_pos = esqueleto_humanoide.get_bone_rest(_idx_hips).origin
+			_rest_hips = esqueleto_humanoide.get_bone_rest(_idx_hips).basis.get_rotation_quaternion()
+		if _idx_spine >= 0:
+			_rest_spine = esqueleto_humanoide.get_bone_rest(_idx_spine).basis.get_rotation_quaternion()
+		if _idx_spine1 >= 0:
+			_rest_spine1 = esqueleto_humanoide.get_bone_rest(_idx_spine1).basis.get_rotation_quaternion()
+		if _idx_spine2 >= 0:
+			_rest_spine2 = esqueleto_humanoide.get_bone_rest(_idx_spine2).basis.get_rotation_quaternion()
+		if _idx_neck >= 0:
+			_rest_neck = esqueleto_humanoide.get_bone_rest(_idx_neck).basis.get_rotation_quaternion()
+		if _idx_head >= 0:
+			_rest_head = esqueleto_humanoide.get_bone_rest(_idx_head).basis.get_rotation_quaternion()
+		if _idx_left_shoulder >= 0:
+			_rest_left_shoulder = esqueleto_humanoide.get_bone_rest(_idx_left_shoulder).basis.get_rotation_quaternion()
+		if _idx_right_shoulder >= 0:
+			_rest_right_shoulder = esqueleto_humanoide.get_bone_rest(_idx_right_shoulder).basis.get_rotation_quaternion()
 		if _idx_left_arm >= 0:
 			_rest_left_arm = esqueleto_humanoide.get_bone_rest(_idx_left_arm).basis.get_rotation_quaternion()
 		if _idx_right_arm >= 0:
@@ -430,6 +543,10 @@ func _inicializar_nodos_modelo_glb() -> void:
 			_rest_left_forearm = esqueleto_humanoide.get_bone_rest(_idx_left_forearm).basis.get_rotation_quaternion()
 		if _idx_right_forearm >= 0:
 			_rest_right_forearm = esqueleto_humanoide.get_bone_rest(_idx_right_forearm).basis.get_rotation_quaternion()
+		if _idx_left_hand >= 0:
+			_rest_left_hand = esqueleto_humanoide.get_bone_rest(_idx_left_hand).basis.get_rotation_quaternion()
+		if _idx_right_hand >= 0:
+			_rest_right_hand = esqueleto_humanoide.get_bone_rest(_idx_right_hand).basis.get_rotation_quaternion()
 		if _idx_left_upleg >= 0:
 			_rest_left_upleg = esqueleto_humanoide.get_bone_rest(_idx_left_upleg).basis.get_rotation_quaternion()
 		if _idx_right_upleg >= 0:
@@ -438,11 +555,16 @@ func _inicializar_nodos_modelo_glb() -> void:
 			_rest_left_leg = esqueleto_humanoide.get_bone_rest(_idx_left_leg).basis.get_rotation_quaternion()
 		if _idx_right_leg >= 0:
 			_rest_right_leg = esqueleto_humanoide.get_bone_rest(_idx_right_leg).basis.get_rotation_quaternion()
-		if _idx_spine >= 0:
-			_rest_spine = esqueleto_humanoide.get_bone_rest(_idx_spine).basis.get_rotation_quaternion()
+		if _idx_left_foot >= 0:
+			_rest_left_foot = esqueleto_humanoide.get_bone_rest(_idx_left_foot).basis.get_rotation_quaternion()
+		if _idx_right_foot >= 0:
+			_rest_right_foot = esqueleto_humanoide.get_bone_rest(_idx_right_foot).basis.get_rotation_quaternion()
 
-		# Relajar brazos inicialmente desde la T-Pose hacia los costados del torso
-		_aplicar_pose_esqueleto_actual()
+		# Relajar articulaciones inicialmente desde la T-Pose
+		if posicion_tactica == "PORTERO":
+			_actualizar_pose_esqueleto_arquero(0.016)
+		else:
+			_aplicar_pose_esqueleto_actual()
 
 
 func _buscar_hueso_humanoide(candidatos: Array[String]) -> int:
@@ -460,6 +582,245 @@ func _aplicar_rotacion_hueso(idx: int, rest_q: Quaternion, rot_x: float, rot_y: 
 		return
 	var delta_q: Quaternion = Quaternion.from_euler(Vector3(rot_x, rot_y, rot_z))
 	esqueleto_humanoide.set_bone_pose_rotation(idx, rest_q * delta_q)
+
+
+func _aplicar_rotacion_hueso_slerp(idx: int, rest_q: Quaternion, rot_offset_euler: Vector3, factor: float) -> void:
+	if esqueleto_humanoide == null or idx < 0:
+		return
+	var delta_q: Quaternion = Quaternion.from_euler(rot_offset_euler)
+	var target_q: Quaternion = (rest_q * delta_q).normalized()
+	var curr_q: Quaternion = esqueleto_humanoide.get_bone_pose_rotation(idx)
+	if curr_q.is_equal_approx(Quaternion(0.0, 0.0, 0.0, 0.0)):
+		curr_q = rest_q
+	var new_q: Quaternion = curr_q.slerp(target_q, clampf(factor, 0.0, 1.0)).normalized()
+	esqueleto_humanoide.set_bone_pose_rotation(idx, new_q)
+
+
+func _aplicar_posicion_hips_lerp(offset_pos: Vector3, factor: float) -> void:
+	if esqueleto_humanoide == null or _idx_hips < 0:
+		return
+	var target_pos: Vector3 = _rest_hips_pos + offset_pos
+	var curr_pos: Vector3 = esqueleto_humanoide.get_bone_pose_position(_idx_hips)
+	if curr_pos.is_equal_approx(Vector3.ZERO):
+		curr_pos = _rest_hips_pos
+	esqueleto_humanoide.set_bone_pose_position(_idx_hips, curr_pos.lerp(target_pos, clampf(factor, 0.0, 1.0)))
+
+
+## Actualiza procedimentalmente las 7 poses esqueléticas de futsal (`mixamorig5:*`)
+## con interpolación esférica suave (slerp/lerp) eliminando cualquier T-Pose en el arquero.
+func _actualizar_pose_esqueleto_arquero(delta: float) -> void:
+	if esqueleto_humanoide == null:
+		return
+	
+	if tiene_balon_en_manos or _estado == EstadoJugador.ESTADO_PORTERO_MANOS:
+		pose_arquero_actual = PoseArquero.MANOS_SEGURAS
+	elif _t_anim_atajada <= 0.0 and not _en_achique_cruz_k:
+		pose_arquero_actual = PoseArquero.GUARDIA_BAJA
+	elif _en_achique_cruz_k:
+		pose_arquero_actual = PoseArquero.LA_CRUZ
+	
+	var vel_transicion: float = 24.0 if pose_arquero_actual != PoseArquero.GUARDIA_BAJA else 14.0
+	var f: float = clampf(vel_transicion * delta, 0.0, 1.0)
+	
+	match pose_arquero_actual:
+		PoseArquero.GUARDIA_BAJA:
+			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.16, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3.ZERO, f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(deg_to_rad(12.0), 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3(deg_to_rad(8.0), 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(-10.0), 0.0, 0.0), f)
+			
+			_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.20, 0.0, 0.22), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.20, 0.0, -0.22), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.38, 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.38, 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.18, 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.18, 0.0, 0.0), f)
+			
+			_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.85, -0.15, 0.35), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.85, 0.15, -0.35), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.10, 0.0, 0.45), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.10, 0.0, -0.45), f)
+		
+		PoseArquero.LA_CRUZ:
+			var factor_k: float = clampf((gk_alcance_achique / 99.0) * 1.25, 0.85, 1.30)
+			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.42, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3.ZERO, f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(deg_to_rad(-4.0), 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3.ZERO, f)
+			_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(4.0), 0.0, 0.0), f)
+			
+			if _lado_pose_arquero >= 0.0:
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.18, 0.0, 1.15 * factor_k), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.08, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.25, 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.95, 0.0, -0.18), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-1.25, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(-0.20, 0.0, 0.0), f)
+			else:
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.18, 0.0, -1.15 * factor_k), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.08, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.25, 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.95, 0.0, 0.18), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-1.25, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(-0.20, 0.0, 0.0), f)
+			
+			_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.45, 0.0, 0.88), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.45, 0.0, -0.88), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.0, 0.0, 0.28), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.0, 0.0, -0.28), f)
+		
+		PoseArquero.DESPLIEGUE_L:
+			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.48, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3(0.0, 0.0, 0.10 * _lado_pose_arquero), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(0.05, 0.0, 0.20 * _lado_pose_arquero), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3.ZERO, f)
+			
+			if _lado_pose_arquero >= 0.0:
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.35, 0.0, 1.35), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.05, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.15, 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.85, 0.0, -0.30), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-1.30, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(-0.10, 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.80, 0.0, 0.60), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.30, 0.0, -0.70), f)
+			else:
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.35, 0.0, -1.35), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.05, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.15, 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.85, 0.0, 0.30), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-1.30, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(-0.10, 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.80, 0.0, -0.60), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.30, 0.0, 0.70), f)
+			
+			_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.0, 0.0, 0.20), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.0, 0.0, -0.20), f)
+		
+		PoseArquero.DESPEJE_PIE:
+			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.18, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3.ZERO, f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(-0.05, 0.0, -0.10 * _lado_pose_arquero), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3.ZERO, f)
+			
+			if _lado_pose_arquero >= 0.0:
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.68, 0.0, 0.65), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.10, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.30, 0.40, 0.35), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.22, 0.0, -0.15), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.65, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.15, 0.0, 0.0), f)
+			else:
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.68, 0.0, -0.65), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.10, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.30, -0.40, -0.35), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.22, 0.0, 0.15), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.65, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.15, 0.0, 0.0), f)
+			
+			_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.55, 0.0, 0.75), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.55, 0.0, -0.75), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.0, 0.0, 0.35), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.0, 0.0, -0.35), f)
+		
+		PoseArquero.BLOQUEO_PECHO:
+			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.08, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3.ZERO, f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(deg_to_rad(10.0), 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3(deg_to_rad(8.0), 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(-5.0), 0.0, 0.0), f)
+			
+			_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.22, 0.0, 0.08), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.22, 0.0, -0.08), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.45, 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.45, 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.15, 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.15, 0.0, 0.0), f)
+			
+			_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.95, -0.12, 0.15), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.95, 0.12, -0.15), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.15, 0.0, 1.05), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.15, 0.0, -1.05), f)
+		
+		PoseArquero.ESTIRADA_ALTA:
+			_aplicar_posicion_hips_lerp(Vector3(0.0, 0.14, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3(0.0, 0.0, 0.12 * _lado_pose_arquero), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(-0.10, 0.0, 0.25 * _lado_pose_arquero), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3.ZERO, f)
+			
+			if _lado_pose_arquero >= 0.0:
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(-0.25, 0.0, 1.45), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.0, 0.0, 0.08), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.50, 0.0, -0.60), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.0, 0.0, -0.25), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.15, 0.0, 0.25), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.15, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.55, 0.0, -0.20), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.80, 0.0, 0.0), f)
+			else:
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(-0.25, 0.0, -1.45), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.0, 0.0, -0.08), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.50, 0.0, 0.60), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.0, 0.0, 0.25), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.15, 0.0, -0.25), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.15, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.55, 0.0, 0.20), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.80, 0.0, 0.0), f)
+		
+		PoseArquero.MANOS_SEGURAS:
+			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.05, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3.ZERO, f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(deg_to_rad(14.0), 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3(deg_to_rad(10.0), 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(12.0), 0.0, 0.0), f)
+			
+			_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.15, 0.0, 0.12), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.15, 0.0, -0.12), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.25, 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.25, 0.0, 0.0), f)
+			
+			_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.85, -0.15, 0.15), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.85, 0.15, -0.15), f)
+			_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.35, 0.0, 0.95), f)
+			_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.35, 0.0, -0.95), f)
+
+
+## Actualiza procedimentalmente la postura compacta de defensor en barrera de tiro libre
+## eliminando cualquier postura en T y pegando los brazos y manos protegiendo el cuerpo.
+func _actualizar_pose_esqueleto_barrera(delta: float) -> void:
+	if esqueleto_humanoide == null:
+		return
+	var f: float = clampf(14.0 * delta, 0.0, 1.0)
+	_aplicar_posicion_hips_lerp(Vector3.ZERO, f)
+	_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3.ZERO, f)
+	_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3.ZERO, f)
+	_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3.ZERO, f)
+	_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3.ZERO, f)
+	
+	# Piernas juntas protegiendo el balón
+	_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.0, 0.0, -0.02), f)
+	_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.0, 0.0, 0.02), f)
+	_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.04, 0.0, 0.0), f)
+	_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.04, 0.0, 0.0), f)
+	_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.04, 0.0, 0.0), f)
+	_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.04, 0.0, 0.0), f)
+	
+	# Brazos pegados al cuerpo protegiendo zona inguinal / torso inferior (cero T-Pose)
+	_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(1.10, -0.15, 0.12), f)
+	_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(1.10, 0.15, -0.12), f)
+	_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.20, 0.0, 0.55), f)
+	_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.20, 0.0, -0.55), f)
 
 
 ## Aplica los ángulos articulados actuales al `Skeleton3D` humanoide (`mixamorig5:*`),
@@ -780,27 +1141,33 @@ func _cargar_ficha_futsal_3d() -> void:
 		nombre_jugador = str(ficha.get("nombre", posicion_tactica))
 		dorsal = int(ficha.get("dorsal", dorsal))
 		if posicion_tactica == "PORTERO":
-			vel_movimiento = float(ficha.get("ritmo", 65.0))
-			gk_estirada = float(ficha.get("gk_estirada", 84.0))
+			ovr = int(ficha.get("ovr", 84))
+			ritmo = float(ficha.get("ritmo", 65.0))
+			gk_posicionamiento = float(ficha.get("gk_posicionamiento", 84.0))
 			gk_reflejos = float(ficha.get("gk_reflejos", 85.0))
-			gk_manejo = float(ficha.get("gk_manejo", 81.0))
-			gk_posicionamiento = float(ficha.get("gk_posicionamiento", 83.0))
-			gk_saque = float(ficha.get("gk_saque", 81.0))
-			vision_pase = gk_saque
-			control_balon = gk_manejo
+			gk_alcance_achique = float(ficha.get("gk_alcance_achique", ficha.get("gk_estirada", 85.0)))
+			gk_bloqueo_control = float(ficha.get("gk_bloqueo_control", ficha.get("gk_manejo", 82.0)))
+			gk_juego_pies = float(ficha.get("gk_juego_pies", ficha.get("gk_saque", 80.0)))
+			gk_estirada = gk_alcance_achique
+			gk_manejo = gk_bloqueo_control
+			gk_saque = gk_juego_pies
+			vision_pase = gk_juego_pies
+			control_balon = gk_bloqueo_control
 			defensa_recuperacion = gk_reflejos
 		else:
-			vel_movimiento = float(ficha.get("ritmo", vel_movimiento))
-			potencia_tiro = float(ficha.get("tiro", potencia_tiro))
-			precision_tiro = clampf(float(ficha.get("tiro", precision_tiro)) * 0.96, 50.0, 99.0)
-			vision_pase = float(ficha.get("pase", vision_pase))
-			control_balon = float(ficha.get("regate", control_balon))
-			defensa_recuperacion = float(ficha.get("defensa", defensa_recuperacion))
+			ovr = int(ficha.get("ovr", 82))
+			ritmo = float(ficha.get("ritmo", ritmo))
+			tiro = float(ficha.get("tiro", tiro))
+			pase = float(ficha.get("pase", pase))
+			regate = float(ficha.get("regate", regate))
+			defensa = float(ficha.get("defensa", defensa))
+			fisico = float(ficha.get("fisico", fisico))
 	
+	ovr = get_media_ovr()
 	if label_dorsal:
 		label_dorsal.text = str(dorsal)
 	if label_nombre:
-		label_nombre.text = "%s (%d)" % [nombre_jugador, get_media_ovr()]
+		label_nombre.text = "%s (%d)" % [nombre_jugador, ovr]
 
 
 ## Ancla o libera al jugador en el punto de saque reglamentario (sin poder desplazarse hasta patear)
@@ -1117,6 +1484,7 @@ func _physics_process(delta: float) -> void:
 	_animar_extremidades(delta)
 	if es_arquero:
 		_actualizar_hitboxes_portero()
+		_evaluar_colisiones_esqueleto_arquero(delta)
 
 
 ## Actualiza la Flecha Guía de Pase y Apuntamiento en el plano XZ bajo los pies del jugador controlado:
@@ -2463,13 +2831,15 @@ func _comportamiento_sacador_ia(_pos_balon: Vector3, balon: Balon3D) -> void:
 
 
 ## IA y Técnica Reglamentaria del Portero de Fútsal (sin vuelos de manos de Fútbol 11):
-## - Posición de Cruz / "K" (Técnica Canaria) en 1vs1 cuando un delantero rival entra a < 5.0m en el área.
-## - Atajadas con Pies y Piernas (Estilo Hockey / Abanico / Espagat) para disparos rasos y cruzados.
-## - Bloqueo con Pecho / Rostro para tiros potentes o a quemarropa (rebote en torso rígido sin recepción de manos).
-func _comportamiento_portero(_delta: float, pos_balon: Vector3, balon: Balon3D) -> void:
+## - Bisectriz y Achique dinámico de 1.2 a 3.2 m del arco según distancia del balón.
+## - 1vs1 Mano a Mano: "Aguantar y Achicar" en Guardia Baja (2.0 a 2.8 m) sin tirarse en falso;
+##   despliega La Cruz (K-Block) solo ante inminencia de tiro o invasión a < 2.4 m.
+## - Selección de técnica según trayectoria: Despliegue en L, Despeje con el Pie, Bloqueo de Pecho, Estirada Alta o Manos Seguras.
+func _comportamiento_portero(delta: float, pos_balon: Vector3, balon: Balon3D) -> void:
 	# Si el portero IA tiene el balón (ESTADO_PORTERO_MANOS), su traslación está bloqueada; rota hacia un compañero y distribuye con la mano
 	if tiene_posesion or balon.portador_actual == self:
 		_en_achique_cruz_k = false
+		pose_arquero_actual = PoseArquero.MANOS_SEGURAS
 		sprint_activo = false
 		var dir_base_campo: Vector3 = Vector3(1.0 if equipo == Equipo.LOCAL else -1.0, 0.0, 0.0)
 		var receptor_gk: Jugador3D = _buscar_mejor_receptor(dir_base_campo)
@@ -2496,97 +2866,96 @@ func _comportamiento_portero(_delta: float, pos_balon: Vector3, balon: Balon3D) 
 	elif equipo == Equipo.VISITANTE and vel_balon.x > 3.6 and pos_balon.x < 19.8:
 		es_tiro_peligroso = true
 	
-	# Detectar 1vs1 en el área (< 5.0m con balón dominado por delantero rival) -> Posición de Cruz / "K" (Técnica Canaria)
+	# Detectar delantero rival encarando en 1vs1 dentro del área o cercanías
 	var portador_rival: Jugador3D = balon.portador_actual as Jugador3D if balon.esta_siendo_conducido() else null
-	var rival_en_area: bool = portador_rival != null and portador_rival.equipo != equipo and (_esta_en_area_propia(portador_rival.global_position) or abs(portador_rival.global_position.x - linea_meta_x) < 6.0)
-	var es_uno_contra_uno_cruz: bool = rival_en_area and dist_al_balon < 5.0
-	_en_achique_cruz_k = es_uno_contra_uno_cruz
+	var rival_en_area: bool = portador_rival != null and portador_rival.equipo != equipo and (_esta_en_area_propia(portador_rival.global_position) or abs(portador_rival.global_position.x - linea_meta_x) < 6.5)
 	
-	# 1. ACHIQUE EN CRUZ / "K" (TÉCNICA CANARIA) EN 1 VS 1 DENTRO DEL ÁREA (< 5 METROS)
-	if es_uno_contra_uno_cruz and not es_tiro_peligroso:
+	# 1. ACHIQUE Y MANO A MANO 1VS1 ("AGUANTAR Y ACHICAR")
+	if rival_en_area and not es_tiro_peligroso:
 		var pos_atacante: Vector3 = portador_rival.global_position
-		_lado_atajada = 1.0 if (pos_atacante.z >= global_position.z) else -1.0
+		_lado_pose_arquero = 1.0 if (pos_atacante.z >= global_position.z) else -1.0
+		_lado_atajada = _lado_pose_arquero
 		
-		# Cerrar ángulo en la bisectriz entre el delantero y el centro del arco manteniendo postura de Cruz / "K"
-		var centro_arco: Vector3 = Vector3(linea_meta_x, 0.0, 0.0)
-		var dir_bisectriz: Vector3 = (pos_atacante - centro_arco).normalized()
-		var avance_achique: float = clampf(dist_al_balon * 0.65, 1.15, 3.8)
-		var pos_cruz_k: Vector3 = centro_arco + dir_bisectriz * avance_achique
-		pos_cruz_k.z = clampf(pos_cruz_k.z, -1.65, 1.65)
+		# Aguantar en Guardia Baja entre 2.0 y 2.8m respecto al atacante
+		var disparo_inminente: bool = (portador_rival._t_anim_patada > 0.0 or portador_rival.velocity.length() < 0.8)
+		var desplegar_cruz: bool = Portero.evaluar_lectura_mano_a_mano(dist_al_balon, disparo_inminente, _t_anim_atajada)
 		
-		var delta_achique: Vector3 = pos_cruz_k - global_position
+		if desplegar_cruz:
+			_en_achique_cruz_k = true
+			pose_arquero_actual = PoseArquero.LA_CRUZ
+			if _t_anim_atajada <= 0.0:
+				_t_anim_atajada = 0.55
+		else:
+			_en_achique_cruz_k = false
+			if _t_anim_atajada <= 0.0:
+				pose_arquero_actual = PoseArquero.GUARDIA_BAJA
+		
+		# Posicionamiento sobre la bisectriz cerrando el arco
+		var pos_objetivo_achique: Vector3 = Portero.calcular_posicion_bisectriz(linea_meta_x, pos_atacante, gk_posicionamiento)
+		# Mantener 2.0 a 2.8m de distancia del portador si aguanta en Guardia Baja
+		if not desplegar_cruz and dist_al_balon < 2.0:
+			var dir_alejarse: Vector3 = (global_position - pos_atacante).normalized()
+			dir_alejarse.y = 0.0
+			pos_objetivo_achique = pos_atacante + dir_alejarse * 2.2
+			pos_objetivo_achique.z = clampf(pos_objetivo_achique.z, -1.65, 1.65)
+			if linea_meta_x < 0.0:
+				pos_objetivo_achique.x = clampf(pos_objetivo_achique.x, -19.4, -15.5)
+			else:
+				pos_objetivo_achique.x = clampf(pos_objetivo_achique.x, 15.5, 19.4)
+		
+		var delta_achique: Vector3 = pos_objetivo_achique - global_position
 		delta_achique.y = 0.0
-		_direccion_deseada = delta_achique.normalized() if delta_achique.length() > 0.20 else Vector3.ZERO
-		sprint_activo = dist_al_balon > 2.2
+		_direccion_deseada = delta_achique.normalized() if delta_achique.length() > 0.15 else Vector3.ZERO
+		sprint_activo = dist_al_balon > 3.0
 		
-		# Si el delantero intenta pasar por encima del bloqueo en Cruz a quemarropa (< 1.15m), tapar con pierna/torso
+		# Bloqueo o robo reactivo si el atacante intenta rebasar a menos de 1.15m
 		if dist_al_balon < 1.15 and _tiempo_paradon_reciente <= 0.0 and portador_rival.puede_ser_robado():
-			_tiempo_paradon_reciente = 0.95
-			var prob_achique: float = clampf((gk_reflejos * 0.55 + gk_posicionamiento * 0.45) / 99.0 * 0.72, 0.25, 0.72)
+			_tiempo_paradon_reciente = lerpf(0.55, 0.18, gk_reflejos / 99.0)
+			var prob_achique: float = clampf((gk_reflejos * 0.50 + gk_alcance_achique * 0.50) / 99.0 * 0.78, 0.30, 0.85)
 			if randf() < prob_achique:
 				portador_rival.soltar_posesion()
 				portador_rival._t_bloqueo_recaptura = 0.55
-				var dir_rebote_k: Vector3 = Vector3(1.0 if equipo == Equipo.LOCAL else -1.0, 0.22, _lado_atajada * 0.85).normalized() * 7.8
+				var dir_rebote_k: Vector3 = Vector3(1.0 if equipo == Equipo.LOCAL else -1.0, 0.20, _lado_pose_arquero * 0.85).normalized() * 7.5
 				balon.patear(dir_rebote_k, int(equipo))
 				_emitir_anuncio_hud("¡ACHIQUE EN CRUZ 'K' DE %s!" % nombre_jugador.to_upper())
 		return
 	
-	# 2. ATAJADAS CON PIES/PIERNAS (ESTILO HOCKEY) Y BLOQUEO CON PECHO/ROSTRO EN TIROS A PUERTA
-	if es_tiro_peligroso and not es_pase_companero and dist_al_balon < 4.8:
-		var limite_cobertura_z: float = 1.20 + (gk_posicionamiento / 99.0) * 0.42
+	# 2. DISPAROS PELIGROSOS A PUERTA (REACCIÓN Y TÉCNICA)
+	if es_tiro_peligroso and not es_pase_companero and dist_al_balon < 7.5:
+		var limite_cobertura_z: float = 1.25 + (gk_posicionamiento / 99.0) * 0.40
 		var intercept_z: float = clampf(pos_balon.z + (vel_balon.z / maxf(0.1, abs(vel_balon.x))) * abs(global_position.x - pos_balon.x), -limite_cobertura_z, limite_cobertura_z)
 		var pos_bloqueo: Vector3 = Vector3(global_position.x, 0.0, intercept_z)
 		_direccion_deseada = (pos_bloqueo - global_position).normalized()
 		sprint_activo = true
 		
 		var diff_z: float = intercept_z - global_position.z
-		var es_tiro_a_quemarropa_o_alto: bool = (pos_balon.y > 0.72) or (rapidez_tiro >= 15.5 and abs(diff_z) < 0.55)
+		_lado_pose_arquero = 1.0 if diff_z >= 0.0 else -1.0
+		_lado_atajada = _lado_pose_arquero
 		
-		# Activar pose reglamentaria de futsal (Pies estilo Hockey o Bloqueo rígido de Pecho/Rostro; sin vuelos de Fútbol 11)
-		if dist_al_balon < 2.8 and _t_anim_atajada <= 0.0:
-			_lado_atajada = 1.0 if diff_z >= 0.0 else -1.0
-			if es_tiro_a_quemarropa_o_alto:
-				# Bloqueo con Pecho / Rostro (torso rígido sin recepción de manos)
-				_tipo_atajada_actual = EstadoJugador.ATAJADA_MEDIA
-				_t_anim_atajada = 0.46
-			else:
-				# Atajada con Pies y Piernas (Estilo Hockey / Abanico / Espagat hacia los postes)
-				_tipo_atajada_actual = EstadoJugador.ATAJADA_BAJA
-				_t_anim_atajada = 0.50
-		
-		# Alcance físico de desvío con piernas/torso según gk_estirada y gk_reflejos
-		var radio_alcance_futsal: float = 0.76 + (gk_estirada / 99.0) * 0.42
-		if dist_al_balon < radio_alcance_futsal and _tiempo_paradon_reciente <= 0.0:
-			_tiempo_paradon_reciente = 1.0
-			
-			var factor_potencia_tiro: float = clampf((rapidez_tiro - 11.5) / 18.5, 0.05, 0.98)
-			var factor_esquina: float = clampf(abs(pos_balon.z) / 1.80, 0.0, 0.42)
-			var dificultad_tiro: float = factor_potencia_tiro * 0.72 + factor_esquina * 0.48
-			
-			var habilidad_portero: float = ((gk_reflejos * 0.55 + gk_estirada * 0.45) / 99.0) * 0.88
-			var prob_atajar: float = clampf(0.50 + (habilidad_portero - dificultad_tiro) * 0.85, 0.14, 0.84)
-			
-			if randf() < prob_atajar:
-				var dist_origen_x: float = abs(pos_balon.x - linea_meta_x)
-				# Solo atrapa con las manos si es un balón lento/lejano; en tiros potentes, rasos cruzados o a quemarropa rebota en pies o pecho
-				if rapidez_tiro < 11.8 and dist_origen_x > 4.5 and not es_tiro_a_quemarropa_o_alto and abs(diff_z) < 0.45:
-					atrapar_con_manos(balon)
-					_emitir_anuncio_hud("¡%s SEGURA EL BALÓN!" % nombre_jugador.to_upper())
-				elif es_tiro_a_quemarropa_o_alto:
-					# Rebote seco contra el torso/pecho rígido sin usar las manos
-					var dir_rebote_pecho: Vector3 = Vector3(1.35 if equipo == Equipo.LOCAL else -1.35, 0.32, clampf(diff_z * 1.2, -1.1, 1.1)).normalized()
-					var fuerza_rebote_pecho: float = clampf(rapidez_tiro * 0.58, 7.5, 12.5)
-					balon.patear(dir_rebote_pecho * fuerza_rebote_pecho, int(equipo))
-					_emitir_anuncio_hud("¡BLOQUEO DE PECHO DE %s!" % nombre_jugador.to_upper())
+		# Retardo de reacción según gk_reflejos (lerp 0.22s a 0.03s)
+		if _reaccion_tiro_retardo > 0.0:
+			_reaccion_tiro_retardo -= delta
+		else:
+			# Selección de técnica reglamentaria
+			if dist_al_balon < 4.0 and _t_anim_atajada <= 0.0:
+				if pos_balon.y > 1.05 or (abs(diff_z) > 1.1 and pos_balon.y > 0.6):
+					pose_arquero_actual = PoseArquero.ESTIRADA_ALTA
+					_t_anim_atajada = 0.52
+				elif pos_balon.y > 0.45 or (rapidez_tiro >= 15.0 and abs(diff_z) < 0.6):
+					pose_arquero_actual = PoseArquero.BLOQUEO_PECHO
+					_t_anim_atajada = 0.48
+				elif abs(diff_z) > 0.65 or dist_al_balon > 2.2:
+					pose_arquero_actual = PoseArquero.DESPLIEGUE_L
+					_t_anim_atajada = 0.50
 				else:
-					# Desvío lateral hacia el costado con el pie/pierna en abanico (estilo hockey)
-					var dir_pie_z: float = 1.0 if pos_balon.z >= 0.0 else -1.0
-					var impulso_pie: Vector3 = Vector3(1.10 if equipo == Equipo.LOCAL else -1.10, 0.24, dir_pie_z * 1.55).normalized() * 8.6
-					balon.patear(impulso_pie, int(equipo))
-					_emitir_anuncio_hud("¡ATAJADA CON EL PIE DE %s!" % nombre_jugador.to_upper())
+					pose_arquero_actual = PoseArquero.DESPEJE_PIE
+					_t_anim_atajada = 0.46
 		return
+	else:
+		# Resetear retardo de reacción cuando no hay disparo en curso
+		_reaccion_tiro_retardo = lerpf(0.22, 0.03, gk_reflejos / 99.0)
 	
-	# 3. RECEPCIÓN DE PASE ATRÁS (CESIÓN CON EL PIE) O BALÓN SUELTO EN EL ÁREA
+	# 3. BALÓN SUELTO O CESIÓN CON EL PIE EN EL ÁREA
 	var dentro_area_propia: bool = _esta_en_area_propia(pos_balon)
 	if not balon.esta_siendo_conducido() and balon.sacador_autorizado == null and (dentro_area_propia or (es_pase_companero and dist_al_balon < 6.0 and abs(pos_balon.x - linea_meta_x) < 8.0)):
 		_direccion_deseada = (pos_balon - global_position).normalized()
@@ -2595,17 +2964,16 @@ func _comportamiento_portero(_delta: float, pos_balon: Vector3, balon: Balon3D) 
 			Portero.procesar_recepcion(self, balon)
 		return
 	
-	# 4. POSICIONAMIENTO ANGULAR EN ARCO (IDLE_ARQUERO)
+	# 4. POSICIONAMIENTO EN BISECTRIZ (ARCO 3x2 M) - GUARDIA BAJA
 	sprint_activo = false
-	var factor_pos: float = gk_posicionamiento / 99.0
-	var max_z_pos: float = 0.95 + factor_pos * 0.35
-	var angulo_z: float = clampf(pos_balon.z * (0.28 + factor_pos * 0.12), -max_z_pos, max_z_pos)
-	var avance_x: float = clampf((20.0 - abs(pos_balon.x)) * 0.14, 0.35, 1.75)
-	var x_posicionada: float = linea_meta_x + (avance_x if equipo == Equipo.LOCAL else -avance_x)
+	_en_achique_cruz_k = false
+	if _t_anim_atajada <= 0.0:
+		pose_arquero_actual = PoseArquero.GUARDIA_BAJA
 	
-	var pos_deseada: Vector3 = Vector3(x_posicionada, 0.0, angulo_z)
-	var delta_pos: Vector3 = pos_deseada - global_position
-	_direccion_deseada = delta_pos.normalized() if delta_pos.length() > 0.25 else Vector3.ZERO
+	var pos_bisectriz: Vector3 = Portero.calcular_posicion_bisectriz(linea_meta_x, pos_balon, gk_posicionamiento)
+	var delta_pos: Vector3 = pos_bisectriz - global_position
+	delta_pos.y = 0.0
+	_direccion_deseada = delta_pos.normalized() if delta_pos.length() > 0.18 else Vector3.ZERO
 
 
 ## Conducción ágil, evasión de rivales, pases y finalización del portador CPU (Visitante)
@@ -3217,6 +3585,19 @@ func _aplicar_movimiento(delta: float) -> void:
 ## - ATAJADA_MEDIA: Bloqueo de pecho / rostro con torso rígido sin recepción de manos.
 ## - ESTADO_PORTERO_MANOS / SAQUE_MANO: Posesión fija en manos con rotación de apuntado y lanzamiento manual.
 func _animar_extremidades(delta: float) -> void:
+	# Barrera de tiro libre: postura protectora compacta (0 T-pose)
+	if en_pose_barrera:
+		if esqueleto_humanoide != null:
+			_actualizar_pose_esqueleto_barrera(delta)
+		_ang_pierna_izq_x = lerpf(_ang_pierna_izq_x, 0.0, delta * 14.0)
+		_ang_pierna_der_x = lerpf(_ang_pierna_der_x, 0.0, delta * 14.0)
+		_ang_brazo_izq_x = lerpf(_ang_brazo_izq_x, 0.42, delta * 14.0)
+		_ang_brazo_der_x = lerpf(_ang_brazo_der_x, 0.42, delta * 14.0)
+		_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, -0.24, delta * 14.0)
+		_ang_brazo_der_z = lerpf(_ang_brazo_der_z, 0.24, delta * 14.0)
+		_sincronizar_articulaciones_actuales(pivote_pierna_izq != null)
+		return
+
 	var tiene_pivotes_legacy: bool = (
 		pivote_pierna_izq != null
 		and pivote_pierna_der != null
@@ -3237,6 +3618,10 @@ func _animar_extremidades(delta: float) -> void:
 		if not tiene_balon_en_manos and _estado != EstadoJugador.ESTADO_PORTERO_MANOS:
 			var arco_mirada_x: float = 1.0 if equipo == Equipo.LOCAL else -1.0
 			rotation.y = lerp_angle(rotation.y, atan2(-arco_mirada_x, 0.0), clampf(10.0 * delta, 0.0, 1.0))
+
+		# Actualizar esqueleto procedural humanoide Mixamo
+		if esqueleto_humanoide != null:
+			_actualizar_pose_esqueleto_arquero(delta)
 
 		# 1. Estado SAQUE_MANO (lanzamiento manual con el brazo para saques de meta y distribución rápida)
 		if _estado == EstadoJugador.SAQUE_MANO or _t_anim_saque_mano > 0.0:
@@ -3494,7 +3879,7 @@ func _animar_extremidades(delta: float) -> void:
 
 
 func _sincronizar_articulaciones_actuales(tiene_pivotes_legacy: bool) -> void:
-	if esqueleto_humanoide != null:
+	if esqueleto_humanoide != null and posicion_tactica != "PORTERO" and not en_pose_barrera:
 		_aplicar_pose_esqueleto_actual()
 	if tiene_pivotes_legacy:
 		pivote_pierna_izq.rotation.x = _ang_pierna_izq_x
@@ -3510,20 +3895,21 @@ func _sincronizar_articulaciones_actuales(tiene_pivotes_legacy: bool) -> void:
 func get_media_ovr() -> int:
 	if posicion_tactica == "PORTERO":
 		var media_gk: float = (
-			gk_estirada * 0.24 +
-			gk_reflejos * 0.28 +
-			gk_manejo * 0.18 +
-			gk_posicionamiento * 0.20 +
-			gk_saque * 0.10
+			gk_posicionamiento * 0.25 +
+			gk_reflejos * 0.25 +
+			gk_alcance_achique * 0.20 +
+			gk_bloqueo_control * 0.15 +
+			gk_juego_pies * 0.15
 		)
 		return int(round(media_gk))
 	
 	var suma_ponderada: float = (
-		vel_movimiento * 0.22 +
-		potencia_tiro * 0.20 +
-		precision_tiro * 0.20 +
-		vision_pase * 0.18 +
-		control_balon * 0.20
+		ritmo * 0.20 +
+		tiro * 0.20 +
+		pase * 0.20 +
+		regate * 0.15 +
+		defensa * 0.15 +
+		fisico * 0.10
 	)
 	return int(round(suma_ponderada))
 
@@ -3916,6 +4302,146 @@ func _actualizar_hitboxes_portero() -> void:
 			area_manos.position = Vector3(0.0, 1.20, -0.38)
 		if area_cabeza:
 			area_cabeza.position = Vector3(0.0, 1.68, 0.0)
+
+
+## Evalúa las colisiones continuas entre el vector de desplazamiento del balón
+## (pos_previa -> pos_actual) y los 10 segmentos esqueléticos del rig de arquero (Mixamo),
+## garantizando CERO efecto túnel incluso ante remates a 27 m/s a quemarropa.
+func _evaluar_colisiones_esqueleto_arquero(_delta: float) -> void:
+	if not (es_arquero or posicion_tactica == "PORTERO"):
+		return
+	if esqueleto_humanoide == null:
+		return
+	if tiene_posesion or tiene_balon_en_manos or _tiempo_paradon_reciente > 0.0:
+		return
+	
+	var balon: Balon3D = _obtener_balon_juego()
+	if balon == null or not is_instance_valid(balon) or balon.esta_fuera_de_juego:
+		return
+	if balon.esta_siendo_conducido() and balon.portador_actual == self:
+		return
+	
+	var p_act: Vector3 = balon.global_position
+	var p_ant: Vector3 = balon.pos_previa if balon.pos_previa.length_squared() > 0.01 else p_act
+	
+	# Filtro de distancia máxima (3.5m)
+	if p_act.distance_squared_to(global_position) > 12.25 and p_ant.distance_squared_to(global_position) > 12.25:
+		return
+	
+	var pos_hips: Vector3 = _obtener_pos_global_hueso(_idx_hips)
+	var pos_spine1: Vector3 = _obtener_pos_global_hueso(_idx_spine1 if _idx_spine1 >= 0 else _idx_spine)
+	var pos_head: Vector3 = _obtener_pos_global_hueso(_idx_head if _idx_head >= 0 else _idx_neck)
+	
+	var pos_l_upleg: Vector3 = _obtener_pos_global_hueso(_idx_left_upleg)
+	var pos_l_leg: Vector3 = _obtener_pos_global_hueso(_idx_left_leg)
+	var pos_l_foot: Vector3 = _obtener_pos_global_hueso(_idx_left_foot)
+	
+	var pos_r_upleg: Vector3 = _obtener_pos_global_hueso(_idx_right_upleg)
+	var pos_r_leg: Vector3 = _obtener_pos_global_hueso(_idx_right_leg)
+	var pos_r_foot: Vector3 = _obtener_pos_global_hueso(_idx_right_foot)
+	
+	var pos_l_arm: Vector3 = _obtener_pos_global_hueso(_idx_left_arm if _idx_left_arm >= 0 else _idx_left_shoulder)
+	var pos_l_forearm: Vector3 = _obtener_pos_global_hueso(_idx_left_forearm)
+	var pos_l_hand: Vector3 = _obtener_pos_global_hueso(_idx_left_hand)
+	
+	var pos_r_arm: Vector3 = _obtener_pos_global_hueso(_idx_right_arm if _idx_right_arm >= 0 else _idx_right_shoulder)
+	var pos_r_forearm: Vector3 = _obtener_pos_global_hueso(_idx_right_forearm)
+	var pos_r_hand: Vector3 = _obtener_pos_global_hueso(_idx_right_hand)
+	
+	var segmentos: Array = [
+		[pos_l_upleg, pos_l_leg, Portero.RADIO_PIERNA, "piernas"],
+		[pos_l_leg, pos_l_foot, Portero.RADIO_PIERNA, "piernas"],
+		[pos_r_upleg, pos_r_leg, Portero.RADIO_PIERNA, "piernas"],
+		[pos_r_leg, pos_r_foot, Portero.RADIO_PIERNA, "piernas"],
+		[pos_hips, pos_spine1, Portero.RADIO_TORSO, "pecho"],
+		[pos_spine1, pos_head, Portero.RADIO_TORSO, "pecho"],
+		[pos_l_arm, pos_l_forearm, Portero.RADIO_BRAZO, "manos"],
+		[pos_l_forearm, pos_l_hand, Portero.RADIO_BRAZO, "manos"],
+		[pos_r_arm, pos_r_forearm, Portero.RADIO_BRAZO, "manos"],
+		[pos_r_forearm, pos_r_hand, Portero.RADIO_BRAZO, "manos"]
+	]
+	
+	const RADIO_BALON: float = 0.10
+	var colision_detectada: bool = false
+	var menor_dist: float = 999.0
+	var mejor_punto_balon: Vector3 = Vector3.ZERO
+	var mejor_punto_hueso: Vector3 = Vector3.ZERO
+	var mejor_zona: String = ""
+	
+	for seg in segmentos:
+		var s_inicio: Vector3 = seg[0]
+		var s_fin: Vector3 = seg[1]
+		var s_radio: float = seg[2]
+		var s_zona: String = seg[3]
+		
+		var puntos: PackedVector3Array = Geometry3D.get_closest_points_between_segments(p_ant, p_act, s_inicio, s_fin)
+		var pt_b: Vector3 = puntos[0]
+		var pt_h: Vector3 = puntos[1]
+		var dist: float = pt_b.distance_to(pt_h)
+		var umbral: float = s_radio + RADIO_BALON
+		
+		if dist <= umbral and dist < menor_dist:
+			menor_dist = dist
+			mejor_punto_balon = pt_b
+			mejor_punto_hueso = pt_h
+			mejor_zona = s_zona
+			colision_detectada = true
+	
+	if colision_detectada:
+		_procesar_impacto_hueso_arquero(balon, mejor_zona, mejor_punto_balon, mejor_punto_hueso)
+
+
+func _procesar_impacto_hueso_arquero(balon: Balon3D, zona: String, punto_balon: Vector3, punto_hueso: Vector3) -> void:
+	if balon == null or _tiempo_paradon_reciente > 0.0:
+		return
+	
+	_tiempo_paradon_reciente = lerpf(0.55, 0.18, gk_reflejos / 99.0)
+	_doble_atajada_activa = true
+	_lado_pose_arquero = 1.0 if (punto_balon.z >= global_position.z) else -1.0
+	_lado_atajada = _lado_pose_arquero
+	
+	# Normal de contacto desde el hueso hacia el centro del balón
+	var normal_contacto: Vector3 = (punto_balon - punto_hueso).normalized()
+	if normal_contacto.length_squared() < 0.01:
+		normal_contacto = (punto_balon - global_position).normalized()
+	
+	# Reposicionar el balón en la superficie para impedir atravesar el cuerpo o rebasar la línea de gol
+	balon.global_position = punto_hueso + normal_contacto * 0.22
+	balon.pos_previa = balon.global_position
+	
+	match zona:
+		"manos":
+			var vel_tiro: float = balon.linear_velocity.length()
+			var puede_embolsar: bool = (vel_tiro < 12.0 or (gk_bloqueo_control > 75.0 and randf() < (gk_bloqueo_control / 100.0) * 0.75))
+			if puede_embolsar and Portero.puede_usar_manos(self, balon):
+				atrapar_con_manos(balon)
+				pose_arquero_actual = PoseArquero.MANOS_SEGURAS
+				_t_anim_atajada = 0.55
+				_emitir_anuncio_hud("¡%s ATRAPA Y ASEGURA EL BALÓN!" % nombre_jugador.to_upper())
+			else:
+				pose_arquero_actual = PoseArquero.ESTIRADA_ALTA if punto_balon.y > 1.1 else PoseArquero.GUARDIA_BAJA
+				_t_anim_atajada = 0.45
+				balon.procesar_impacto_arquero("manos", self)
+				_emitir_anuncio_hud("¡PARADÓN A MANO CAMBIADA DE %s!" % nombre_jugador.to_upper())
+		"pecho":
+			pose_arquero_actual = PoseArquero.BLOQUEO_PECHO
+			_t_anim_atajada = 0.48
+			balon.procesar_impacto_arquero("pecho", self)
+			_emitir_anuncio_hud("¡BLOQUEO DE PECHO DE %s!" % nombre_jugador.to_upper())
+		"piernas":
+			if abs(punto_balon.z - global_position.z) > 0.8:
+				pose_arquero_actual = PoseArquero.DESPLIEGUE_L
+			else:
+				pose_arquero_actual = PoseArquero.DESPEJE_PIE
+			_t_anim_atajada = 0.50
+			balon.procesar_impacto_arquero("piernas", self)
+			_emitir_anuncio_hud("¡ATAJADA CON LOS PIES DE %s!" % nombre_jugador.to_upper())
+
+
+func _obtener_pos_global_hueso(idx: int) -> Vector3:
+	if esqueleto_humanoide == null or idx < 0:
+		return global_position
+	return (esqueleto_humanoide.global_transform * esqueleto_humanoide.get_bone_global_pose(idx)).origin
 
 
 ## Configura el sistema de colisiones segmentado de la barrera defensiva:
