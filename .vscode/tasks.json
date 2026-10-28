@@ -1,0 +1,98 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Deploy Android (Godot 4)",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}/deploy-android.ps1"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Deploy & Logcat (Godot 4)",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}/deploy-android.ps1",
+                "-Log"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Stream Android Logcat",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}/deploy-android.ps1",
+                "-SkipExport",
+                "-Log"
+            ],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Re-Launch App (No Export)",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}/deploy-android.ps1",
+                "-SkipExport"
+            ],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

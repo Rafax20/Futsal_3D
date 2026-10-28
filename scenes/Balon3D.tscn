@@ -7,7 +7,7 @@ friction = 0.45
 bounce = 0.28
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_balon"]
-radius = 0.11
+radius = 0.143
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_balon"]
 albedo_color = Color(0.96, 0.96, 0.96, 1)
@@ -15,8 +15,8 @@ roughness = 0.35
 
 [sub_resource type="SphereMesh" id="SphereMesh_balon"]
 material = SubResource("StandardMaterial3D_balon")
-radius = 0.11
-height = 0.22
+radius = 0.143
+height = 0.286
 radial_segments = 16
 rings = 8
 

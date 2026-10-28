@@ -1,0 +1,220 @@
+[gd_scene format=3 uid="uid://b6p2or8t7e5ra"]
+
+[ext_resource type="Script" path="res://scripts/Porteria3D.gd" id="1_porteria3d_script"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_postes"]
+friction = 0.25
+bounce = 0.8
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_red"]
+friction = 0.85
+bounce = 0.08
+absorbent = true
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_poste"]
+height = 2.2
+radius = 0.04
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_travesano"]
+height = 3.78
+radius = 0.04
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_larguero_fondo"]
+size = Vector3(1.08, 0.08, 0.08)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_travesano_fondo"]
+size = Vector3(0.08, 0.08, 3.78)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_base_fondo"]
+size = Vector3(0.08, 0.08, 3.78)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_base_lateral"]
+size = Vector3(1.08, 0.08, 0.08)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_red_fondo"]
+size = Vector3(0.04, 2.2, 3.7)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_red_lateral"]
+size = Vector3(1.04, 2.2, 0.04)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_red_techo"]
+size = Vector3(1.04, 0.04, 3.7)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_goal_trigger"]
+size = Vector3(0.9, 2.1, 3.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_postes"]
+albedo_color = Color(0.95, 0.95, 0.95, 1)
+roughness = 0.25
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_poste"]
+material = SubResource("StandardMaterial3D_postes")
+top_radius = 0.04
+bottom_radius = 0.04
+height = 2.2
+radial_segments = 16
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_travesano"]
+material = SubResource("StandardMaterial3D_postes")
+top_radius = 0.04
+bottom_radius = 0.04
+height = 3.78
+radial_segments = 16
+
+[sub_resource type="BoxMesh" id="BoxMesh_larguero_fondo"]
+material = SubResource("StandardMaterial3D_postes")
+size = Vector3(1.08, 0.08, 0.08)
+
+[sub_resource type="BoxMesh" id="BoxMesh_travesano_fondo"]
+material = SubResource("StandardMaterial3D_postes")
+size = Vector3(0.08, 0.08, 3.78)
+
+[sub_resource type="BoxMesh" id="BoxMesh_base_fondo"]
+material = SubResource("StandardMaterial3D_postes")
+size = Vector3(0.08, 0.08, 3.78)
+
+[sub_resource type="BoxMesh" id="BoxMesh_base_lateral"]
+material = SubResource("StandardMaterial3D_postes")
+size = Vector3(1.08, 0.08, 0.08)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_red"]
+transparency = 1
+cull_mode = 2
+albedo_color = Color(0.85, 0.85, 0.85, 0.35)
+roughness = 0.8
+
+[sub_resource type="BoxMesh" id="BoxMesh_red_fondo"]
+material = SubResource("StandardMaterial3D_red")
+size = Vector3(0.02, 2.16, 3.66)
+
+[sub_resource type="BoxMesh" id="BoxMesh_red_lateral"]
+material = SubResource("StandardMaterial3D_red")
+size = Vector3(1.04, 2.16, 0.02)
+
+[sub_resource type="BoxMesh" id="BoxMesh_red_techo"]
+material = SubResource("StandardMaterial3D_red")
+size = Vector3(1.04, 0.02, 3.66)
+
+[node name="Porteria3D" type="Node3D" groups=["porteria"]]
+script = ExtResource("1_porteria3d_script")
+
+[node name="MarcoPostes" type="StaticBody3D" parent="." groups=["marco_porteria", "postes_arco"]]
+physics_material_override = SubResource("PhysicsMaterial_postes")
+
+[node name="ColPosteNorte" type="CollisionShape3D" parent="MarcoPostes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -1.85)
+shape = SubResource("CylinderShape3D_poste")
+
+[node name="ColPosteSur" type="CollisionShape3D" parent="MarcoPostes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 1.85)
+shape = SubResource("CylinderShape3D_poste")
+
+[node name="ColTravesaño" type="CollisionShape3D" parent="MarcoPostes"]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 2.2, 0)
+shape = SubResource("CylinderShape3D_travesano")
+
+[node name="ColLargueroFondoNorte" type="CollisionShape3D" parent="MarcoPostes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 2.2, -1.85)
+shape = SubResource("BoxShape3D_larguero_fondo")
+
+[node name="ColLargueroFondoSur" type="CollisionShape3D" parent="MarcoPostes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 2.2, 1.85)
+shape = SubResource("BoxShape3D_larguero_fondo")
+
+[node name="ColTravesañoFondo" type="CollisionShape3D" parent="MarcoPostes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08, 2.2, 0)
+shape = SubResource("BoxShape3D_travesano_fondo")
+
+[node name="ColBaseFondoNorte" type="CollisionShape3D" parent="MarcoPostes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 0.04, -1.85)
+shape = SubResource("BoxShape3D_base_lateral")
+
+[node name="ColBaseFondoSur" type="CollisionShape3D" parent="MarcoPostes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 0.04, 1.85)
+shape = SubResource("BoxShape3D_base_lateral")
+
+[node name="ColBaseFondo" type="CollisionShape3D" parent="MarcoPostes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08, 0.04, 0)
+shape = SubResource("BoxShape3D_base_fondo")
+
+[node name="RedColision" type="StaticBody3D" parent="." groups=["red_porteria"]]
+physics_material_override = SubResource("PhysicsMaterial_red")
+
+[node name="ColRedFondo" type="CollisionShape3D" parent="RedColision"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08, 1.1, 0)
+shape = SubResource("BoxShape3D_red_fondo")
+
+[node name="ColRedLateralNorte" type="CollisionShape3D" parent="RedColision"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 1.1, -1.85)
+shape = SubResource("BoxShape3D_red_lateral")
+
+[node name="ColRedLateralSur" type="CollisionShape3D" parent="RedColision"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 1.1, 1.85)
+shape = SubResource("BoxShape3D_red_lateral")
+
+[node name="ColRedTecho" type="CollisionShape3D" parent="RedColision"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 2.22, 0)
+shape = SubResource("BoxShape3D_red_techo")
+
+[node name="GoalTrigger" type="Area3D" parent="." groups=["area_gol", "detector_gol"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6, 1.1, 0)
+collision_layer = 0
+collision_mask = 1
+monitorable = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="GoalTrigger"]
+shape = SubResource("BoxShape3D_goal_trigger")
+
+[node name="Visual" type="Node3D" parent="."]
+
+[node name="PosteNorte" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -1.85)
+mesh = SubResource("CylinderMesh_poste")
+
+[node name="PosteSur" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 1.85)
+mesh = SubResource("CylinderMesh_poste")
+
+[node name="Travesaño" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 2.2, 0)
+mesh = SubResource("CylinderMesh_travesano")
+
+[node name="LargueroFondoNorte" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 2.2, -1.85)
+mesh = SubResource("BoxMesh_larguero_fondo")
+
+[node name="LargueroFondoSur" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 2.2, 1.85)
+mesh = SubResource("BoxMesh_larguero_fondo")
+
+[node name="TravesañoFondo" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08, 2.2, 0)
+mesh = SubResource("BoxMesh_travesano_fondo")
+
+[node name="BaseFondoNorte" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 0.04, -1.85)
+mesh = SubResource("BoxMesh_base_lateral")
+
+[node name="BaseFondoSur" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 0.04, 1.85)
+mesh = SubResource("BoxMesh_base_lateral")
+
+[node name="BaseFondo" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08, 0.04, 0)
+mesh = SubResource("BoxMesh_base_fondo")
+
+[node name="RedFondo" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08, 1.1, 0)
+mesh = SubResource("BoxMesh_red_fondo")
+
+[node name="RedLateralNorte" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 1.1, -1.84)
+mesh = SubResource("BoxMesh_red_lateral")
+
+[node name="RedLateralSur" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 1.1, 1.84)
+mesh = SubResource("BoxMesh_red_lateral")
+
+[node name="RedTecho" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.54, 2.19, 0)
+mesh = SubResource("BoxMesh_red_techo")

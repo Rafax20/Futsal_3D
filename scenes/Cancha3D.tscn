@@ -6,9 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/HUDPartido.tscn" id="4_hud_scene"]
 [ext_resource type="Script" path="res://scripts/Cancha3D.gd" id="5_cancha_script"]
 [ext_resource type="Script" path="res://scripts/core/GestorPartido.gd" id="6_gestor_script"]
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_detector_gol"]
-size = Vector3(1.3, 2.25, 3.65)
+[ext_resource type="PackedScene" path="res://scenes/Porteria3D.tscn" id="7_porteria3d_scene"]
 
 [sub_resource type="Environment" id="Environment_cancha"]
 background_mode = 1
@@ -308,133 +306,13 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, -10)
 mesh = SubResource("BoxMesh_marca_5m")
 
 
-[node name="PorteriaIzquierda" type="CSGCombiner3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, 0)
-use_collision = true
+[node name="PorteriaIzquierda" parent="." instance=ExtResource("7_porteria3d_scene")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -20, 0, 0)
+es_porteria_derecha = false
 
-[node name="PosteNorte" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -1.85)
-size = Vector3(0.1, 2.2, 0.1)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="PosteSur" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 1.85)
-size = Vector3(0.1, 2.2, 0.1)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="Travesaño" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
-size = Vector3(0.1, 0.1, 3.8)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="LargueroFondoNorte" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 2.2, -1.85)
-size = Vector3(1.1, 0.08, 0.08)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="LargueroFondoSur" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 2.2, 1.85)
-size = Vector3(1.1, 0.08, 0.08)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="TravesañoFondo" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 2.2, 0)
-size = Vector3(0.08, 0.08, 3.78)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="BaseFondoNorte" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 0.04, -1.85)
-size = Vector3(1.1, 0.08, 0.08)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="BaseFondoSur" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 0.04, 1.85)
-size = Vector3(1.1, 0.08, 0.08)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="BaseFondo" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 0.04, 0)
-size = Vector3(0.08, 0.08, 3.78)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="RedFondo" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.08, 1.1, 0)
-size = Vector3(0.02, 2.16, 3.66)
-material = SubResource("StandardMaterial3D_red")
-
-[node name="RedLateralNorte" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 1.1, -1.83)
-size = Vector3(1.08, 2.16, 0.02)
-material = SubResource("StandardMaterial3D_red")
-
-[node name="RedLateralSur" type="CSGBox3D" parent="PorteriaIzquierda"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55, 1.1, 1.83)
-size = Vector3(1.08, 2.16, 0.02)
-material = SubResource("StandardMaterial3D_red")
-
-[node name="PorteriaDerecha" type="CSGCombiner3D" parent="."]
+[node name="PorteriaDerecha" parent="." instance=ExtResource("7_porteria3d_scene")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 0)
-use_collision = true
-
-[node name="PosteNorte" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -1.85)
-size = Vector3(0.1, 2.2, 0.1)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="PosteSur" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 1.85)
-size = Vector3(0.1, 2.2, 0.1)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="Travesaño" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
-size = Vector3(0.1, 0.1, 3.8)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="LargueroFondoNorte" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 2.2, -1.85)
-size = Vector3(1.1, 0.08, 0.08)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="LargueroFondoSur" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 2.2, 1.85)
-size = Vector3(1.1, 0.08, 0.08)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="TravesañoFondo" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 2.2, 0)
-size = Vector3(0.08, 0.08, 3.78)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="BaseFondoNorte" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 0.04, -1.85)
-size = Vector3(1.1, 0.08, 0.08)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="BaseFondoSur" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 0.04, 1.85)
-size = Vector3(1.1, 0.08, 0.08)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="BaseFondo" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 0.04, 0)
-size = Vector3(0.08, 0.08, 3.78)
-material = SubResource("StandardMaterial3D_postes")
-
-[node name="RedFondo" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.08, 1.1, 0)
-size = Vector3(0.02, 2.16, 3.66)
-material = SubResource("StandardMaterial3D_red")
-
-[node name="RedLateralNorte" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 1.1, -1.83)
-size = Vector3(1.08, 2.16, 0.02)
-material = SubResource("StandardMaterial3D_red")
-
-[node name="RedLateralSur" type="CSGBox3D" parent="PorteriaDerecha"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.55, 1.1, 1.83)
-size = Vector3(1.08, 2.16, 0.02)
-material = SubResource("StandardMaterial3D_red")
+es_porteria_derecha = true
 
 [node name="ParedesInvisibles" type="StaticBody3D" parent="."]
 
@@ -706,16 +584,4 @@ precision_tiro = 83.0
 control_balon = 85.0
 
 [node name="HUDPartido" parent="." instance=ExtResource("4_hud_scene")]
-
-[node name="AreaGolIzquierda" type="Area3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.6, 1, 0)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="AreaGolIzquierda"]
-shape = SubResource("BoxShape3D_detector_gol")
-
-[node name="AreaGolDerecha" type="Area3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.6, 1, 0)
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="AreaGolDerecha"]
-shape = SubResource("BoxShape3D_detector_gol")
 

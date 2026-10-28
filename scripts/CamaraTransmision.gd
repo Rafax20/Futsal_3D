@@ -111,35 +111,41 @@ func _on_estado_partido_cambiado(nuevo_estado: GestorPartido.EstadoPartido) -> v
 			regresar_a_broadcast(0.85)
 
 
+const LIMITE_YAW_TL_RAD: float = deg_to_rad(40.0) # Cono de paneo horizontal reglamentario (±40°)
+
 ## Activa la vista de Tiro Libre "Sobre el Hombro" (Over-The-Shoulder):
-## - Calcula el vector unitario desde el balón hacia el centro del arco o forward del lanzador.
-## - Posiciona la cámara detrás del balón a distancia_detras_tl (3.8 m) y altura_tl (1.6 m).
-## - Desplaza la cámara lateralmente (0.8 a 1.0 m hacia la derecha / perfil natural del lanzador).
-## - Orienta la cámara apuntando a un punto pivote fijo vinculado a (Ball.position + Lanzador.forward).
-## - Restablece el ángulo, FOV y altura de la cámara tras la transición de vista ("Cambio de posición" -> "Vista de tiro").
+## - Define un vector de referencia inmutable para cada tiro libre:
+##   `base_forward = (goal_center_position - ball_position).normalized()` en el plano XZ.
+## - Los límites de paneo horizontal de la cámara trasera (clamp yaw: -40° a +40°) se calculan
+##   siempre relativos a `base_forward`, NUNCA al transform local del jugador.
+## - Al conmutar entre vistas, restablece la orientación al centro del arco o al último ángulo
+##   válido dentro de `base_forward`, evitando desorientación hacia las bandas.
 func activar_camara_tiro_libre(
 	pos_balon: Vector3,
 	pos_arco: Vector3,
 	dist_barrera: float = 5.0,
 	offset_perfil: float = -1.0,
-	dir_lanzador: Vector3 = Vector3.ZERO,
+	_dir_lanzador_ignorado: Vector3 = Vector3.ZERO,
 	inmediato: bool = false
 ) -> void:
 	_pos_origen_tl = pos_balon
 	_pos_arco_rival_tl = pos_arco
 	_distancia_barrera_tl = dist_barrera
 	_offset_lateral_actual_tl = offset_lateral_tl if offset_perfil < 0.0 else clampf(offset_perfil, 0.8, 1.0)
-	_angulo_paneo_yaw_tl = 0.0
 	_balon_pateado_tl = false
 	_tiempo_desde_patada_tl = 0.0
 
-	var dir_plana: Vector3 = dir_lanzador
-	dir_plana.y = 0.0
-	if dir_plana.length_squared() < 0.01:
-		dir_plana = Vector3(pos_arco.x - pos_balon.x, 0.0, pos_arco.z - pos_balon.z).normalized()
-	if dir_plana.length_squared() < 0.01:
-		dir_plana = Vector3(1.0, 0.0, 0.0)
-	_dir_base_arco_tl = dir_plana.normalized()
+	# 1. Vector de referencia inmutable para cada tiro libre (apuntando al centro de portería rival):
+	var base_forward: Vector3 = Vector3(pos_arco.x - pos_balon.x, 0.0, pos_arco.z - pos_balon.z).normalized()
+	if base_forward.length_squared() < 0.01:
+		base_forward = Vector3(1.0, 0.0, 0.0)
+	_dir_base_arco_tl = base_forward
+
+	# 2. Si el usuario conmuta entre vistas o inicia la fase de tiro, restablecer la orientación centrada al arco (0.0 rad)
+	# o clampear estrictamente dentro del cono inmutable [-40°, +40°]
+	_angulo_paneo_yaw_tl = clampf(_angulo_paneo_yaw_tl, -LIMITE_YAW_TL_RAD, LIMITE_YAW_TL_RAD)
+	if modo_camara == ModoCamara.BROADCAST or modo_camara == ModoCamara.CENITAL_SELECCION or modo_camara == ModoCamara.TRANSICION_BROADCAST:
+		_angulo_paneo_yaw_tl = 0.0
 
 	# Restablecer FOV, ángulo y altura de cámara en vista de tiro
 	fov = fov_tiro_libre
@@ -177,7 +183,7 @@ func _calcular_transform_tiro_libre() -> Transform3D:
 	)
 	pos_camara.y = altura_tl
 
-	# Punto pivote fijo vinculado a (Ball.position + Lanzador.forward)
+	# Punto pivote fijo vinculado a (Ball.position + base_forward)
 	# en lugar de alternar o quedar huérfano entre coordenadas viejas y nuevas
 	var dist_pivote: float = 7.5
 	var punto_pivote_target: Vector3 = _pos_origen_tl + dir_arco * dist_pivote + vec_derecha * (_offset_lateral_actual_tl * 0.25)
@@ -194,7 +200,7 @@ func ajustar_paneo_tiro_libre(delta_yaw_rad: float) -> void:
 		return
 	if _balon_pateado_tl:
 		return
-	_angulo_paneo_yaw_tl = clampf(_angulo_paneo_yaw_tl + delta_yaw_rad, -0.45, 0.45)
+	_angulo_paneo_yaw_tl = clampf(_angulo_paneo_yaw_tl + delta_yaw_rad, -LIMITE_YAW_TL_RAD, LIMITE_YAW_TL_RAD)
 	_tf_destino_transicion = _calcular_transform_tiro_libre()
 	if modo_camara == ModoCamara.TIRO_LIBRE:
 		global_transform = _tf_destino_transicion

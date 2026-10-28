@@ -57,8 +57,8 @@ var _t_cooldown_impacto_barrera: float = 0.0
 		masa_balon = valor
 		mass = valor
 
-## Radio reglamentario del balón de fútsal (FIFA Tamaño 4: 0.11 m / 11 cm de radio, 22 cm de diámetro).
-@export_range(0.05, 0.30, 0.005) var radio_balon: float = 0.11
+## Radio reglamentario del balón de fútsal ajustado a proporción anatómica (FIFA Tamaño 4 escalado: 0.143 m / 14.3 cm de radio, 28.6 cm de diámetro).
+@export_range(0.05, 0.30, 0.005) var radio_balon: float = 0.143
 
 @export_group("Límites de Velocidad, Curva Magnus y Cucharita")
 ## Velocidad máxima en m/s para prevenir túneles de colisión a altas velocidades (~120 km/h).
@@ -201,7 +201,13 @@ func registrar_contacto_jugador(jugador: Node3D) -> void:
 
 
 func _on_cuerpo_contactado(body: Node) -> void:
-	if estado == EstadoBalon.LIBRE and body is Jugador3D:
+	if body != null and (body.is_in_group("postes_arco") or body.name == "MarcoPostes"):
+		# Impacto con poste o travesaño: cancelar efecto Magnus para rebote balístico 100% natural
+		_efecto_magnus_activo = false
+		_fuerza_magnus_inicial = 0.0
+		_tiempo_magnus = 99.0
+		_dir_lateral_curva = Vector3.ZERO
+	elif estado == EstadoBalon.LIBRE and body is Jugador3D:
 		registrar_contacto_jugador(body as Node3D)
 
 

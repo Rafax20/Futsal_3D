@@ -6,8 +6,8 @@ extends Node3D
 ## Delega las reanudaciones y flujo de juego a GestorPartido.
 
 @onready var balon: Balon3D = $Balon3D
-@onready var area_gol_izq: Area3D = $AreaGolIzquierda
-@onready var area_gol_der: Area3D = $AreaGolDerecha
+@onready var area_gol_izq: Area3D = ($PorteriaIzquierda/GoalTrigger if has_node("PorteriaIzquierda/GoalTrigger") else get_node_or_null("AreaGolIzquierda")) as Area3D
+@onready var area_gol_der: Area3D = ($PorteriaDerecha/GoalTrigger if has_node("PorteriaDerecha/GoalTrigger") else get_node_or_null("AreaGolDerecha")) as Area3D
 @onready var gestor: GestorPartido = $GestorPartido
 @onready var contenedor_jugadores: Node3D = $Jugadores
 

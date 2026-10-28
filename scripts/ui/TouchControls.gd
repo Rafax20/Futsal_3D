@@ -28,6 +28,11 @@ enum ModoHUD {
 	TIRO_LIBRE = 4
 }
 
+signal pase_solicitado(potencia: float, tipo_pase: int)
+signal hueco_solicitado(potencia: float)
+signal tiro_solicitado(potencia: float, tipo_tiro: int)
+signal joystick_movido(direccion: Vector2)
+
 @export var ruta_jugador: NodePath = ^"../../Jugadores/Local_Pivot"
 @export var umbral_swipe_px: float = 28.0
 @export var velocidad_carga_potencia: float = 1.65
@@ -127,6 +132,7 @@ var _style_sprint_defensa: StyleBoxFlat
 
 
 func _ready() -> void:
+	add_to_group("touch_controls")
 	_inicializar_estilos_botones()
 	_conectar_botones_respaldo()
 	_conectar_gestor_partido()
@@ -651,6 +657,7 @@ func _finalizar_toque_tiro() -> void:
 		var jugador: Jugador3D = obtener_jugador_activo()
 		if jugador and is_instance_valid(jugador):
 			jugador.accion_principal_presionada(pot, tipo_tiro_final)
+		tiro_solicitado.emit(pot, tipo_tiro_final)
 
 
 ## Inicia toque en Botón PASE (Ataque: carga potencia y escucha Swipe Up | Defensa: Cambiar Jugador inmediato)
@@ -701,6 +708,7 @@ func _finalizar_toque_pase() -> void:
 		var jugador: Jugador3D = obtener_jugador_activo()
 		if jugador and is_instance_valid(jugador):
 			jugador.accion_pase_presionada(pot, tipo_pase_final)
+		pase_solicitado.emit(pot, tipo_pase_final)
 
 
 func _resaltar_indicadores_swipe_tiro(tipo_tiro: int) -> void:
@@ -764,6 +772,7 @@ func _on_hueco_up() -> void:
 		var jugador: Jugador3D = obtener_jugador_activo()
 		if jugador and is_instance_valid(jugador):
 			jugador.accion_hueco_presionada(pot)
+		hueco_solicitado.emit(pot)
 
 
 func _on_sprint_down() -> void:
@@ -836,6 +845,7 @@ func _actualizar_pomo(pos_local: Vector2) -> void:
 	
 	var direccion_normalizada: Vector2 = vector_desplazamiento / _radio_maximo_joystick
 	_direccion_joystick_actual = direccion_normalizada
+	joystick_movido.emit(direccion_normalizada)
 	var jugador: Jugador3D = obtener_jugador_activo()
 	if jugador and is_instance_valid(jugador):
 		jugador.establecer_direccion_virtual(direccion_normalizada)
@@ -845,10 +855,16 @@ func _soltar_joystick() -> void:
 	_tocando_joystick = false
 	_joystick_touch_id = -1
 	_direccion_joystick_actual = Vector2.ZERO
+	joystick_movido.emit(Vector2.ZERO)
 	_resetear_joystick()
 	var jugador: Jugador3D = obtener_jugador_activo()
 	if jugador and is_instance_valid(jugador):
 		jugador.establecer_direccion_virtual(Vector2.ZERO)
+
+
+## Retorna el vector de dirección normalizado actual del joystick virtual
+func obtener_direccion_joystick() -> Vector2:
+	return _direccion_joystick_actual
 
 
 func _resetear_joystick() -> void:
@@ -880,6 +896,25 @@ func obtener_jugador_activo() -> Jugador3D:
 			_jugador_referencia = j
 			return _jugador_referencia
 	
+	return null
+
+
+## Asigna explícitamente el jugador receptor o activo a ser comandado por este HUD táctil
+func asignar_jugador_referencia(jugador: Jugador3D) -> void:
+	if _jugador_referencia != null and is_instance_valid(_jugador_referencia) and _jugador_referencia != jugador:
+		_jugador_referencia.es_controlado = false
+	_jugador_referencia = jugador
+	if jugador != null and is_instance_valid(jugador):
+		jugador.es_controlado = true
+
+
+## Obtiene el balón activo del partido o la escena de entrenamiento
+func obtener_balon() -> Balon3D:
+	if _gestor_partido != null:
+		return _gestor_partido.obtener_balon()
+	var b_nodo: Node = get_tree().get_first_node_in_group("balon")
+	if b_nodo is Balon3D:
+		return b_nodo as Balon3D
 	return null
 
 
@@ -971,7 +1006,7 @@ func _actualizar_paneo_camara_tl(pos: Vector2) -> void:
 		camara.ajustar_paneo_tiro_libre(-delta_x * 0.0022)
 		var dir_apuntado: Vector3 = camara.obtener_direccion_apuntado_tl()
 		var sacador: Jugador3D = _gestor_partido.obtener_sacador_actual() if _gestor_partido else obtener_jugador_activo()
-		var balon: Balon3D = _gestor_partido.obtener_balon() if _gestor_partido else null
+		var balon: Balon3D = obtener_balon()
 		if sacador != null and is_instance_valid(sacador) and balon != null and is_instance_valid(balon):
 			var vec_der: Vector3 = Vector3(-dir_apuntado.z, 0.0, dir_apuntado.x).normalized()
 			var pos_lanzador: Vector3 = balon.global_position - dir_apuntado * 1.45 - vec_der * 0.48
@@ -1127,7 +1162,7 @@ func _intentar_pase_tactil_tl(pos_pantalla: Vector2) -> bool:
 		return bool(nodo_entrenamiento.call("_procesar_toque_tactil_pase", pos_pantalla))
 
 	var sacador: Jugador3D = _gestor_partido.obtener_sacador_actual() if _gestor_partido else obtener_jugador_activo()
-	var balon: Balon3D = _gestor_partido.obtener_balon() if _gestor_partido else null
+	var balon: Balon3D = obtener_balon()
 	if balon == null:
 		var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
 		if not balones.is_empty():
@@ -1300,7 +1335,7 @@ func _iniciar_secuencia_carrera_tiro_libre(
 	comba: float,
 	es_cucharita: bool = false
 ) -> void:
-	var balon: Balon3D = _gestor_partido.obtener_balon() if _gestor_partido else null
+	var balon: Balon3D = obtener_balon()
 	if balon == null:
 		var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
 		if not balones.is_empty():
@@ -1349,7 +1384,7 @@ func _procesar_secuencia_carrera_tiro_libre(delta: float) -> void:
 
 
 func _aplicar_impacto_post_carrera_tl() -> void:
-	var balon: Balon3D = _gestor_partido.obtener_balon() if _gestor_partido else null
+	var balon: Balon3D = obtener_balon()
 	if balon == null:
 		var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
 		if not balones.is_empty():
