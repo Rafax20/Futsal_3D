@@ -10,7 +10,9 @@ enum ModoCamara {
 	TRANSICION_TIRO_LIBRE,
 	TIRO_LIBRE,
 	TRANSICION_BROADCAST,
-	CENITAL_SELECCION
+	CENITAL_SELECCION,
+	CINEMATICA_FALTA,
+	REPETICION_JUGADA
 }
 
 @export_group("Objetivo de Seguimiento")
@@ -81,6 +83,11 @@ var _tf_destino_transicion: Transform3D
 var _t_transicion_acumulada: float = 0.0
 var _duracion_transicion_actual: float = 0.82
 
+# Variables cinemáticas de presentación de faltas y repetición
+var _tf_cinematica_objetivo: Transform3D
+var _punto_mira_cinematica: Vector3 = Vector3.ZERO
+var _en_cinematica_activa: bool = false
+
 
 func _ready() -> void:
 	if has_node(ruta_balon):
@@ -105,7 +112,11 @@ func _on_estado_partido_cambiado(nuevo_estado: GestorPartido.EstadoPartido) -> v
 		if _gestor_partido and _gestor_partido.obtener_equipo_sacador() == 0:
 			var pos_b: Vector3 = _gestor_partido.obtener_pos_saque()
 			var pos_arco: Vector3 = Vector3(20.0, 0.0, 0.0) # Portería rival para equipo local
-			activar_camara_tiro_libre(pos_b, pos_arco, 5.0)
+			var dist_al_arco: float = pos_b.distance_to(pos_arco)
+			if dist_al_arco <= 15.0:
+				activar_camara_tiro_libre(pos_b, pos_arco, 5.0)
+			else:
+				regresar_a_broadcast(0.75)
 	elif nuevo_estado == GestorPartido.EstadoPartido.EN_JUEGO:
 		if modo_camara == ModoCamara.TIRO_LIBRE and not _balon_pateado_tl:
 			regresar_a_broadcast(0.85)
@@ -134,6 +145,10 @@ func activar_camara_tiro_libre(
 	_offset_lateral_actual_tl = offset_lateral_tl if offset_perfil < 0.0 else clampf(offset_perfil, 0.8, 1.0)
 	_balon_pateado_tl = false
 	_tiempo_desde_patada_tl = 0.0
+
+	if _en_cinematica_activa:
+		_en_cinematica_activa = false
+		aplicar_lod_bias_personajes(1.0)
 
 	# 1. Vector de referencia inmutable para cada tiro libre (apuntando al centro de portería rival):
 	var base_forward: Vector3 = Vector3(pos_arco.x - pos_balon.x, 0.0, pos_arco.z - pos_balon.z).normalized()
@@ -226,11 +241,93 @@ func notificar_impacto_tiro_libre() -> void:
 func regresar_a_broadcast(duracion: float = 0.9) -> void:
 	if modo_camara == ModoCamara.BROADCAST or modo_camara == ModoCamara.TRANSICION_BROADCAST:
 		return
+	if _en_cinematica_activa:
+		_en_cinematica_activa = false
+		aplicar_lod_bias_personajes(1.0)
 	fov = fov_broadcast
 	_tf_origen_transicion = global_transform
 	_t_transicion_acumulada = 0.0
 	_duracion_transicion_actual = duracion
 	modo_camara = ModoCamara.TRANSICION_BROADCAST
+
+
+## Modifica el sesgo de LOD (lod_bias) en todos los jugadores del campo y en el árbitro
+func aplicar_lod_bias_personajes(bias: float) -> void:
+	if get_tree() == null:
+		return
+	var jugadores: Array[Node] = get_tree().get_nodes_in_group("jugadores_futsal")
+	for n: Node in jugadores:
+		var j: Jugador3D = n as Jugador3D
+		if j and is_instance_valid(j) and j.has_method("establecer_lod_bias"):
+			j.establecer_lod_bias(bias)
+	
+	var arbitros: Array[Node] = get_tree().get_nodes_in_group("arbitro_3d")
+	for a: Node in arbitros:
+		if a and is_instance_valid(a) and a.has_method("establecer_lod_bias"):
+			a.call("establecer_lod_bias", bias)
+
+
+## Activa la cámara cinemática a ras de campo (distancia 2.2 a 3.5m, altura 1.35m, FOV 45.0) en contrapicado
+func activar_camara_cinematica_falta(
+	pos_infractor: Vector3,
+	pos_referencia: Vector3,
+	_es_tarjeta: bool = true,
+	inmediato: bool = false
+) -> void:
+	_en_cinematica_activa = true
+	fov = 45.0
+	aplicar_lod_bias_personajes(4.0)
+
+	var centro_accion: Vector3 = pos_infractor.lerp(pos_referencia, 0.40)
+	var dir_eje: Vector3 = (pos_referencia - pos_infractor)
+	dir_eje.y = 0.0
+	if dir_eje.length_squared() < 0.01:
+		dir_eje = Vector3(1.0, 0.0, 0.0)
+	else:
+		dir_eje = dir_eje.normalized()
+	
+	var vec_lateral: Vector3 = Vector3(-dir_eje.z, 0.0, dir_eje.x).normalized()
+	if (centro_accion.z > 0.0 and vec_lateral.z > 0.0) or (centro_accion.z < 0.0 and vec_lateral.z < 0.0):
+		vec_lateral = -vec_lateral
+	
+	var pos_camara: Vector3 = centro_accion + vec_lateral * 2.85 - dir_eje * 0.35
+	pos_camara.y = 1.35
+	pos_camara.x = clampf(pos_camara.x, -18.5, 18.5)
+	pos_camara.z = clampf(pos_camara.z, -8.8, 8.8)
+
+	_punto_mira_cinematica = centro_accion + Vector3(0.0, 1.45, 0.0)
+	var dir_mira: Vector3 = (_punto_mira_cinematica - pos_camara).normalized()
+	var tf_cinematica: Transform3D = Transform3D().looking_at(dir_mira, Vector3.UP)
+	tf_cinematica.origin = pos_camara
+
+	_tf_cinematica_objetivo = tf_cinematica
+	modo_camara = ModoCamara.CINEMATICA_FALTA
+
+	if inmediato:
+		global_transform = tf_cinematica
+	else:
+		var tw: Tween = create_tween().set_ignore_time_scale(true)
+		tw.tween_property(self, "global_transform", tf_cinematica, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+## Activa la cámara cercana dinámica para la repetición breve de la falta o impacto
+func activar_camara_repeticion(pos_contacto: Vector3) -> void:
+	_en_cinematica_activa = true
+	fov = 45.0
+	aplicar_lod_bias_personajes(4.0)
+	
+	var pos_camara: Vector3 = pos_contacto + Vector3(0.0, 1.45, 3.2)
+	pos_camara.x = clampf(pos_camara.x, -18.0, 18.0)
+	pos_camara.z = clampf(pos_camara.z, -8.5, 8.5)
+	
+	_punto_mira_cinematica = pos_contacto + Vector3(0.0, 0.85, 0.0)
+	var dir_mira: Vector3 = (_punto_mira_cinematica - pos_camara).normalized()
+	var tf_rep: Transform3D = Transform3D().looking_at(dir_mira, Vector3.UP)
+	tf_rep.origin = pos_camara
+	
+	_tf_cinematica_objetivo = tf_rep
+	global_transform = tf_rep
+	modo_camara = ModoCamara.REPETICION_JUGADA
 
 
 ## Coloca de inmediato la cámara hacia la vista cenital enfocando el medio campo rival (Modo Selección de Posición)
@@ -281,6 +378,20 @@ func _physics_process(delta: float) -> void:
 		
 		ModoCamara.CENITAL_SELECCION:
 			pass
+		
+		ModoCamara.CINEMATICA_FALTA:
+			if _punto_mira_cinematica.length_squared() > 0.01:
+				var dir_mira_c: Vector3 = (_punto_mira_cinematica - global_position).normalized()
+				var tf_mira_c: Transform3D = Transform3D().looking_at(dir_mira_c, Vector3.UP)
+				tf_mira_c.origin = global_position
+				global_transform = global_transform.interpolate_with(tf_mira_c, clampf(delta * 4.0, 0.0, 1.0))
+		
+		ModoCamara.REPETICION_JUGADA:
+			if _punto_mira_cinematica.length_squared() > 0.01:
+				var dir_mira_r: Vector3 = (_punto_mira_cinematica - global_position).normalized()
+				var tf_mira_r: Transform3D = Transform3D().looking_at(dir_mira_r, Vector3.UP)
+				tf_mira_r.origin = global_position
+				global_transform = global_transform.interpolate_with(tf_mira_r, clampf(delta * 5.0, 0.0, 1.0))
 
 
 func _procesar_camara_broadcast(delta: float) -> void:

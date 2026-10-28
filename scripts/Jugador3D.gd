@@ -2701,6 +2701,36 @@ func _transferir_control_tras_expulsion() -> void:
 			return
 
 
+## Modifica el sesgo de LOD en todas las mallas del jugador para máximo detalle geométrico (LOD 0) en cinemáticas cortas
+func establecer_lod_bias(bias: float) -> void:
+	if visual == null:
+		return
+	var mallas: Array[Node] = visual.find_children("*", "MeshInstance3D", true, false)
+	for m: Node in mallas:
+		var mi: MeshInstance3D = m as MeshInstance3D
+		if mi and is_instance_valid(mi):
+			mi.lod_bias = bias
+
+
+## Reacción procedural ante una amonestación (tarjeta amarilla o roja) encarando al árbitro
+func reaccionar_amonestacion(_tipo_tarjeta: String, pos_arbitro: Vector3) -> void:
+	velocity = Vector3.ZERO
+	_en_barrida = false
+	_tiempo_barrida = 0.0
+	_t_aturdimiento = 0.0
+	
+	var dir_hacia_arbitro: Vector3 = pos_arbitro - global_position
+	dir_hacia_arbitro.y = 0.0
+	if dir_hacia_arbitro.length_squared() > 0.01:
+		rotation.y = atan2(-dir_hacia_arbitro.x, -dir_hacia_arbitro.z)
+	
+	if esqueleto_humanoide != null:
+		if _idx_head >= 0:
+			_aplicar_rotacion_hueso(_idx_head, _rest_head, 0.18, 0.0, 0.0)
+		if _idx_spine1 >= 0:
+			_aplicar_rotacion_hueso(_idx_spine1, _rest_spine1, 0.10, 0.0, 0.0)
+
+
 ## Cambia al defensor más cercano al balón o mejor posicionado en la trayectoria de pase/avance rival
 func cambiar_a_mas_cercano_al_balon(mostrar_anuncio: bool = true) -> void:
 	if equipo != Equipo.LOCAL:

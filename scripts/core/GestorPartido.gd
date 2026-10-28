@@ -72,9 +72,22 @@ var tiempo_inferioridad_visitante: float = 0.0
 var inferioridad_visitante_activa: bool = false
 var jugador_expulsado_visitante: Jugador3D = null
 
+## Control de Cinemática de Faltas, Repetición Ligera y Ventana Pre-Pitazo (Estilo eFootball / FC Mobile)
+const ReplayBufferClass = preload("res://scripts/core/ReplayBuffer.gd")
+const FiguraArbitro3DClass = preload("res://scripts/visual/FiguraArbitro3D.gd")
+
+var esperando_pitazo_arbitro: bool = false
+var _en_cinematica_falta: bool = false
+var _tween_cinematica: Tween = null
+var _figura_arbitro_instancia: Node3D = null
+var _replay_buffer = null
+var _datos_falta_pendiente: Dictionary = {}
+var _camara_referencia: CamaraTransmision = null
+
 
 func _ready() -> void:
 	add_to_group("gestor_partido")
+	_replay_buffer = ReplayBufferClass.new()
 	_inicializar_silbato_arbitral()
 	_conectar_balon()
 	if not gol_anotado.is_connected(_on_gol_anotado):
@@ -223,7 +236,7 @@ func notificar_toque_saque_centro() -> void:
 
 func _physics_process(delta: float) -> void:
 	if GameManager:
-		GameManager.reloj_neto_activo = (estado == EstadoPartido.EN_JUEGO)
+		GameManager.reloj_neto_activo = (estado == EstadoPartido.EN_JUEGO and not esperando_pitazo_arbitro and not _en_cinematica_falta)
 	
 	if _balon != null and is_instance_valid(_balon):
 		es_tiro_indirecto = _balon.es_tiro_indirecto
@@ -234,6 +247,11 @@ func _physics_process(delta: float) -> void:
 		# Wrapper de entrenamiento: sin sanciones, 4 s ni distancias reglamentarias
 		return
 	_actualizar_sanciones_2min(delta)
+
+	# Grabar en Ring Buffer de repetición ligera durante juego en vivo
+	if estado == EstadoPartido.EN_JUEGO and not esperando_pitazo_arbitro and not _en_cinematica_falta:
+		if _replay_buffer and _balon:
+			_replay_buffer.registrar_frame(delta, _balon, get_tree().get_nodes_in_group("jugadores_futsal"))
 	
 	if estado == EstadoPartido.EN_JUEGO or estado == EstadoPartido.ENTRADA_EQUIPOS or estado == EstadoPartido.TIEMPO_MUERTO:
 		cuenta_regresiva_4s_actualizada.emit(0.0, false)
@@ -275,11 +293,14 @@ func _physics_process(delta: float) -> void:
 		_aplicar_regla_5m(false)
 	
 	# Regla oficial de los 4 Segundos en reanudaciones (Banda, Meta, Esquina, Tiro Libre, Doble Penalti)
-	if _esperando_toque and _timer_timeout > 0.0:
+	if _esperando_toque and not esperando_pitazo_arbitro and _timer_timeout > 0.0:
 		_timer_timeout = maxf(0.0, _timer_timeout - delta)
 		cuenta_regresiva_4s_actualizada.emit(_timer_timeout, true)
 		if _timer_timeout <= 0.0 and not _sancionando_4s:
 			_sancionar_regla_4_segundos()
+	elif esperando_pitazo_arbitro:
+		# Durante la fase pre-pitazo (1.3 s de reconocimiento), el reloj reglamentario de 4s está pausado en 4.0s
+		cuenta_regresiva_4s_actualizada.emit(4.0, false)
 	else:
 		cuenta_regresiva_4s_actualizada.emit(0.0, false)
 
@@ -721,10 +742,10 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 		nombre_infractor = infractor.nombre_jugador if infractor.nombre_jugador != "" else infractor.posicion_tactica
 		dorsal_infractor = infractor.dorsal
 	
-	_reproducir_pitido_arbitral()
-	
+	var tipo_tarjeta: String = ""
 	if puntaje >= 6.5:
 		# Tarjeta Roja Directa (Expulsión)
+		tipo_tarjeta = "ROJA_DIRECTA"
 		print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 		tarjeta_mostrada.emit(infractor, "ROJA_DIRECTA", puntaje)
 		_emitir_anuncio_hud("¡TARJETA ROJA DIRECTA! ¡EXPULSIÓN! #%d %s (Severidad: %.1f)" % [dorsal_infractor, nombre_infractor, puntaje])
@@ -734,16 +755,19 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 			infractor.tarjetas_amarillas += 1
 			if infractor.tarjetas_amarillas >= 2:
 				# Segunda Amarilla -> Tarjeta Roja (Expulsión)
+				tipo_tarjeta = "SEGUNDA_AMARILLA"
 				print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 				tarjeta_mostrada.emit(infractor, "SEGUNDA_AMARILLA", puntaje)
 				_emitir_anuncio_hud("¡SEGUNDA AMARILLA! ¡EXPULSIÓN! #%d %s" % [dorsal_infractor, nombre_infractor])
 				_procesar_expulsion(infractor, true, puntaje)
 			else:
 				# Tarjeta Amarilla (Amonestación)
+				tipo_tarjeta = "AMARILLA"
 				print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 				tarjeta_mostrada.emit(infractor, "AMARILLA", puntaje)
 				_emitir_anuncio_hud("¡TARJETA AMARILLA! #%d %s (Severidad: %.1f)" % [dorsal_infractor, nombre_infractor, puntaje])
 		else:
+			tipo_tarjeta = "AMARILLA"
 			print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 			tarjeta_mostrada.emit(infractor, "AMARILLA", puntaje)
 			_emitir_anuncio_hud("¡TARJETA AMARILLA! (Severidad: %.1f)" % puntaje)
@@ -751,12 +775,245 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 		# Falta común (sin tarjeta)
 		_emitir_anuncio_hud("¡FALTA! (%d/5 ACUMULADAS) - TIRO LIBRE DIRECTO" % total_faltas)
 	
-	# A partir de la 6ª falta acumulada en el mismo periodo: Tiro Libre Directo sin barrera (Doble Penalti)
+	# ETAPA 1: DETENCIÓN INMEDIATA Y CÁMARA LENTA AL PITAR FALTA (0.5 s)
+	esperando_pitazo_arbitro = true
+	if GameManager:
+		GameManager.reloj_neto_activo = false
+	cuenta_regresiva_4s_actualizada.emit(0.0, false)
+	_reproducir_pitido_arbitral()
+
+	_datos_falta_pendiente = {
+		"infractor": infractor,
+		"victima": poseedor,
+		"tipo_tarjeta": tipo_tarjeta,
+		"pos_falta": pos_falta,
+		"puntaje": puntaje,
+		"total_faltas": total_faltas,
+		"equipo_favorecido": equipo_favorecido
+	}
+
+	# Desaceleración breve (Engine.time_scale = 0.35 durante 0.45 s reales) mientras el balón rueda inerte
+	Engine.time_scale = 0.35
+	if _tween_cinematica != null and _tween_cinematica.is_valid():
+		_tween_cinematica.kill()
+
+	var desglose: Array = resultado_eval.get("desglose", [])
+	_tween_cinematica = create_tween().set_ignore_time_scale(true)
+	_tween_cinematica.tween_interval(0.45)
+	_tween_cinematica.tween_callback(func() -> void:
+		Engine.time_scale = 1.0
+		_iniciar_secuencia_presentacion_falta(
+			infractor,
+			poseedor,
+			tipo_tarjeta,
+			pos_falta,
+			puntaje,
+			desglose,
+			total_faltas,
+			equipo_favorecido
+		)
+	)
+
+
+# ==============================================================================
+# SECUENCIA CINEMÁTICA DE FALTAS, TARJETAS, REPETICIÓN Y VENTANA PRE-PITAZO
+# ==============================================================================
+
+## Obtiene la cámara de transmisión activa
+func _obtener_camara_transmision() -> CamaraTransmision:
+	if _camara_referencia != null and is_instance_valid(_camara_referencia):
+		return _camara_referencia
+	var cam: Camera3D = get_viewport().get_camera_3d() if get_viewport() else null
+	if cam is CamaraTransmision:
+		_camara_referencia = cam as CamaraTransmision
+		return _camara_referencia
+	if get_parent() != null:
+		var cam_p: Node = get_parent().get_node_or_null("Camera3D")
+		if cam_p is CamaraTransmision:
+			_camara_referencia = cam_p as CamaraTransmision
+			return _camara_referencia
+	return null
+
+
+## Obtiene el HUD principal de partido
+func _obtener_hud_partido() -> HUDPartido:
+	var hud: HUDPartido = get_tree().get_first_node_in_group("hud_partido") as HUDPartido
+	if hud and is_instance_valid(hud):
+		return hud
+	return null
+
+
+## ETAPA 2: Presentación cinematográfica de falta / repetición en primer plano con máximo detalle (LOD 0)
+func _iniciar_secuencia_presentacion_falta(
+	infractor: Jugador3D,
+	victima: Jugador3D,
+	tipo_tarjeta: String,
+	pos_falta: Vector3,
+	puntaje: float,
+	desglose: Array,
+	total_faltas: int,
+	equipo_favorecido: int
+) -> void:
+	_en_cinematica_falta = true
+	_datos_falta_pendiente = {
+		"infractor": infractor,
+		"victima": victima,
+		"tipo_tarjeta": tipo_tarjeta,
+		"pos_falta": pos_falta,
+		"puntaje": puntaje,
+		"total_faltas": total_faltas,
+		"equipo_favorecido": equipo_favorecido
+	}
+	
+	var hud: HUDPartido = _obtener_hud_partido()
+	if hud:
+		if hud.touch_controls:
+			hud.touch_controls.visible = false
+		hud.mostrar_boton_omitir(true)
+		if tipo_tarjeta != "":
+			hud.mostrar_placa_tarjeta(infractor, tipo_tarjeta, puntaje, desglose)
+	
+	var cam: CamaraTransmision = _obtener_camara_transmision()
+	var pos_ref_infractor: Vector3 = infractor.global_position if infractor and is_instance_valid(infractor) else pos_falta
+	var pos_ref_victima: Vector3 = victima.global_position if victima and is_instance_valid(victima) else (pos_falta + Vector3(1.0, 0.0, 0.0))
+
+	# 1. Si la falta conlleva Tarjeta Amarilla o Roja: Árbitro 3D + plano contrapicado
+	if tipo_tarjeta != "":
+		_limpiar_figura_arbitro()
+		_figura_arbitro_instancia = FiguraArbitro3DClass.new()
+		var contenedor_ar: Node = get_parent() if get_parent() else self
+		contenedor_ar.add_child(_figura_arbitro_instancia)
+		
+		var dir_hacia_infractor: Vector3 = (pos_ref_infractor - pos_ref_victima).normalized()
+		if dir_hacia_infractor.length_squared() < 0.01:
+			dir_hacia_infractor = Vector3(1.0, 0.0, 0.0)
+		
+		_figura_arbitro_instancia.aparecer_y_mostrar_tarjeta(pos_ref_infractor, dir_hacia_infractor, tipo_tarjeta)
+		
+		if infractor and is_instance_valid(infractor) and infractor.has_method("reaccionar_amonestacion"):
+			infractor.reaccionar_amonestacion(tipo_tarjeta, _figura_arbitro_instancia.global_position)
+		
+		if cam:
+			cam.activar_camara_cinematica_falta(pos_ref_infractor, _figura_arbitro_instancia.global_position, true)
+	else:
+		# 2. Falta sin tarjeta: si hay frames en el ring buffer de repetición, reproducir repetición rápida
+		var frames_rep: Array = _replay_buffer.obtener_frames(1.5) if _replay_buffer else []
+		if frames_rep.size() >= 15:
+			if hud:
+				hud.mostrar_indicador_repeticion(true)
+			if cam:
+				cam.activar_camara_repeticion(pos_falta)
+			
+			var duracion_rep: float = 1.3
+			var step_t: float = duracion_rep / float(frames_rep.size())
+			var tw_rep: Tween = create_tween().set_ignore_time_scale(true)
+			for f_idx: int in range(frames_rep.size()):
+				var f_snap = frames_rep[f_idx]
+				tw_rep.tween_callback(func() -> void:
+					if _en_cinematica_falta and _replay_buffer:
+						_replay_buffer.aplicar_snapshot(f_snap, _balon)
+				)
+				tw_rep.tween_interval(step_t)
+			tw_rep.tween_callback(func() -> void:
+				if hud:
+					hud.mostrar_indicador_repeticion(false)
+			)
+		else:
+			if cam:
+				cam.activar_camara_cinematica_falta(pos_ref_infractor, pos_ref_victima, false)
+
+	# 3. Duración de la presentación: 2.2 s reales (saltable en cualquier momento vía botón OMITIR)
+	if _tween_cinematica != null and _tween_cinematica.is_valid():
+		_tween_cinematica.kill()
+
+	_tween_cinematica = create_tween().set_ignore_time_scale(true)
+	_tween_cinematica.tween_interval(2.2)
+	_tween_cinematica.tween_callback(func() -> void:
+		_finalizar_cinematica_y_pasar_a_pre_pitazo()
+	)
+
+
+## Permite al usuario omitir inmediatamente la cinemática de faltas o repetición (vía botón "OMITIR ⏭")
+func omitir_secuencia_falta() -> void:
+	if not _en_cinematica_falta and not esperando_pitazo_arbitro:
+		return
+	if _tween_cinematica != null and _tween_cinematica.is_valid():
+		_tween_cinematica.kill()
+	Engine.time_scale = 1.0
+	_finalizar_cinematica_y_pasar_a_pre_pitazo()
+
+
+## ETAPA 3: FASE DE POSICIONAMIENTO Y RECONOCIMIENTO PRE-PITAZO (1.3 s SIN CORRER EL TIEMPO)
+func _finalizar_cinematica_y_pasar_a_pre_pitazo() -> void:
+	_en_cinematica_falta = false
+	Engine.time_scale = 1.0
+
+	_limpiar_figura_arbitro()
+
+	var hud: HUDPartido = _obtener_hud_partido()
+	if hud:
+		hud.mostrar_boton_omitir(false)
+		hud.ocultar_placa_tarjeta()
+		hud.mostrar_indicador_repeticion(false)
+		if hud.touch_controls:
+			hud.touch_controls.visible = true
+
+	var cam: CamaraTransmision = _obtener_camara_transmision()
+	if cam:
+		cam.aplicar_lod_bias_personajes(1.0)
+
+	var pos_falta: Vector3 = _datos_falta_pendiente.get("pos_falta", _pos_saque)
+	var equipo_favorecido: int = int(_datos_falta_pendiente.get("equipo_favorecido", 0))
+	var total_faltas: int = int(_datos_falta_pendiente.get("total_faltas", 1))
+
+	# 1. Posicionar el balón en el punto de infracción, ubicar barrera a 5m y lanzador
 	if total_faltas >= 6:
 		iniciar_doble_penalti(equipo_favorecido, total_faltas, pos_falta)
 	else:
 		var pos_tl: Vector3 = Vector3(clampf(pos_falta.x, -14.0, 14.0), 0.25, clampf(pos_falta.z, -8.5, 8.5))
 		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, pos_tl, equipo_favorecido, false)
+
+	# 2. Congelar la cuenta de los 4 segundos durante 1.3 segundos de reconocimiento visual
+	esperando_pitazo_arbitro = true
+	_timer_timeout = 4.0
+	cuenta_regresiva_4s_actualizada.emit(4.0, false)
+
+	if hud:
+		hud.mostrar_anuncio("COLOCANDO BARRERA... PREPÁRATE", 1.3)
+
+	if _tween_cinematica != null and _tween_cinematica.is_valid():
+		_tween_cinematica.kill()
+
+	_tween_cinematica = create_tween().set_ignore_time_scale(true)
+	_tween_cinematica.tween_interval(1.3)
+	_tween_cinematica.tween_callback(func() -> void:
+		_autorizar_saque_tiro_libre()
+	)
+
+
+## ETAPA 4: PITAZO DE AUTORIZACIÓN E INICIO DE LOS 4 SEGUNDOS REGLAMENTARIOS
+func _autorizar_saque_tiro_libre() -> void:
+	if estado != EstadoPartido.TIRO_LIBRE and estado != EstadoPartido.DOBLE_PENALTI:
+		return
+
+	_reproducir_pitido_arbitral()
+
+	var hud: HUDPartido = _obtener_hud_partido()
+	if hud:
+		hud.mostrar_anuncio("¡SAQUE AUTORIZADO! (4.0 s)", 1.2)
+
+	esperando_pitazo_arbitro = false
+	_timer_timeout = 4.0
+	cuenta_regresiva_4s_actualizada.emit(4.0, true)
+
+	if _sacador_actual and is_instance_valid(_sacador_actual):
+		_sacador_actual.set_congelado(false)
+
+
+func _limpiar_figura_arbitro() -> void:
+	if _figura_arbitro_instancia != null and is_instance_valid(_figura_arbitro_instancia):
+		_figura_arbitro_instancia.desaparecer()
+		_figura_arbitro_instancia = null
 
 
 ## Procesa la expulsión de un jugador y activa el periodo de inferioridad numérica (Regla de los 2 Minutos)
