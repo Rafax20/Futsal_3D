@@ -621,6 +621,31 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 	if estado != EstadoPartido.EN_JUEGO:
 		return
 	
+	# 1. Verificación y validación estricta del infractor (offender) vs víctima (victim/ball carrier):
+	# El infractor es el jugador que comete la entrada, choque o barrida.
+	# La víctima es el jugador que poseía el balón o fue derribado.
+	if infractor != null and poseedor != null:
+		var intercambio_necesario: bool = false
+		if poseedor._en_barrida and not infractor._en_barrida:
+			intercambio_necesario = true
+		elif infractor.tiene_posesion and not poseedor.tiene_posesion:
+			intercambio_necesario = true
+		elif infractor._t_aturdimiento > 0.0 and poseedor._t_aturdimiento <= 0.0:
+			intercambio_necesario = true
+		elif infractor._t_bloqueo_recaptura > 0.0 and poseedor._t_bloqueo_recaptura <= 0.0:
+			intercambio_necesario = true
+		
+		if intercambio_necesario:
+			var temp: Jugador3D = infractor
+			infractor = poseedor
+			poseedor = temp
+
+	# 2. Sincronizar equipo_infractor estrictamente con la entidad infractora sancionada
+	if infractor != null:
+		equipo_infractor = int(infractor.equipo)
+	elif poseedor != null:
+		equipo_infractor = 1 if int(poseedor.equipo) == 0 else 0
+	
 	# Fallbacks para infractor y poseedor en caso de invocaciones sin nodo explícito
 	if infractor == null:
 		var grupo_infractor: String = "equipo_local" if equipo_infractor == 0 else "equipo_visitante"
@@ -646,14 +671,21 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 					min_d_p = d
 					poseedor = j
 	
+	var offender_name: String = infractor.nombre_jugador if (infractor and infractor.nombre_jugador != "") else (infractor.posicion_tactica if infractor else "Infractor")
+	var offender_team_name: String = "LOCAL" if equipo_infractor == 0 else "VISITANTE"
+	var victim_name: String = poseedor.nombre_jugador if (poseedor and poseedor.nombre_jugador != "") else (poseedor.posicion_tactica if poseedor else "Víctima")
+	print("[ARBITRO] Falta cometida por: ", offender_name, " (Equipo: ", offender_team_name, ") sobre: ", victim_name)
+	
 	# Evaluación algorítmica de severidad (FIFA/IFAB)
 	var resultado_eval: Dictionary = evaluar_severidad_falta(infractor, poseedor, pos_falta, es_barrida)
 	var puntaje: float = float(resultado_eval.get("puntaje", 0.0))
 	
+	# 'offender.team' recibe la falta acumulada
 	var total_faltas: int = 1
 	if GameManager:
 		total_faltas = GameManager.registrar_falta_equipo(equipo_infractor)
 	
+	# 'victim.team' recibe el tiro libre / posesión a favor
 	var equipo_favorecido: int = 1 if equipo_infractor == 0 else 0
 	
 	# Aplicación de Sanciones Disciplinarias según umbrales de severidad
@@ -667,6 +699,7 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 	
 	if puntaje >= 6.5:
 		# Tarjeta Roja Directa (Expulsión)
+		print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 		tarjeta_mostrada.emit(infractor, "ROJA_DIRECTA", puntaje)
 		_emitir_anuncio_hud("¡TARJETA ROJA DIRECTA! ¡EXPULSIÓN! #%d %s (Severidad: %.1f)" % [dorsal_infractor, nombre_infractor, puntaje])
 		_procesar_expulsion(infractor, false, puntaje)
@@ -675,14 +708,17 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 			infractor.tarjetas_amarillas += 1
 			if infractor.tarjetas_amarillas >= 2:
 				# Segunda Amarilla -> Tarjeta Roja (Expulsión)
+				print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 				tarjeta_mostrada.emit(infractor, "SEGUNDA_AMARILLA", puntaje)
 				_emitir_anuncio_hud("¡SEGUNDA AMARILLA! ¡EXPULSIÓN! #%d %s" % [dorsal_infractor, nombre_infractor])
 				_procesar_expulsion(infractor, true, puntaje)
 			else:
 				# Tarjeta Amarilla (Amonestación)
+				print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 				tarjeta_mostrada.emit(infractor, "AMARILLA", puntaje)
 				_emitir_anuncio_hud("¡TARJETA AMARILLA! #%d %s (Severidad: %.1f)" % [dorsal_infractor, nombre_infractor, puntaje])
 		else:
+			print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 			tarjeta_mostrada.emit(infractor, "AMARILLA", puntaje)
 			_emitir_anuncio_hud("¡TARJETA AMARILLA! (Severidad: %.1f)" % puntaje)
 	else:
@@ -703,6 +739,9 @@ func _procesar_expulsion(infractor: Jugador3D, _por_doble_amarilla: bool, _punta
 		return
 	
 	var eq_id: int = int(infractor.equipo)
+	var eq_nombre: String = "LOCAL" if eq_id == 0 else "VISITANTE"
+	print("[ARBITRO] Tarjeta/Sanción aplicada a: ", eq_nombre)
+	
 	if eq_id == 0:
 		inferioridad_local_activa = true
 		tiempo_inferioridad_local = 120.0
@@ -801,24 +840,31 @@ func _hacer_ingresar_sustituto(equipo_sancionado: int) -> void:
 
 ## Callback ante cada gol anotado para aplicar la regla oficial de excepción por gol en inferioridad numérica
 func _on_gol_anotado(equipo_anotador: int) -> void:
+	var eq_anotador_nombre: String = "LOCAL" if equipo_anotador == 0 else "VISITANTE"
+	print("[ARBITRO] Gol anotado por Equipo: ", eq_anotador_nombre)
+	
 	# Regla de Excepción por Gol en Sanción de 2 Minutos (FIFA/IFAB Ley 12):
 	# Si ambos equipos están en inferioridad (ej. 4 vs 4), ningún equipo recupera jugadores por gol.
 	if inferioridad_local_activa and inferioridad_visitante_activa:
+		print("[ARBITRO] Ambos equipos se encuentran en inferioridad numérica (4 vs 4): la sanción continúa.")
 		return
 	
 	# Si el equipo en superioridad (5) anota gol contra el equipo en inferioridad (4):
 	# Se cancela la sanción y el equipo sancionado completa sus 5 jugadores con un sustituto.
 	if inferioridad_local_activa and equipo_anotador == 1:
+		print("[ARBITRO] Gol de VISITANTE (equipo con superioridad): se cancela sanción de 2 min de LOCAL e ingresa sustituto.")
 		inferioridad_local_activa = false
 		tiempo_inferioridad_local = 0.0
 		sancion_2min_actualizada.emit(0, 0.0, false)
 		_finalizar_inferioridad(0, "GOL_RIVAL")
 	elif inferioridad_visitante_activa and equipo_anotador == 0:
+		print("[ARBITRO] Gol de LOCAL (equipo con superioridad): se cancela sanción de 2 min de VISITANTE e ingresa sustituto.")
 		inferioridad_visitante_activa = false
 		tiempo_inferioridad_visitante = 0.0
 		sancion_2min_actualizada.emit(1, 0.0, false)
 		_finalizar_inferioridad(1, "GOL_RIVAL")
-	# Si el equipo en inferioridad numérica anota, la sanción NO se cancela y el reloj continúa.
+	elif (inferioridad_local_activa and equipo_anotador == 0) or (inferioridad_visitante_activa and equipo_anotador == 1):
+		print("[ARBITRO] Gol anotado por el equipo en inferioridad numérica: la sanción de 2 min NO se cancela y el reloj continúa.")
 
 
 ## Sanciona la Regla Oficial de Futsal de Cesión al Portero:

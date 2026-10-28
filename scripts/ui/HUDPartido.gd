@@ -38,6 +38,10 @@ extends CanvasLayer
 var _jugador_referencia: Jugador3D = null
 var _gestor_partido: GestorPartido = null
 var _tiempo_anuncio: float = 0.0
+var _sancion_activa_loc: bool = false
+var _tiempo_sancion_loc: float = 0.0
+var _sancion_activa_vis: bool = false
+var _tiempo_sancion_vis: float = 0.0
 
 
 func _ready() -> void:
@@ -217,6 +221,13 @@ func _on_cuenta_4s_actualizada(segundos_restantes: float, activa: bool) -> void:
 
 
 func _on_sancion_2min_actualizada(equipo_sancionado: int, segundos_restantes: float, activa: bool) -> void:
+	if equipo_sancionado == 0:
+		_sancion_activa_loc = activa
+		_tiempo_sancion_loc = segundos_restantes
+	else:
+		_sancion_activa_vis = activa
+		_tiempo_sancion_vis = segundos_restantes
+	
 	if label_sancion_2min == null:
 		var contenedor_marcador: Node = get_node_or_null("MarcadorSuperior/PanelContenedor/ContenedorMarcador")
 		if contenedor_marcador:
@@ -227,13 +238,28 @@ func _on_sancion_2min_actualizada(equipo_sancionado: int, segundos_restantes: fl
 			label_sancion_2min.add_theme_font_size_override("font_size", 13)
 			contenedor_marcador.add_child(label_sancion_2min)
 	
-	if label_sancion_2min:
-		label_sancion_2min.visible = activa
-		if activa:
-			var mins: int = int(segundos_restantes) / 60
-			var segs: int = int(segundos_restantes) % 60
-			var tag_eq: String = "LOC" if equipo_sancionado == 0 else "VIS"
-			label_sancion_2min.text = "[4v5 %s %02d:%02d]" % [tag_eq, mins, segs]
+	if label_sancion_2min == null:
+		return
+	
+	if _sancion_activa_loc and _sancion_activa_vis:
+		label_sancion_2min.visible = true
+		var mins_l: int = int(_tiempo_sancion_loc) / 60
+		var segs_l: int = int(_tiempo_sancion_loc) % 60
+		var mins_v: int = int(_tiempo_sancion_vis) / 60
+		var segs_v: int = int(_tiempo_sancion_vis) % 60
+		label_sancion_2min.text = "[4v4 L:%02d:%02d V:%02d:%02d]" % [mins_l, segs_l, mins_v, segs_v]
+	elif _sancion_activa_loc:
+		label_sancion_2min.visible = true
+		var mins: int = int(_tiempo_sancion_loc) / 60
+		var segs: int = int(_tiempo_sancion_loc) % 60
+		label_sancion_2min.text = "[4v5 LOC %02d:%02d]" % [mins, segs]
+	elif _sancion_activa_vis:
+		label_sancion_2min.visible = true
+		var mins: int = int(_tiempo_sancion_vis) / 60
+		var segs: int = int(_tiempo_sancion_vis) % 60
+		label_sancion_2min.text = "[4v5 VIS %02d:%02d]" % [mins, segs]
+	else:
+		label_sancion_2min.visible = false
 
 
 func _conectar_eventos_atajadas() -> void:

@@ -988,10 +988,11 @@ func _physics_process(delta: float) -> void:
 	match _estado:
 		EstadoJugador.BARRIDA:
 			_tiempo_barrida -= delta
-			if _chequear_impacto_barrida():
-				_barrida_toco_balon = true
-			elif not _barrida_cometio_falta and _chequear_falta_barrida():
-				_barrida_cometio_falta = true
+			if not _barrida_toco_balon:
+				if _chequear_impacto_barrida():
+					_barrida_toco_balon = true
+				elif not _barrida_cometio_falta and _chequear_falta_barrida():
+					_barrida_cometio_falta = true
 			if _tiempo_barrida <= 0.0:
 				_en_barrida = false
 				if not _barrida_toco_balon:
@@ -1982,12 +1983,16 @@ func _chequear_falta_barrida() -> bool:
 		if rival == null or rival.posicion_tactica == "PORTERO" or rival.esta_expulsado:
 			continue
 		var dist: float = global_position.distance_to(rival.global_position)
-		if dist < 1.25:
-			_barrida_toco_balon = true # Evita notificar múltiples veces en la misma barrida
+		if dist < 1.3:
+			_barrida_toco_balon = false
+			_barrida_cometio_falta = true
 			_en_barrida = false
 			_tiempo_barrida = 0.0
 			_t_aturdimiento = t_cooldown_barrida_fallida
-			rival._t_aturdimiento = 0.35
+			rival._t_aturdimiento = 0.5
+			rival._cooldown_falta_contacto = 1.5
+			if rival.tiene_posesion:
+				rival.soltar_posesion()
 			_notificar_falta_arbitro(self, rival.global_position, rival, true)
 			return true
 	return false
@@ -1995,7 +2000,7 @@ func _chequear_falta_barrida() -> bool:
 
 ## Evalúa contacto físico de choque o carga a velocidad alta contra el portador del balón rival
 func _chequear_contacto_fisico_falta() -> void:
-	if esta_expulsado or tiene_posesion or _en_barrida or _cooldown_falta_contacto > 0.0 or _congelado:
+	if esta_expulsado or tiene_posesion or _en_barrida or _cooldown_falta_contacto > 0.0 or _congelado or _t_aturdimiento > 0.0 or _t_bloqueo_recaptura > 0.0:
 		return
 	if velocity.length() < 2.8:
 		return
@@ -2007,10 +2012,15 @@ func _chequear_contacto_fisico_falta() -> void:
 		var collider: Object = col.get_collider()
 		if collider is Jugador3D and collider != self:
 			var rival: Jugador3D = collider as Jugador3D
-			if rival and rival.equipo != equipo and not rival.esta_expulsado and rival.tiene_posesion:
-				_cooldown_falta_contacto = 1.0
-				_notificar_falta_arbitro(self, rival.global_position, rival, false)
-				break
+			if rival and rival.equipo != equipo and not rival.esta_expulsado and not rival._en_barrida:
+				# Si el rival es el portador del balón, nosotros (defensor en carrera agresiva) somos el infractor
+				if rival.tiene_posesion:
+					_cooldown_falta_contacto = 1.5
+					rival._cooldown_falta_contacto = 1.5
+					rival._t_aturdimiento = 0.35
+					rival.soltar_posesion()
+					_notificar_falta_arbitro(self, rival.global_position, rival, false)
+					break
 
 
 ## Notifica al GestorPartido una falta cometida para evaluación de severidad, tarjetas y reanudación
