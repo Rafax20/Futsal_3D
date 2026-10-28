@@ -12,6 +12,7 @@ signal balon_liberado
 signal atajada_realizada(zona: String, nombre_arquero: String)
 signal bloqueo_barrera_realizado(defensor: Jugador3D, zona: String)
 signal mano_cometida(defensor: Jugador3D, posicion: Vector3, es_penal: bool)
+signal linea_fondo_cruzada_fuera(posicion_cruce: Vector3, salio_derecha: bool)
 
 enum EstadoBalon {
 	LIBRE,
@@ -149,6 +150,13 @@ func _physics_process(delta: float) -> void:
 		_verificar_colision_alta_velocidad_raycast(delta)
 		_aplicar_curva_tiro_colocado(delta)
 		_controlar_rodadura_y_velocidad(delta)
+		
+		# Detección estricta e inmediata de cruce de Línea de Fondo (|X| >= 20.05) fuera de portería
+		if not esta_fuera_de_juego and absf(global_position.x) >= 20.05:
+			var dentro_marco: bool = (absf(global_position.z) <= 1.52 and global_position.y <= 2.02 and global_position.y >= -0.05)
+			if not dentro_marco:
+				esta_fuera_de_juego = true
+				linea_fondo_cruzada_fuera.emit(global_position, global_position.x > 0.0)
 	
 	pos_previa = global_position
 
@@ -743,6 +751,27 @@ func puede_ser_capturado_por(j: Jugador3D) -> bool:
 ## Si `es_tiro_indirecto == true` y `toques_en_jugada == 1` (sin haber tocado a ningún otro jugador), el gol NO es válido.
 func es_gol_valido_reglamentario() -> bool:
 	return not (es_tiro_indirecto and toques_en_jugada <= 1)
+
+
+## Valida si el balón ingresó legítimamente a la portería desde el terreno de juego
+## (sin cruces desde atrás o rebotes en el muro posterior fuera de la cancha)
+func es_gol_valido_posicional(es_arco_derecho: bool) -> bool:
+	if esta_fuera_de_juego:
+		return false
+	if not es_gol_valido_reglamentario():
+		return false
+	var pos: Vector3 = global_position
+	if absf(pos.z) > 1.48 or pos.y > 1.98 or pos.y < -0.05:
+		return false
+	if es_arco_derecho:
+		# Arco Derecho (X = 20.0): Debe ingresar desde la cancha hacia afuera (vel.x > 0, pos_previa dentro)
+		if pos_previa.x > 20.05 or linear_velocity.x <= 0.05:
+			return false
+	else:
+		# Arco Izquierdo (X = -20.0): Debe ingresar desde la cancha hacia afuera (vel.x < 0, pos_previa dentro)
+		if pos_previa.x < -20.05 or linear_velocity.x >= -0.05:
+			return false
+	return true
 
 
 ## Retorna true si el balón puede ser capturado por un jugador

@@ -237,6 +237,13 @@ func _physics_process(delta: float) -> void:
 	
 	if estado == EstadoPartido.EN_JUEGO or estado == EstadoPartido.ENTRADA_EQUIPOS or estado == EstadoPartido.TIEMPO_MUERTO:
 		cuenta_regresiva_4s_actualizada.emit(0.0, false)
+		if estado == EstadoPartido.EN_JUEGO and _balon and not _balon.esta_fuera_de_juego:
+			var pos_b: Vector3 = _balon.global_position
+			if absf(pos_b.x) >= 20.05:
+				var dentro_marco: bool = (absf(pos_b.z) <= 1.52 and pos_b.y <= 2.02 and pos_b.y >= -0.05)
+				if not dentro_marco:
+					_balon.esta_fuera_de_juego = true
+					_procesar_balon_fuera_linea_fondo(pos_b)
 		return
 	
 	if _balon == null:
@@ -1169,6 +1176,32 @@ func _on_fin_primer_tiempo() -> void:
 	iniciar_saque_centro(1)
 
 
+## Gestiona la salida del balón por la línea de fondo fuera de los límites de portería
+func _procesar_balon_fuera_linea_fondo(pos_salida: Vector3) -> void:
+	var cancha: Node = get_parent()
+	if cancha and cancha.has_method("_procesar_saque_fondo"):
+		cancha._procesar_saque_fondo(pos_salida)
+	else:
+		var salio_por_arco_local: bool = pos_salida.x < 0.0
+		var ultimo_toque: int = _balon.ultimo_toque_equipo if _balon else 0
+		if salio_por_arco_local:
+			if ultimo_toque == 1:
+				var pos_meta: Vector3 = Vector3(-17.8, 0.25, 0.0)
+				iniciar_reanudacion(EstadoPartido.SAQUE_META, pos_meta, 0)
+			else:
+				var z_corner: float = 9.4 if pos_salida.z > 0.0 else -9.4
+				var pos_corner: Vector3 = Vector3(-19.4, 0.25, z_corner)
+				iniciar_reanudacion(EstadoPartido.SAQUE_ESQUINA, pos_corner, 1)
+		else:
+			if ultimo_toque == 0:
+				var pos_meta: Vector3 = Vector3(17.8, 0.25, 0.0)
+				iniciar_reanudacion(EstadoPartido.SAQUE_META, pos_meta, 1)
+			else:
+				var z_corner: float = 9.4 if pos_salida.z > 0.0 else -9.4
+				var pos_corner: Vector3 = Vector3(19.4, 0.25, z_corner)
+				iniciar_reanudacion(EstadoPartido.SAQUE_ESQUINA, pos_corner, 0)
+
+
 ## Valida si un gol anotado cumple con la regla FIFA/IFAB de Tiro Directo vs. Indirecto.
 ## Si es tiro libre indirecto (o saque de banda/meta) y el balón ingresa al arco con un solo toque
 ## (`toques_en_jugada == 1`), anula el gol y concede Saque de Meta (`SAQUE_META`) al equipo defensor.
@@ -1177,6 +1210,9 @@ func validar_y_procesar_gol(equipo_que_anoto: int) -> bool:
 		_conectar_balon()
 	
 	if _balon != null and is_instance_valid(_balon):
+		if not _balon.es_gol_valido_posicional(equipo_que_anoto == 0):
+			return false
+
 		es_tiro_indirecto = _balon.es_tiro_indirecto
 		toques_en_jugada = _balon.toques_en_jugada
 		if not _balon.es_gol_valido_reglamentario():

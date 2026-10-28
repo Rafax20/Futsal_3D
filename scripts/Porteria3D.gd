@@ -32,4 +32,6 @@ func _on_goal_trigger_body_entered(body: Node3D) -> void:
 		balon = body as Balon3D
 	
 	if balon != null:
+		if balon.has_method("es_gol_valido_posicional") and not balon.es_gol_valido_posicional(es_porteria_derecha):
+			return
 		gol_detectado.emit(balon)

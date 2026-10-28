@@ -51,15 +51,18 @@ func _physics_process(_delta: float) -> void:
 	
 	var pos: Vector3 = balon.global_position
 	
-	# 1. Comprobación de líneas de banda laterales (|Z| > 10.08 m dentro del largo |X| <= 20.0 m)
-	if abs(pos.z) > 10.08 and abs(pos.x) <= 20.0:
+	# 1. Comprobación de líneas de banda laterales (|Z| > 10.05 m dentro del largo |X| <= 20.0 m)
+	if abs(pos.z) > 10.05 and abs(pos.x) <= 20.0:
 		_procesar_saque_de_banda(pos)
 		return
 	
-	# 2. Comprobación de líneas de fondo / meta (|X| > 20.08 m y fuera de la boca del arco de 3.7m |Z| > 1.90 m)
-	if abs(pos.x) > 20.08 and abs(pos.z) > 1.90:
-		_procesar_saque_fondo(pos)
-		return
+	# 2. Comprobación estricta e inmediata de líneas de fondo / meta (|X| >= 20.05 m)
+	if abs(pos.x) >= 20.05:
+		var dentro_marco: bool = (abs(pos.z) <= 1.52 and pos.y <= 2.02 and pos.y >= -0.05)
+		if not dentro_marco:
+			balon.esta_fuera_de_juego = true
+			_procesar_saque_fondo(pos)
+			return
 
 
 func _procesar_saque_de_banda(pos_salida: Vector3) -> void:
@@ -131,6 +134,8 @@ func _on_gol_arco_izquierdo(body: Node3D) -> void:
 		var portador: Jugador3D = balon.portador_actual as Jugador3D
 		if portador and (portador.posicion_tactica == "PORTERO" or portador.tiene_balon_en_manos):
 			return
+	if balon.has_method("es_gol_valido_posicional") and not balon.es_gol_valido_posicional(false):
+		return
 	if gestor and not gestor.validar_y_procesar_gol(1):
 		return
 	
@@ -151,6 +156,8 @@ func _on_gol_arco_derecho(body: Node3D) -> void:
 		var portador: Jugador3D = balon.portador_actual as Jugador3D
 		if portador and (portador.posicion_tactica == "PORTERO" or portador.tiene_balon_en_manos):
 			return
+	if balon.has_method("es_gol_valido_posicional") and not balon.es_gol_valido_posicional(true):
+		return
 	if gestor and not gestor.validar_y_procesar_gol(0):
 		return
 	

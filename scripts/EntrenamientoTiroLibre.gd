@@ -1407,10 +1407,6 @@ func _calcular_y_disparar_swipe(_p0: Vector2, _p1: Vector2, delta_vec: Vector2) 
 	var ejecutor: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
 	var pot_stat: float = ejecutor.potencia_tiro if (ejecutor and "potencia_tiro" in ejecutor) else 80.0
 	var f_pot: float = ejecutor.factor_stat(pot_stat) if (ejecutor and ejecutor.has_method("factor_stat")) else 0.68
-	var rapidez_max: float = lerpf(19.0, 31.5, f_pot)
-	if ejecutor and ejecutor.has_method("tiene_rasgo") and ejecutor.tiene_rasgo("Cañonero"):
-		rapidez_max *= 1.08
-	var rapidez_base: float = lerpf(rapidez_max * 0.55, rapidez_max, pot_norm)
 
 	var f_efecto: float = ejecutor.factor_stat(ejecutor.efecto) if (ejecutor and "efecto" in ejecutor and ejecutor.has_method("factor_stat")) else 0.65
 	var f_bp: float = ejecutor.factor_stat(ejecutor.balon_parado) if (ejecutor and "balon_parado" in ejecutor and ejecutor.has_method("factor_stat")) else 0.65
@@ -1422,36 +1418,26 @@ func _calcular_y_disparar_swipe(_p0: Vector2, _p1: Vector2, delta_vec: Vector2) 
 	var dist_vertical_px: float = maxf(25.0, -delta_vec.y)
 	var altura_norm: float = clampf(dist_vertical_px / (view_rect.size.y * 0.42), 0.05, 1.0)
 
-	# 1. Ejes de proyección de la cámara activa: frontal (-basis.z) y lateral (+basis.x)
-	var cam_activa: Camera3D = camara if camara != null else get_viewport().get_camera_3d()
-	var vector_frontal: Vector3 = Vector3(1.0, 0.0, 0.0)
-	var vector_lateral: Vector3 = Vector3(0.0, 0.0, 1.0)
-	if cam_activa != null and is_instance_valid(cam_activa):
-		var frente_cam: Vector3 = -cam_activa.global_transform.basis.z
-		frente_cam.y = 0.0
-		if frente_cam.length_squared() > 0.001:
-			vector_frontal = frente_cam.normalized()
-		var lat_cam: Vector3 = cam_activa.global_transform.basis.x
-		lat_cam.y = 0.0
-		if lat_cam.length_squared() > 0.001:
-			vector_lateral = lat_cam.normalized()
+	# Prohibir vaselina/globo involuntario en tiro libre directo: trayectoria tensa hacia el plano de gol (X = 20.0)
+	var target_y: float = clampf(lerpf(0.20, 2.10, altura_norm), 0.15, 2.15)
+	var target_z: float = clampf(desvio_x_norm * 1.48 - comba_ajustada * 0.32, -1.52, 1.52)
 
-	# 2. Detectar gesto de "Cucharita" (trazo vertical muy pronunciado con elevación de vaselina/pase bombeado)
-	var es_cucharita: bool = (altura_norm >= 0.84 and absf(desvio_x_norm) < 0.38 and pot_norm < 0.76)
+	var rapidez_frontal: float = lerpf(19.0, 25.0, pot_norm * 0.65 + f_pot * 0.35)
+	if ejecutor and ejecutor.has_method("tiene_rasgo") and ejecutor.tiene_rasgo("Cañonero"):
+		rapidez_frontal *= 1.06
 
-	# 3. Pérdida de velocidad lineal proporcional a la elevación en tiros bombeados
-	var factor_bombeo: float = clampf((altura_norm - 0.38) / 0.62, 0.0, 1.0)
-	var rapidez_efectiva: float = rapidez_base * lerpf(1.0, 0.80, factor_bombeo)
-	var comp_vertical_y: float = lerpf(0.05, 0.27, altura_norm)
+	var pos_b: Vector3 = balon.global_position if balon != null else Vector3.ZERO
+	var delta_x: float = maxf(1.0, 20.0 - pos_b.x)
+	var t_vuelo: float = delta_x / rapidez_frontal
+	var g_val: float = 9.8
+	# Compensación de gravedad con caída seca ("folha seca")
+	var vy: float = (target_y - pos_b.y) / t_vuelo + 0.5 * g_val * t_vuelo - 0.22
+	var vz: float = (target_z - pos_b.z) / t_vuelo
+	var vel_vector: Vector3 = Vector3(rapidez_frontal, vy, vz)
+	var dir_tiro_3d: Vector3 = vel_vector.normalized()
+	var rapidez_efectiva: float = vel_vector.length()
 
-	# 4. Dirección 3D combinando vector frontal, desviación lateral del trazo y apertura inicial de comba
-	var dir_horiz: Vector3 = (
-		vector_frontal
-		+ vector_lateral * (desvio_x_norm * 0.36 - comba_ajustada * 0.16)
-	).normalized()
-	var dir_tiro_3d: Vector3 = Vector3(dir_horiz.x, comp_vertical_y, dir_horiz.z).normalized()
-
-	_iniciar_secuencia_carrera_y_disparo(dir_tiro_3d, rapidez_efectiva, comba_ajustada, es_cucharita)
+	_iniciar_secuencia_carrera_y_disparo(dir_tiro_3d, rapidez_efectiva, comba_ajustada, false)
 
 	var tw: Tween = create_tween()
 	tw.tween_interval(0.35)
@@ -1535,9 +1521,10 @@ func _aplicar_impacto_balon_post_carrera() -> void:
 	_tiempo_post_impacto = 0.0
 
 	var ejecutor: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
+	var pos_final_tiro: Vector3 = balon.global_position
 	if ejecutor and is_instance_valid(ejecutor):
 		ejecutor._en_carrera_tiro_libre = false
-		var pos_final_tiro: Vector3 = Vector3(ejecutor.global_position.x, 0.0, ejecutor.global_position.z)
+		pos_final_tiro = Vector3(ejecutor.global_position.x, 0.0, ejecutor.global_position.z)
 		ejecutor.fijar_en_saque(true, pos_final_tiro)
 		ejecutor._t_anim_patada = 0.28
 		ejecutor.soltar_posesion()
@@ -1548,6 +1535,10 @@ func _aplicar_impacto_balon_post_carrera() -> void:
 
 	if camara != null:
 		camara.notificar_impacto_tiro_libre()
+
+	# Notificar de inmediato al arquero rival con el vector de velocidad del tiro para reacción explosiva
+	if portero_rival and is_instance_valid(portero_rival) and portero_rival.has_method("_reaccionar_a_disparo_inmediato"):
+		portero_rival._reaccionar_a_disparo_inmediato(pos_final_tiro, _impulso_pendiente / balon.mass)
 
 	balon.sacador_autorizado = null
 	var cam_activa: Camera3D = camara if camara != null else get_viewport().get_camera_3d()
@@ -2095,12 +2086,12 @@ func _procesar_live_play(delta: float) -> void:
 			camara.regresar_a_broadcast(0.75)
 
 	# Condiciones terminales 2: el balón sale por línea de banda o de fondo
-	if pos_b.x > 20.08 and absf(pos_b.z) > 1.88:
-		_iniciar_ciclo_fin_jugada("¡FUERA! SAQUE DE PUERTA")
-		return
-	if pos_b.x < -20.08:
-		_iniciar_ciclo_fin_jugada("FIN DE LA JUGADA")
-		return
+	if absf(pos_b.x) >= 20.05:
+		var dentro_marco: bool = (absf(pos_b.z) <= 1.52 and pos_b.y <= 2.02 and pos_b.y >= -0.05)
+		if not dentro_marco:
+			balon.esta_fuera_de_juego = true
+			_iniciar_ciclo_fin_jugada("¡FUERA! SAQUE DE PUERTA")
+			return
 	if absf(pos_b.z) > 10.08:
 		_iniciar_ciclo_fin_jugada("¡FUERA DE BANDA!")
 		return
@@ -2218,6 +2209,9 @@ func _on_area_gol_derecha_body_entered(body: Node3D) -> void:
 	if (estado_actual != EstadoEntrenamiento.FREE_KICK_SETUP and estado_actual != EstadoEntrenamiento.LIVE_PLAY):
 		return
 	if body != balon:
+		return
+
+	if not balon.es_gol_valido_posicional(true):
 		return
 
 	toques_en_jugada = balon.toques_en_jugada
