@@ -1384,10 +1384,11 @@ func accion_principal_presionada(potencia: float = 0.5, tipo_tiro: int = TipoTir
 ## Acción del Botón 1 (Ataque: PASE [Raso Normal, Elevado/Sombrerito Swipe Up] | Defensa: CAMBIAR JUGADOR)
 func accion_pase_presionada(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> void:
 	var balon: Balon3D = _obtener_balon_juego()
+	var es_saque: bool = (balon != null and (balon.sacador_autorizado == self or _en_posicion_saque))
 	var dist_balon: float = global_position.distance_to(balon.global_position) if balon else 99.0
 	
-	if tiene_posesion or _en_posicion_saque or (dist_balon < 1.95 and (balon and not balon.esta_siendo_conducido())):
-		if not tiene_posesion and balon and (puede_tomar_balon() or _en_posicion_saque):
+	if es_saque or tiene_posesion or (dist_balon < 2.5 and (balon and not balon.esta_siendo_conducido())):
+		if not tiene_posesion and balon and (puede_tomar_balon() or es_saque):
 			tomar_posesion(balon)
 		ejecutar_pase(potencia, tipo_pase)
 	else:
@@ -1397,10 +1398,11 @@ func accion_pase_presionada(potencia: float = 0.5, tipo_pase: int = TipoPase.RAS
 ## Acción del Botón 2 (Ataque: HUECO [Conos de Pase Predictivos] | Defensa: PRESIÓN 2° DEFENSOR)
 func accion_hueco_presionada(potencia: float = 0.5) -> void:
 	var balon: Balon3D = _obtener_balon_juego()
+	var es_saque: bool = (balon != null and (balon.sacador_autorizado == self or _en_posicion_saque))
 	var dist_balon: float = global_position.distance_to(balon.global_position) if balon else 99.0
 	
-	if tiene_posesion or _en_posicion_saque or (dist_balon < 1.95 and (balon and not balon.esta_siendo_conducido())):
-		if not tiene_posesion and balon and (puede_tomar_balon() or _en_posicion_saque):
+	if es_saque or tiene_posesion or (dist_balon < 2.5 and (balon and not balon.esta_siendo_conducido())):
+		if not tiene_posesion and balon and (puede_tomar_balon() or es_saque):
 			tomar_posesion(balon)
 		ejecutar_pase_hueco(potencia)
 	else:
@@ -1412,7 +1414,12 @@ func accion_hueco_presionada(potencia: float = 0.5) -> void:
 ## - TipoTiro.COLOCADO (Swipe Down): Tiro de calidad con efecto Magnus (curva buscando el segundo poste, menor velocidad lineal y mayor precisión).
 ## - TipoTiro.VASELINA (Swipe Up): Picadita parabólica suave para superar al arquero en achiques.
 func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> void:
-	if _en_posicion_saque and not tiene_posesion:
+	var balon: Balon3D = _obtener_balon_juego()
+	var es_saque: bool = (balon != null and (balon.sacador_autorizado == self or _en_posicion_saque))
+	if es_saque and not tiene_posesion:
+		if balon != null:
+			tomar_posesion(balon)
+	elif _en_posicion_saque and not tiene_posesion:
 		var b: Balon3D = _obtener_balon_juego()
 		if b != null:
 			tomar_posesion(b)
@@ -1521,10 +1528,15 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 ## - Activa automáticamente la mecánica "Pasa y Corre" (Give-and-Go / DESMARQUE_OFENSIVO) en el pasador.
 ## - Registra si es cesión con el pie de un jugador de campo (Regla Futsal: el portero no puede agarrarla con las manos).
 func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> void:
-	if _en_posicion_saque and not tiene_posesion:
-		var b: Balon3D = _obtener_balon_juego()
-		if b != null:
-			tomar_posesion(b)
+	var b_saque: Balon3D = _obtener_balon_juego()
+	var es_saque: bool = (b_saque != null and (b_saque.sacador_autorizado == self or _en_posicion_saque))
+	if es_saque:
+		_balon_referencia = b_saque
+		tiene_posesion = true
+		_en_posicion_saque = false
+	elif _en_posicion_saque and not tiene_posesion:
+		if b_saque != null:
+			tomar_posesion(b_saque)
 	if not tiene_posesion or _balon_referencia == null:
 		return
 	
@@ -1610,7 +1622,7 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 			elif posicion_tactica == "PORTERO":
 				cambiar_a_mas_cercano_al_balon(false)
 	else:
-		var dir_defecto: Vector3 = dir_por_defecto.rotated(Vector3.UP, desvio_angulo).normalized()
+		var dir_defecto: Vector3 = dir_busqueda.rotated(Vector3.UP, desvio_angulo).normalized()
 		var vel_def: float = clampf(8.8 + potencia * 2.2, 8.5, 11.0)
 		var imp_def: Vector3 = dir_defecto * (vel_def * _balon_referencia.mass)
 		if era_saque_mano:
@@ -1738,10 +1750,15 @@ func _calcular_trayectoria_pasa_y_corre(dir_intencion: Vector3) -> Vector3:
 ## 3) Descarta trayectorias que intersecten con las áreas de intercepción de defensores rivales.
 ## 4) Ejecuta un impulso físico limpio (apply_central_impulse) con desaceleración orgánica de rodadura, sin frenazos artificiales.
 func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
-	if _en_posicion_saque and not tiene_posesion:
-		var b: Balon3D = _obtener_balon_juego()
-		if b != null:
-			tomar_posesion(b)
+	var b_saque: Balon3D = _obtener_balon_juego()
+	var es_saque: bool = (b_saque != null and (b_saque.sacador_autorizado == self or _en_posicion_saque))
+	if es_saque:
+		_balon_referencia = b_saque
+		tiene_posesion = true
+		_en_posicion_saque = false
+	elif _en_posicion_saque and not tiene_posesion:
+		if b_saque != null:
+			tomar_posesion(b_saque)
 	if not tiene_posesion or _balon_referencia == null:
 		return
 	
@@ -2243,8 +2260,14 @@ func _procesar_ia_tactica(delta: float) -> void:
 	var rival_tiene_balon: bool = portador != null and portador.equipo == Equipo.VISITANTE
 	var local_tiene_balon: bool = portador != null and portador.equipo == Equipo.LOCAL
 	
-	# En saques y tiros libres a balón parado (donde el balón no está siendo conducido activamente):
-	if not rival_tiene_balon and not local_tiene_balon:
+	var gestor_partido: Node = get_tree().get_first_node_in_group("gestor_partido")
+	var en_entrenamiento: bool = (gestor_partido != null and ("modo_entrenamiento" in gestor_partido and gestor_partido.modo_entrenamiento))
+	
+	if en_entrenamiento:
+		# En modo entrenamiento ofensivo, el equipo local NUNCA defiende ni repliega; conserva siempre la iniciativa de ataque
+		local_tiene_balon = true
+		rival_tiene_balon = false
+	elif not rival_tiene_balon and not local_tiene_balon:
 		if nodo_balon.sacador_autorizado != null:
 			local_tiene_balon = (nodo_balon.sacador_autorizado.equipo == Equipo.LOCAL)
 			rival_tiene_balon = (nodo_balon.sacador_autorizado.equipo == Equipo.VISITANTE)
@@ -2748,6 +2771,12 @@ func _comportamiento_ataque_local(pos_balon: Vector3, _balon: Balon3D) -> void:
 	
 	var pos_desmarque: Vector3 = _objetivo_carrera_hueco if _t_carrera_hueco > 0.0 else _calcular_posicion_desmarque_ofensivo(pos_balon, true)
 	
+	var gestor_atq: Node = get_tree().get_first_node_in_group("gestor_partido")
+	var es_entrenamiento_atq: bool = (gestor_atq != null and ("modo_entrenamiento" in gestor_atq and gestor_atq.modo_entrenamiento))
+	if es_entrenamiento_atq:
+		# En modo entrenamiento ofensivo, mantener a los compañeros siempre en tres cuartos y área rival (> 3.5m)
+		pos_desmarque.x = clampf(pos_desmarque.x, 3.5, 17.5)
+	
 	var delta_desmarque: Vector3 = pos_desmarque - global_position
 	delta_desmarque.y = 0.0
 	var dist_desmarque: float = delta_desmarque.length()
@@ -3002,7 +3031,9 @@ func _aplicar_movimiento(delta: float) -> void:
 	if _en_posicion_saque:
 		global_position = _pos_anclaje_saque
 		velocity = Vector3.ZERO
-		if _direccion_deseada.length_squared() > 0.01:
+		var gestor_saque: Node = get_tree().get_first_node_in_group("gestor_partido")
+		var es_entrenamiento_saque: bool = (gestor_saque != null and ("modo_entrenamiento" in gestor_saque and gestor_saque.modo_entrenamiento))
+		if not es_entrenamiento_saque and _direccion_deseada.length_squared() > 0.01:
 			var angulo_apuntado: float = atan2(-_direccion_deseada.x, -_direccion_deseada.z)
 			rotation.y = lerp_angle(rotation.y, angulo_apuntado, clampf(velocidad_giro * delta, 0.0, 1.0))
 		return

@@ -333,8 +333,8 @@ func _actualizar_texto_boton_pase_contextual(jugador: Jugador3D) -> void:
 	var balon: Balon3D = obtener_balon()
 	var puede_pasar: bool = true
 	if jugador != null and is_instance_valid(jugador) and balon != null and is_instance_valid(balon):
-		var sobre_balon: bool = jugador.tiene_posesion or jugador._en_posicion_saque
-		var cerca_balon_libre: bool = (not balon.esta_siendo_conducido()) and jugador.global_position.distance_to(balon.global_position) < 1.95
+		var sobre_balon: bool = jugador.tiene_posesion or jugador._en_posicion_saque or (balon.sacador_autorizado == jugador)
+		var cerca_balon_libre: bool = (not balon.esta_siendo_conducido()) and jugador.global_position.distance_to(balon.global_position) < 2.5
 		puede_pasar = sobre_balon or cerca_balon_libre
 	btn_pase.text = "PASE" if puede_pasar else "CAMBIAR"
 
@@ -492,8 +492,19 @@ func _asignar_estilo_boton(boton: Button, estilo: StyleBoxFlat) -> void:
 # 2. DETECCIÓN DE GESTOS SWIPE / FLICK Y JOYSTICK MULTITÁCTIL
 # ==============================================================================
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED:
+		if is_inside_tree() and not is_visible_in_tree():
+			_soltar_joystick()
+			_accion_cargando = ""
+			_potencia_acumulada = 0.0
+			var jug: Jugador3D = obtener_jugador_activo()
+			if jug and is_instance_valid(jug):
+				jug.direccion_virtual = Vector2.ZERO
+
+
 func _input(event: InputEvent) -> void:
-	if not visible:
+	if not visible or not is_processing_input():
 		return
 	
 	# Si está activo el modo Tiro Libre, capturar exclusivamente el trazo táctil (Swipe) y botón Pase Corto
@@ -890,6 +901,8 @@ func _resetear_joystick() -> void:
 
 
 func obtener_jugador_activo() -> Jugador3D:
+	if not is_inside_tree():
+		return null
 	if _jugador_referencia != null and is_instance_valid(_jugador_referencia) and _jugador_referencia.es_controlado:
 		return _jugador_referencia
 	

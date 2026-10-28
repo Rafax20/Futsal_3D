@@ -542,10 +542,13 @@ func liberar(impulso: Vector3, equipo_origen: int = -1, es_pase_pie_companero: b
 	freeze = false
 	sleeping = false
 	_t_sin_captura = 0.15
-	balon_liberado.emit()
-	linear_velocity = Vector3.ZERO
+	var vel_inicial: Vector3 = (impulso / mass) if mass > 0.0 else impulso
+	linear_velocity = vel_inicial
 	angular_velocity = Vector3.ZERO
 	apply_central_impulse(impulso)
+	if linear_velocity.length() < 1.0 and impulso.length_squared() > 0.01:
+		linear_velocity = impulso.normalized() * 9.5
+	balon_liberado.emit()
 
 
 ## Mecánica de "Cucharita" (Pase elevado / Vaselina):

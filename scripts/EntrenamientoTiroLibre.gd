@@ -1711,6 +1711,8 @@ func _aplicar_modo_vista_tactica_o_tiro(es_tactica: bool, inmediato: bool = fals
 			barra_potencia_swipe.visible = false
 		if touch_controls:
 			touch_controls.visible = true
+			touch_controls.set_process_input(true)
+			touch_controls.mouse_filter = Control.MOUSE_FILTER_PASS
 		_transferir_control_a(_obtener_ejecutor())
 		if label_guia_swipe:
 			label_guia_swipe.visible = true
@@ -1735,6 +1737,10 @@ func _aplicar_modo_vista_tactica_o_tiro(es_tactica: bool, inmediato: bool = fals
 			)
 		if touch_controls:
 			touch_controls.visible = false
+			touch_controls.set_process_input(false)
+			touch_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			if touch_controls.has_method("_soltar_joystick"):
+				touch_controls._soltar_joystick()
 		if capa_trazo_swipe:
 			capa_trazo_swipe.visible = true
 			capa_trazo_swipe.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -1894,18 +1900,19 @@ func _procesar_setup_tiro_libre(delta: float) -> void:
 				pateador._direccion_deseada = _direccion_apuntado_tactico
 				pateador.direccion_virtual = Vector2(_direccion_apuntado_tactico.x, _direccion_apuntado_tactico.z)
 			else:
-				# En Vista Trasera OTS: Mantener la orientación del lanzador hacia el objetivo de la cámara o al arco rival (NUNCA de cara a la cámara)
-				var dir_ots: Vector3 = camara.obtener_direccion_apuntado_tl() if camara != null else _base_forward_tl
-				dir_ots.y = 0.0
-				if dir_ots.length_squared() > 0.01:
-					dir_ots = dir_ots.normalized()
-					pateador.rotation.y = atan2(-dir_ots.x, -dir_ots.z)
-					pateador.rotation.x = 0.0
-					pateador.rotation.z = 0.0
-					if (-pateador.global_transform.basis.z).dot(dir_ots) < 0.5:
-						pateador.rotation.y += PI
-					pateador._direccion_deseada = dir_ots
-					pateador.direccion_virtual = Vector2(dir_ots.x, dir_ots.z)
+				# En Vista Trasera OTS / Disparo: Bloqueo estricto del lanzador encarando al arco rival (dir_to_goal)
+				# Ignorando cualquier entrada de joystick o rotación táctil para que NUNCA encare a la cámara
+				var dir_to_goal: Vector3 = (Vector3(20.0, 0.0, 0.0) - balon.global_position).normalized() if balon != null else Vector3(1.0, 0.0, 0.0)
+				dir_to_goal.y = 0.0
+				dir_to_goal = dir_to_goal.normalized()
+				var angulo_arco: float = atan2(-dir_to_goal.x, -dir_to_goal.z)
+				pateador.rotation.y = angulo_arco
+				pateador.rotation.x = 0.0
+				pateador.rotation.z = 0.0
+				if (-pateador.global_transform.basis.z).dot(dir_to_goal) < 0.5:
+					pateador.rotation.y += PI
+				pateador._direccion_deseada = dir_to_goal
+				pateador.direccion_virtual = Vector2.ZERO
 		
 		# 3. Actualizar indicador visual de puntería (flecha en el suelo en la posición del balón)
 		if _indicador_cono_pase and is_instance_valid(_indicador_cono_pase) and balon:
@@ -2001,6 +2008,8 @@ func _iniciar_live_play(motivo: String) -> void:
 		barra_potencia_swipe.visible = false
 	if touch_controls:
 		touch_controls.visible = true
+		touch_controls.set_process_input(true)
+		touch_controls.mouse_filter = Control.MOUSE_FILTER_PASS
 	if label_guia_swipe:
 		label_guia_swipe.visible = true
 		label_guia_swipe.text = "¡JUEGO EN VIVO! DISPUTA EL REBOTE Y CONTINÚA LA JUGADA"

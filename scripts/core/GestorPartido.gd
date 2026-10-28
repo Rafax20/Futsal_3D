@@ -136,6 +136,8 @@ func _cambiar_estado(nuevo_estado: EstadoPartido) -> void:
 
 ## Retorna true si el equipo local (usuario) está en modo ataque/posesión para el HUD táctil
 func es_ataque_local() -> bool:
+	if modo_entrenamiento:
+		return true
 	return _en_ataque_local_actual
 
 
@@ -172,7 +174,10 @@ func _actualizar_estado_posesion_hud(forzar_emision: bool = false) -> void:
 	var nuevo_ataque_local: bool = _en_ataque_local_actual
 	var nuevo_poseedor: int = _equipo_poseedor_actual
 	
-	if estado != EstadoPartido.EN_JUEGO and _esperando_toque:
+	if modo_entrenamiento:
+		nuevo_ataque_local = true
+		nuevo_poseedor = 0
+	elif estado != EstadoPartido.EN_JUEGO and _esperando_toque:
 		nuevo_poseedor = _equipo_sacador
 		nuevo_ataque_local = (_equipo_sacador == 0)
 	elif _balon.sacador_autorizado != null and is_instance_valid(_balon.sacador_autorizado):
