@@ -322,6 +322,21 @@ func _sincronizar_estado_contexto_hud() -> void:
 					en_ataque = false
 	
 	_aplicar_modo_hud(ModoHUD.ATAQUE if en_ataque else ModoHUD.DEFENSA)
+	_actualizar_texto_boton_pase_contextual(jugador)
+
+
+## En modo Ataque con el balón suelto y lejos del jugador activo, el botón PASE actúa como CAMBIAR:
+## `Jugador3D.accion_pase_presionada` ya delega en `cambiar_a_mas_cercano_al_balon()` en ese caso.
+func _actualizar_texto_boton_pase_contextual(jugador: Jugador3D) -> void:
+	if _modo_actual != ModoHUD.ATAQUE or btn_pase == null:
+		return
+	var balon: Balon3D = obtener_balon()
+	var puede_pasar: bool = true
+	if jugador != null and is_instance_valid(jugador) and balon != null and is_instance_valid(balon):
+		var sobre_balon: bool = jugador.tiene_posesion or jugador._en_posicion_saque
+		var cerca_balon_libre: bool = (not balon.esta_siendo_conducido()) and jugador.global_position.distance_to(balon.global_position) < 1.95
+		puede_pasar = sobre_balon or cerca_balon_libre
+	btn_pase.text = "PASE" if puede_pasar else "CAMBIAR"
 
 
 func _aplicar_modo_hud(nuevo_modo: int) -> void:

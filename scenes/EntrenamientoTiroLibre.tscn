@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/EntrenamientoTiroLibre.gd" id="4_entrenamiento_script"]
 [ext_resource type="PackedScene" uid="uid://c8touchcontrolsfutsal01" path="res://scenes/ui/TouchControls.tscn" id="5_touch_controls_scene"]
 [ext_resource type="PackedScene" path="res://scenes/Porteria3D.tscn" id="6_porteria3d_scene"]
+[ext_resource type="Script" path="res://scripts/core/GestorPartido.gd" id="7_gestor_script"]
 
 [sub_resource type="Environment" id="Environment_cancha"]
 background_mode = 1
@@ -450,6 +451,10 @@ posicion_tactica = "ALA_DER"
 vel_movimiento = 85.0
 vision_pase = 85.0
 control_balon = 83.0
+
+[node name="GestorPartido" type="Node" parent="."]
+script = ExtResource("7_gestor_script")
+modo_entrenamiento = true
 
 [node name="UIEntrenamiento" type="CanvasLayer" parent="."]
 

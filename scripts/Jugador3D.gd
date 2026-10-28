@@ -2104,22 +2104,12 @@ func cambiar_a_mas_cercano_al_balon(mostrar_anuncio: bool = true) -> void:
 		# Si el balón viaja en un pase, proyectar hacia su trayectoria para elegir al receptor/interceptor ideal
 		pos_ref += Vector3(balon.linear_velocity.x, 0.0, balon.linear_velocity.z) * 0.28
 	
-	var locales: Array[Node] = get_tree().get_nodes_in_group("equipo_local")
-	var mas_cercano: Jugador3D = null
-	var min_dist: float = 999.0
-	
-	for n: Node in locales:
-		var jug: Jugador3D = n as Jugador3D
-		if jug and jug != self and jug.posicion_tactica != "PORTERO" and not jug.esta_expulsado:
-			var d: float = jug.global_position.distance_to(pos_ref)
-			if d < min_dist:
-				min_dist = d
-				mas_cercano = jug
+	var mas_cercano: Jugador3D = obtener_local_mas_cercano(pos_ref, self)
 	
 	if mas_cercano != null:
 		_transferir_control_a(mas_cercano)
 		if mostrar_anuncio:
-			_emitir_anuncio_hud("CAMBIO DE DEFENSOR")
+			_emitir_anuncio_hud("CAMBIO DE JUGADOR")
 
 
 ## Ordena presión únicamente al compañero IA más cercano al balón (PRESIÓN 2° DEF)
@@ -2258,10 +2248,10 @@ func _procesar_ia_tactica(delta: float) -> void:
 		if nodo_balon.sacador_autorizado != null:
 			local_tiene_balon = (nodo_balon.sacador_autorizado.equipo == Equipo.LOCAL)
 			rival_tiene_balon = (nodo_balon.sacador_autorizado.equipo == Equipo.VISITANTE)
-		else:
-			var ent_tl: Node = get_tree().get_first_node_in_group("entrenamiento_tiro_libre")
-			if ent_tl != null:
-				local_tiene_balon = true
+		elif nodo_balon.ultimo_toque_equipo == 0:
+			# Balón suelto (rebote, desvío, pase en vuelo): el equipo local conserva la iniciativa mientras
+			# ningún rival lo controle (ataca el rechace, apoya y se desmarca en vez de replegar).
+			local_tiene_balon = true
 	
 	if equipo == Equipo.VISITANTE:
 		if portador == self or tiene_posesion:
@@ -2695,6 +2685,32 @@ func _comportamiento_apoyo_ofensivo_rival(pos_balon: Vector3, _balon: Balon3D) -
 		sprint_activo = false
 
 
+## Retorna true si este jugador local IA es el más cercano de todo el equipo a un balón suelto sin sacador
+## (excluye al arquero y respeta al jugador humano: si el usuario está más cerca, la IA no le roba el rechace)
+func _debe_perseguir_balon_suelto_local(pos_balon: Vector3, balon: Balon3D) -> bool:
+	if balon == null or balon.esta_siendo_conducido() or balon.sacador_autorizado != null:
+		return false
+	if es_controlado or posicion_tactica == "PORTERO" or en_pose_barrera or _en_posicion_saque:
+		return false
+	var mas_cercano: Jugador3D = obtener_local_mas_cercano(pos_balon)
+	return mas_cercano == self
+
+
+## Retorna el jugador local de campo (sin arquero ni expulsados) más cercano a una posición del mundo
+func obtener_local_mas_cercano(pos: Vector3, excluir: Jugador3D = null) -> Jugador3D:
+	var mejor: Jugador3D = null
+	var min_d: float = INF
+	for n: Node in get_tree().get_nodes_in_group("equipo_local"):
+		var j: Jugador3D = n as Jugador3D
+		if j == null or j == excluir or j.posicion_tactica == "PORTERO" or j.esta_expulsado:
+			continue
+		var d: float = j.global_position.distance_to(pos)
+		if d < min_d:
+			min_d = d
+			mejor = j
+	return mejor
+
+
 ## Ataque y desmarque inteligente de compañeros del equipo local (incluyendo Mecánica "Pasa y Corre" / Give-and-Go)
 func _comportamiento_ataque_local(pos_balon: Vector3, _balon: Balon3D) -> void:
 	# Mecánica "Pasa y Corre" (DESMARQUE_OFENSIVO durante 2.0 a 3.0 segundos tras soltar un pase):
@@ -2719,6 +2735,17 @@ func _comportamiento_ataque_local(pos_balon: Vector3, _balon: Balon3D) -> void:
 	
 	_estado_ia = EstadoIA.DESMARQUE_APOYO
 	es_opcion_de_pase = true
+	
+	# Balón suelto propio (rebote tras tiro/pase): el jugador local IA más cercano persigue el rechace
+	# (mismo criterio que la defensa local: solo si ningún humano controlado está más cerca)
+	if _debe_perseguir_balon_suelto_local(pos_balon, _balon):
+		_estado_ia = EstadoIA.PRESIÓN
+		var hacia_rechace: Vector3 = pos_balon - global_position
+		hacia_rechace.y = 0.0
+		_direccion_deseada = hacia_rechace.normalized() if hacia_rechace.length_squared() > 0.01 else Vector3.ZERO
+		sprint_activo = true
+		return
+	
 	var pos_desmarque: Vector3 = _objetivo_carrera_hueco if _t_carrera_hueco > 0.0 else _calcular_posicion_desmarque_ofensivo(pos_balon, true)
 	
 	var delta_desmarque: Vector3 = pos_desmarque - global_position

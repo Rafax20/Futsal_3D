@@ -19,7 +19,10 @@ enum EstadoPartido {
 	TIRO_LIBRE,
 	DOBLE_PENALTI,
 	TIEMPO_MUERTO,
-	GOL
+	GOL,
+	## Estado pasivo del modo Entrenamiento: el gestor solo publica la posesión (HUD Ataque/Defensa)
+	## y no aplica entrada de equipos, reloj, regla de 4 s, 5 m ni faltas (las gestiona el wrapper de entrenamiento).
+	ENTRENAMIENTO
 }
 
 signal estado_cambiado(nuevo: EstadoPartido)
@@ -38,6 +41,8 @@ signal posesion_cambiada(en_ataque_local: bool, equipo_poseedor: int)
 @export var t_timeout_saque: float = 4.0
 @export var t_duracion_entrada: float = 2.4
 @export var t_duracion_tiempo_muerto: float = 3.5
+## Modo Entrenamiento: el gestor queda en estado pasivo `ENTRENAMIENTO` y solo mantiene la posesión para el HUD.
+@export var modo_entrenamiento: bool = false
 
 ## Reglas FIFA/IFAB de Tiro Directo vs. Indirecto y Doble Toque
 var es_tiro_indirecto: bool = false
@@ -76,6 +81,9 @@ func _ready() -> void:
 		gol_anotado.connect(_on_gol_anotado)
 	if GameManager and not GameManager.fin_primer_tiempo.is_connected(_on_fin_primer_tiempo):
 		GameManager.fin_primer_tiempo.connect(_on_fin_primer_tiempo)
+	if modo_entrenamiento:
+		estado = EstadoPartido.ENTRENAMIENTO
+		return
 	call_deferred("iniciar_entrada_equipos")
 
 
@@ -180,6 +188,9 @@ func _actualizar_estado_posesion_hud(forzar_emision: bool = false) -> void:
 		nuevo_poseedor = ultimo_eq
 		if ultimo_eq == 1:
 			nuevo_ataque_local = false
+		elif estado == EstadoPartido.ENTRENAMIENTO:
+			# Entrenamiento: tras patear/rebotar la iniciativa sigue siendo local (HUD de Ataque) hasta que un rival controle el balón
+			nuevo_ataque_local = true
 		else:
 			var activos: Array[Node] = get_tree().get_nodes_in_group("jugador_activo")
 			if not activos.is_empty() and activos[0] is Jugador3D:
@@ -214,6 +225,9 @@ func _physics_process(delta: float) -> void:
 		toques_en_jugada = _balon.toques_en_jugada
 	
 	_actualizar_estado_posesion_hud(false)
+	if estado == EstadoPartido.ENTRENAMIENTO:
+		# Wrapper de entrenamiento: sin sanciones, 4 s ni distancias reglamentarias
+		return
 	_actualizar_sanciones_2min(delta)
 	
 	if estado == EstadoPartido.EN_JUEGO or estado == EstadoPartido.ENTRADA_EQUIPOS or estado == EstadoPartido.TIEMPO_MUERTO:
@@ -1203,6 +1217,8 @@ func iniciar_gol(equipo_que_anoto: int) -> void:
 
 ## Callback cuando el balón es pateado o lanzado por el sacador
 func _on_balon_liberado() -> void:
+	if estado == EstadoPartido.ENTRENAMIENTO:
+		return
 	_finalizar_reanudacion()
 
 

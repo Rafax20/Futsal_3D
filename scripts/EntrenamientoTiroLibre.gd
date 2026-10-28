@@ -5,7 +5,7 @@ extends Node3D
 ## Orquesta el flujo continuo e iterativo:
 ## 1. SELECCION_POSICION: Vista cenital sobre el medio campo ofensivo; arrastre táctil del balón
 ##    (`InputEventScreenDrag` / ratón) restringido a los límites reglamentarios y botón "Confirmar".
-## 2. EJECUCION: Transición suave de cámara a perspectiva trasera baja (`CamaraTransmision`),
+## 2. FREE_KICK_SETUP (balón parado): Transición suave de cámara a perspectiva trasera baja (`CamaraTransmision`),
 ##    posicionamiento del lanzador, barrera rival a 5.0m y arquero bajo palos; disparo por trazo
 ##    táctil (Swipe) con potencia, elevación y efecto Magnus (`Balon3D.liberar_tiro_libre_swipe`),
 ##    y botones auxiliares ("Cambiar vista", "Elegir lanzador", "Cambio de posición").
@@ -14,8 +14,8 @@ extends Node3D
 
 enum EstadoEntrenamiento {
 	SELECCION_POSICION,
-	EJECUCION,
-	JUEGO_ACTIVO,
+	FREE_KICK_SETUP,
+	LIVE_PLAY,
 	TRANSICION_FADE
 }
 
@@ -156,19 +156,24 @@ var _comba_swipe_actual: float = 0.0
 var _defensores_barrera: Array[Jugador3D] = []
 var _posiciones_barrera: Array[Vector3] = []
 
-# Estado de pase a compañeros (Pase al Pie vs. Pase al Hueco en Profundidad)
-enum TipoPaseTL { NINGUNO, PIE, HUECO }
-const VEL_PASE_AL_PIE: float = 8.5
-const VEL_PASE_AL_HUECO: float = 11.5
+# Control del usuario (espejo del cursor del motor: grupo "jugador_activo") y transición a LIVE_PLAY
+const COOLDOWN_GOLPEO_LANZADOR: float = 0.25
+const VENTANA_BARRERA_VIVA: float = 0.60
+const LIMITE_POSESION_RIVAL_S: float = 2.0
+const REGRESO_CAMARA_TRAS_TIRO_S: float = 1.25
+const HISTERESIS_CURSOR_M: float = 1.0
 
 var _jugador_activo_actual: Jugador3D = null
-var _en_jugada_de_pase: bool = false
-var _receptor_pase: Jugador3D = null
-var _pase_en_transito: bool = false
-var _tiempo_espera_pase: float = 0.0
-var _tipo_pase_activo: TipoPaseTL = TipoPaseTL.NINGUNO
-var _punto_hueco_objetivo: Vector3 = Vector3.ZERO
 var _ultimo_mensaje_atajada: String = ""
+var _kicker_en_cooldown: Jugador3D = null
+var _t_cooldown_golpeo: float = 0.0
+var _barrera_en_ventana: bool = false
+var _t_ventana_barrera: float = 0.0
+var _pos_origen_golpeo: Vector3 = Vector3.ZERO
+var _buscando_rebote: bool = false
+var _t_reevaluar_cursor: float = 0.0
+var _regresar_camara_pendiente: bool = false
+var _t_regreso_camara: float = 0.0
 
 
 ## Retorna true si la sesión actual se encuentra en Modo Entrenamiento
@@ -200,6 +205,9 @@ func _ready() -> void:
 			balon.bloqueo_barrera_realizado.connect(_on_bloqueo_barrera_realizado)
 		if not balon.mano_cometida.is_connected(_on_mano_en_barrera):
 			balon.mano_cometida.connect(_on_mano_en_barrera)
+		# Instante exacto del impulso (trazo, Pase, Hueco o Tiro del motor real): FREE_KICK_SETUP -> LIVE_PLAY
+		if not balon.balon_liberado.is_connected(_on_balon_liberado):
+			balon.balon_liberado.connect(_on_balon_liberado)
 	
 	if area_gol_der and not area_gol_der.body_entered.is_connected(_on_area_gol_derecha_body_entered):
 		area_gol_der.body_entered.connect(_on_area_gol_derecha_body_entered)
@@ -397,13 +405,6 @@ func _conectar_senales_ui() -> void:
 		btn_salir_menu.pressed.connect(_on_salir_menu_pressed)
 	if btn_modo_regla:
 		btn_modo_regla.pressed.connect(_on_modo_regla_pressed)
-	if touch_controls:
-		if not touch_controls.pase_solicitado.is_connected(_on_touch_pase_solicitado):
-			touch_controls.pase_solicitado.connect(_on_touch_pase_solicitado)
-		if not touch_controls.hueco_solicitado.is_connected(_on_touch_hueco_solicitado):
-			touch_controls.hueco_solicitado.connect(_on_touch_hueco_solicitado)
-		if not touch_controls.tiro_solicitado.is_connected(_on_touch_tiro_solicitado):
-			touch_controls.tiro_solicitado.connect(_on_touch_tiro_solicitado)
 
 
 func _on_modo_regla_pressed() -> void:
@@ -421,7 +422,7 @@ func _on_modo_regla_pressed() -> void:
 		faltas_acumuladas = 6
 	_actualizar_boton_modo_regla()
 	_actualizar_indicador_visual_balon()
-	if estado_actual == EstadoEntrenamiento.EJECUCION and not _disparo_realizado:
+	if estado_actual == EstadoEntrenamiento.FREE_KICK_SETUP and not _disparo_realizado:
 		_iniciar_estado_ejecucion()
 
 
@@ -458,10 +459,11 @@ func _entrar_estado_seleccion_posicion(inmediato: bool = false) -> void:
 	_tiempo_post_impacto = 0.0
 	_ultimo_mensaje_atajada = ""
 	_jugador_activo_actual = lanzador
-	_en_jugada_de_pase = false
-	_receptor_pase = null
-	_pase_en_transito = false
-	_tiempo_espera_pase = 0.0
+	_kicker_en_cooldown = null
+	_t_cooldown_golpeo = 0.0
+	_barrera_en_ventana = false
+	_buscando_rebote = false
+	_regresar_camara_pendiente = false
 	_pan_touch_id = -1
 	_capturando_swipe = false
 	_arrastrando_balon = false
@@ -619,11 +621,16 @@ func _on_confirmar_posicion_pressed() -> void:
 # ==============================================================================
 
 func _iniciar_estado_ejecucion() -> void:
-	estado_actual = EstadoEntrenamiento.EJECUCION
+	estado_actual = EstadoEntrenamiento.FREE_KICK_SETUP
 	_disparo_realizado = false
 	_en_secuencia_carrera_tl = false
 	_tiempo_carrera_tl = 0.0
 	_tiempo_post_impacto = 0.0
+	_kicker_en_cooldown = null
+	_t_cooldown_golpeo = 0.0
+	_barrera_en_ventana = false
+	_buscando_rebote = false
+	_regresar_camara_pendiente = false
 	_ultimo_mensaje_atajada = ""
 	_vista_cenital_alterna = false
 	_pan_touch_id = -1
@@ -736,10 +743,12 @@ func setup_kicker_transform(pateador: Jugador3D, pos_balon: Vector3, pos_arco: V
 	pos_lanzador.y = 0.0
 	_pos_fija_lanzador = pos_lanzador
 
-	_jugador_activo_actual = pateador
-	pateador.es_controlado = true
 	pateador.soltar_posesion()
 	pateador.set_congelado(false)
+	_transferir_control_a(pateador)
+	if balon != null:
+		# El ejecutor activo es el único autorizado por el balón (permite que Jugador3D.ejecutar_* tome posesión)
+		balon.sacador_autorizado = pateador
 	pateador.global_position = pos_lanzador
 	pateador.velocity = Vector3.ZERO
 
@@ -764,41 +773,6 @@ func setup_kicker_transform(pateador: Jugador3D, pos_balon: Vector3, pos_arco: V
 	pateador._direccion_deseada = dir_to_goal
 	pateador.direccion_virtual = Vector2(dir_to_goal.x, dir_to_goal.z)
 	pateador.fijar_en_saque(true, pos_lanzador)
-
-
-## Reactiva de forma inmediata y completa a todos los compañeros de equipo en el momento
-## en que el balón recibe impulso (disparo o pase) o tras el rebote en la barrera/portero (JUEGO_ACTIVO).
-## Quita estados de congelado o fijado, habilita physics_process y desata desmarques y apoyos ofensivos.
-func _reactivar_companeros_ia_tiro_libre() -> void:
-	var companeros: Array[Jugador3D] = []
-	if companero_banda and is_instance_valid(companero_banda):
-		companeros.append(companero_banda)
-	if companero_frontal and is_instance_valid(companero_frontal):
-		companeros.append(companero_frontal)
-
-	var nodos_locales: Array[Node] = get_tree().get_nodes_in_group("equipo_local")
-	for n: Node in nodos_locales:
-		var j: Jugador3D = n as Jugador3D
-		if j and is_instance_valid(j) and j != _jugador_activo_actual and j != lanzador and not (j in companeros):
-			companeros.append(j)
-
-	var pos_b: Vector3 = balon.global_position if balon != null else _pos_ejecucion_efectiva
-
-	for comp: Jugador3D in companeros:
-		comp.set_congelado(false)
-		comp.fijar_en_saque(false)
-		comp.set_physics_process(true)
-		comp.es_opcion_de_pase = true
-		if comp.indicador_control:
-			comp.indicador_control.visible = true
-
-		# Si el compañero no es el receptor activo de un pase en tránsito, activar desmarque y apoyo ofensivo
-		if not comp._esperando_recepcion_pase and not comp._corriendo_al_espacio:
-			comp._t_desmarque_ofensivo = randf_range(2.0, 3.5)
-			comp._estado_ia = Jugador3D.EstadoIA.DESMARQUE_APOYO
-			if comp.has_method("_comportamiento_ataque_local") and balon != null:
-				comp._comportamiento_ataque_local(pos_b, balon)
-
 
 
 ## Posiciona la formación defensiva aplicando las Reglas Oficiales de Futsal (FIFA/IFAB):
@@ -1008,7 +982,7 @@ func _input(event: InputEvent) -> void:
 
 	if estado_actual == EstadoEntrenamiento.SELECCION_POSICION:
 		_manejar_input_seleccion_posicion(event)
-	elif estado_actual == EstadoEntrenamiento.EJECUCION and not _disparo_realizado and not _en_secuencia_carrera_tl:
+	elif estado_actual == EstadoEntrenamiento.FREE_KICK_SETUP and not _disparo_realizado and not _en_secuencia_carrera_tl:
 		if _vista_cenital_alterna:
 			_manejar_input_tactico(event)
 		else:
@@ -1153,7 +1127,7 @@ func _iniciar_paneo_camara(touch_id: int, pos: Vector2) -> void:
 
 
 func _actualizar_paneo_camara(pos: Vector2) -> void:
-	if _disparo_realizado or _en_secuencia_carrera_tl or _en_jugada_de_pase:
+	if _disparo_realizado or _en_secuencia_carrera_tl:
 		return
 	var delta_x: float = pos.x - _pan_pos_previa.x
 	_pan_pos_previa = pos
@@ -1329,41 +1303,51 @@ func _detectar_companero_tocado(pos_pantalla: Vector2) -> Jugador3D:
 	return mejor_candidato
 
 
-## Evalúa un toque simple (Tap) en la pantalla durante la fase de tiro libre:
-## 1) Si colisiona con el collider de un compañero (Companero_Banda o Companero_Frontal) -> ejecutar_pase_al_pie(companero)
-## 2) Si impacta sobre el piso libre Plane(Vector3.UP, 0.0) a distancia viable -> ejecutar_pase_al_hueco(hit_suelo, companero)
+## Evalúa un toque simple (Tap) en la pantalla durante FREE_KICK_SETUP delegando en el motor de partido real:
+## 1) Sobre un compañero -> `Jugador3D.ejecutar_pase` (pase al pie, "pasa y corre" y cesión del control incluidos).
+## 2) Sobre el piso libre -> `Jugador3D.ejecutar_pase_hueco` (pase al hueco con carrera del receptor).
 func _procesar_toque_tactil_pase(pos_pantalla: Vector2) -> bool:
-	if estado_actual != EstadoEntrenamiento.EJECUCION:
+	if estado_actual != EstadoEntrenamiento.FREE_KICK_SETUP:
 		return false
-	if _disparo_realizado or _en_secuencia_carrera_tl or _en_jugada_de_pase:
+	if _disparo_realizado or _en_secuencia_carrera_tl or balon == null:
 		return false
-	if balon == null:
+	var pateador: Jugador3D = _obtener_ejecutor()
+	if pateador == null:
 		return false
-
 	var cam_activa: Camera3D = camara if camara != null else get_viewport().get_camera_3d()
 	if cam_activa == null:
 		return false
 
-	# 1. Proyectar raycast desde la cámara activa y chequear si impacta sobre un compañero
 	var receptor_pie: Jugador3D = _detectar_companero_tocado(pos_pantalla)
-	if receptor_pie != null:
-		ejecutar_pase_al_pie(receptor_pie)
+	if receptor_pie != null and receptor_pie != pateador:
+		_ejecutar_pase_motor_real(pateador, receptor_pie.global_position, false)
 		return true
 
-	# 2. Si impacta sobre el piso libre (Plane(Vector3.UP, 0.0)) a una distancia viable, buscar al compañero mejor perfilado
 	var ray_origin: Vector3 = cam_activa.project_ray_origin(pos_pantalla)
 	var ray_dir: Vector3 = cam_activa.project_ray_normal(pos_pantalla)
-	var plano_suelo: Plane = Plane(Vector3.UP, 0.0)
-	var hit_suelo = plano_suelo.intersects_ray(ray_origin, ray_dir)
+	var hit_suelo: Variant = Plane(Vector3.UP, 0.0).intersects_ray(ray_origin, ray_dir)
 	if hit_suelo != null:
-		var punto_suelo: Vector3 = hit_suelo
+		var punto_suelo: Vector3 = hit_suelo as Vector3
 		if _es_espacio_libre_viable(punto_suelo):
-			var comp_hueco: Jugador3D = _buscar_companero_mejor_perfilado(punto_suelo)
-			if comp_hueco != null:
-				ejecutar_pase_al_hueco(punto_suelo, comp_hueco)
-				return true
-
+			_ejecutar_pase_motor_real(pateador, punto_suelo, true)
+			return true
 	return false
+
+
+## Orienta al ejecutor hacia `destino` y delega el pase en Jugador3D (misma lógica que el partido normal)
+func _ejecutar_pase_motor_real(pateador: Jugador3D, destino: Vector3, al_hueco: bool) -> void:
+	var dir_pase: Vector3 = destino - balon.global_position
+	dir_pase.y = 0.0
+	if dir_pase.length_squared() < 0.01:
+		return
+	dir_pase = dir_pase.normalized()
+	pateador.rotation.y = atan2(-dir_pase.x, -dir_pase.z)
+	pateador._direccion_deseada = dir_pase
+	pateador.direccion_virtual = Vector2(dir_pase.x, dir_pase.z)
+	if al_hueco:
+		pateador.ejecutar_pase_hueco(0.6)
+	else:
+		pateador.ejecutar_pase(0.55, Jugador3D.TipoPase.RASO)
 
 
 ## Determina si una coordenada sobre el suelo es un espacio libre viable para pase en profundidad
@@ -1382,211 +1366,6 @@ func _es_espacio_libre_viable(punto_suelo: Vector3) -> bool:
 	if dist_b < 2.0 or dist_b > 25.0:
 		return false
 	return true
-
-
-## Busca al compañero mejor perfilado para explotar el espacio libre indicado
-func _buscar_companero_mejor_perfilado(punto_suelo: Vector3) -> Jugador3D:
-	var candidatos: Array[Jugador3D] = []
-	var pateador: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
-	if companero_banda and is_instance_valid(companero_banda) and companero_banda != pateador:
-		candidatos.append(companero_banda)
-	if companero_frontal and is_instance_valid(companero_frontal) and companero_frontal != pateador:
-		candidatos.append(companero_frontal)
-
-	if candidatos.is_empty():
-		return null
-	if candidatos.size() == 1:
-		return candidatos[0]
-
-	var mejor_candidato: Jugador3D = null
-	var menor_distancia: float = 999.0
-	for comp: Jugador3D in candidatos:
-		var d: float = comp.global_position.distance_to(punto_suelo)
-		if d < menor_distancia:
-			menor_distancia = d
-			mejor_candidato = comp
-	return mejor_candidato
-
-
-## Ejecuta un Pase al Pie:
-## - El lanzador rota hacia el receptor y aplica un impulso raso directo (VEL_PASE = 8.5 m/s).
-## - El receptor permanece quieto, orienta su cuerpo hacia el balón entrante y activa el área de control.
-func ejecutar_pase_al_pie(companero: Jugador3D) -> void:
-	if companero == null or not is_instance_valid(companero):
-		return
-	if _en_secuencia_carrera_tl or _en_jugada_de_pase or _disparo_realizado:
-		return
-	if balon == null:
-		return
-
-	var pateador: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
-	if pateador == null or not is_instance_valid(pateador) or pateador == companero:
-		return
-
-	# Detener temporizador de 4 segundos
-	if timer_saque_4s:
-		timer_saque_4s.stop()
-	_actualizar_hud_cuenta_4s(0.0, false)
-	if label_guia_swipe:
-		label_guia_swipe.visible = false
-
-	_en_jugada_de_pase = true
-	_receptor_pase = companero
-	_tipo_pase_activo = TipoPaseTL.PIE
-	_pase_en_transito = false
-	_tiempo_espera_pase = 0.0
-
-	# 1. El lanzador rota hacia el receptor
-	var dir_pase: Vector3 = (companero.global_position - balon.global_position).normalized()
-	dir_pase.y = 0.0
-	dir_pase = dir_pase.normalized()
-
-	pateador.look_at(balon.global_position + dir_pase * 5.0, Vector3.UP)
-	pateador.rotation.x = 0.0
-	pateador.rotation.z = 0.0
-	pateador._t_anim_patada = 0.28
-	pateador.soltar_posesion()
-	pateador.fijar_en_saque(false)
-
-	# 2. Reactivar de inmediato a toda la IA de compañeros y preparar al receptor para avance activo
-	_reactivar_companeros_ia_tiro_libre()
-	companero.set_congelado(false)
-	companero.fijar_en_saque(false)
-	companero.set_physics_process(true)
-	companero.iniciar_recepcion_pase_entrante(balon, false)
-	var vec_hacia_balon: Vector3 = (balon.global_position - companero.global_position).normalized()
-	vec_hacia_balon.y = 0.0
-	companero.look_at(companero.global_position + vec_hacia_balon * 5.0, Vector3.UP)
-	companero.rotation.x = 0.0
-	companero.rotation.z = 0.0
-	companero._direccion_deseada = vec_hacia_balon
-	companero.velocity = vec_hacia_balon * 4.2
-
-	# 3. Aplica un impulso raso directo (VEL_PASE = 8.5 m/s)
-	var impulso_pase: Vector3 = dir_pase * (VEL_PASE_AL_PIE * balon.mass)
-	balon.sacador_autorizado = null
-	if balon.has_method("liberar_pase_raso"):
-		balon.liberar_pase_raso(impulso_pase, 0)
-	else:
-		balon.linear_damp = 0.3
-		balon.angular_damp = 1.3
-		balon.liberar(impulso_pase, 0, true)
-
-	_pase_en_transito = true
-	_disparo_realizado = true
-	toques_en_jugada = balon.toques_en_jugada
-	_transferir_control_a(companero)
-	_activar_continuidad_juego_activo("¡PASE AL PIE A #%d %s!" % [companero.dorsal, companero.nombre_jugador])
-
-
-## Ejecuta un Pase al Hueco (En Profundidad):
-## - El balón se dispara con mayor aceleración hacia el espacio libre (VEL_PASE = 11.5 m/s).
-## - El compañero seleccionado activa de inmediato una rutina de sprint (correr_al_espacio) mediante move_and_slide() hacia esa coordenada.
-## - Al llegar al punto proyectado, habilita el control inmediato para rematar de primera al arco.
-func ejecutar_pase_al_hueco(hit_suelo: Vector3, companero: Jugador3D) -> void:
-	if companero == null or not is_instance_valid(companero):
-		return
-	if _en_secuencia_carrera_tl or _en_jugada_de_pase or _disparo_realizado:
-		return
-	if balon == null:
-		return
-
-	var pateador: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
-	if pateador == null or not is_instance_valid(pateador) or pateador == companero:
-		return
-
-	# Detener temporizador de 4 segundos
-	if timer_saque_4s:
-		timer_saque_4s.stop()
-	_actualizar_hud_cuenta_4s(0.0, false)
-	if label_guia_swipe:
-		label_guia_swipe.visible = false
-
-	var punto_destino: Vector3 = Vector3(hit_suelo.x, 0.0, hit_suelo.z)
-
-	_en_jugada_de_pase = true
-	_receptor_pase = companero
-	_tipo_pase_activo = TipoPaseTL.HUECO
-	_punto_hueco_objetivo = punto_destino
-	_pase_en_transito = false
-	_tiempo_espera_pase = 0.0
-
-	# 1. El lanzador rota hacia el espacio libre en profundidad
-	var dir_pase: Vector3 = (punto_destino - balon.global_position).normalized()
-	dir_pase.y = 0.0
-	dir_pase = dir_pase.normalized()
-
-	pateador.look_at(balon.global_position + dir_pase * 5.0, Vector3.UP)
-	pateador.rotation.x = 0.0
-	pateador.rotation.z = 0.0
-	pateador._t_anim_patada = 0.28
-	pateador.soltar_posesion()
-	pateador.fijar_en_saque(false)
-
-	# 2. Reactivar IA de compañeros y poner al receptor en sprint hacia el espacio
-	_reactivar_companeros_ia_tiro_libre()
-	companero.set_congelado(false)
-	companero.fijar_en_saque(false)
-	companero.set_physics_process(true)
-	companero.iniciar_recepcion_pase_entrante(balon, true, punto_destino)
-
-	# 3. El balón se dispara con mayor aceleración hacia el espacio libre (VEL_PASE = 11.5 m/s)
-	var impulso_pase: Vector3 = dir_pase * (VEL_PASE_AL_HUECO * balon.mass)
-	balon.sacador_autorizado = null
-	if balon.has_method("liberar_al_hueco"):
-		balon.liberar_al_hueco(impulso_pase, punto_destino, 0, true)
-	else:
-		balon.linear_damp = 0.3
-		balon.liberar(impulso_pase, 0, true)
-
-	_pase_en_transito = true
-	_disparo_realizado = true
-	toques_en_jugada = balon.toques_en_jugada
-	_transferir_control_a(companero)
-	_activar_continuidad_juego_activo("¡PASE AL HUECO! CORRE #%d %s" % [companero.dorsal, companero.nombre_jugador])
-
-
-## Alias de compatibilidad hacia ejecutar_pase_al_pie
-func _ejecutar_pase_a_companero(receptor: Jugador3D) -> void:
-	ejecutar_pase_al_pie(receptor)
-
-
-## Al llegar el balón al receptor, transfiere el control a ese jugador para permitir remate directo al arco
-func _completar_recepcion_pase(receptor: Jugador3D) -> void:
-	_pase_en_transito = false
-	_en_jugada_de_pase = false
-	_disparo_realizado = false
-	_tipo_pase_activo = TipoPaseTL.NINGUNO
-
-	receptor.detener_carrera_espacio()
-
-	var pateador_previo: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
-	if pateador_previo and is_instance_valid(pateador_previo) and pateador_previo != receptor:
-		pateador_previo.es_controlado = false
-		pateador_previo.soltar_posesion()
-		pateador_previo.fijar_en_saque(false)
-		pateador_previo.set_congelado(false)
-
-	_jugador_activo_actual = receptor
-	receptor.set_congelado(false)
-	receptor.fijar_en_saque(false)
-	receptor.es_controlado = true
-
-	# Al llegar el balón al compañero, transfiere el control y fija posesión
-	balon.capturar_por(receptor)
-	toques_en_jugada = balon.toques_en_jugada
-
-	# Orientar al receptor hacia el centro del arco rival
-	var pos_arco: Vector3 = Vector3(20.0, 0.0, 0.0)
-	var dir_arco: Vector3 = (pos_arco - receptor.global_position).normalized()
-	dir_arco.y = 0.0
-	dir_arco = dir_arco.normalized()
-	receptor.look_at(receptor.global_position + dir_arco * 5.0, Vector3.UP)
-	receptor.rotation.x = 0.0
-	receptor.rotation.z = 0.0
-
-	_transferir_control_a(receptor)
-	_activar_continuidad_juego_activo("¡POSESIÓN DE #%d %s! ¡JUEGO ACTIVO!" % [receptor.dorsal, receptor.nombre_jugador])
 
 
 ## Busca al compañero más alineado con el vector de dirección especificado
@@ -1619,214 +1398,6 @@ func _obtener_companero_apuntado(dir: Vector3) -> Jugador3D:
 # ==============================================================================
 # PIPELINE DE ACCIONES EN VISTA CENITAL / TÁCTICA (PASE, HUECO, TIRO)
 # ==============================================================================
-
-func _on_touch_pase_solicitado(potencia: float, tipo_pase: int) -> void:
-	if estado_actual != EstadoEntrenamiento.EJECUCION or _disparo_realizado or _en_secuencia_carrera_tl:
-		return
-	if not _vista_cenital_alterna:
-		return
-	_ejecutar_pase_tactico(potencia, tipo_pase)
-
-
-func _on_touch_hueco_solicitado(potencia: float) -> void:
-	if estado_actual != EstadoEntrenamiento.EJECUCION or _disparo_realizado or _en_secuencia_carrera_tl:
-		return
-	if not _vista_cenital_alterna:
-		return
-	_ejecutar_pase_hueco_tactico(potencia)
-
-
-func _on_touch_tiro_solicitado(potencia: float, tipo_tiro: int) -> void:
-	if estado_actual != EstadoEntrenamiento.EJECUCION or _disparo_realizado or _en_secuencia_carrera_tl:
-		return
-	if not _vista_cenital_alterna:
-		return
-	_ejecutar_tiro_tactico(potencia, tipo_tiro)
-
-
-## Ejecuta el pase al pie en vista táctica usando el vector resultante de la flecha de puntería:
-## - El lanzador ejecuta la animación de golpeo de inmediato.
-## - El balón sale disparado hacia el compañero receptor.
-## - El control se transfiere al receptor y se activa juego en vivo (JUEGO_ACTIVO).
-func _ejecutar_pase_tactico(potencia: float, tipo_pase: int = Jugador3D.TipoPase.RASO) -> void:
-	if estado_actual != EstadoEntrenamiento.EJECUCION or _disparo_realizado or _en_secuencia_carrera_tl:
-		return
-	if balon == null:
-		return
-
-	var pateador: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
-	if pateador == null or not is_instance_valid(pateador):
-		return
-
-	# Detener temporizador reglamentario
-	if timer_saque_4s:
-		timer_saque_4s.stop()
-	_actualizar_hud_cuenta_4s(0.0, false)
-
-	# 1. Localizar al compañero según la dirección apuntada
-	var receptor: Jugador3D = _obtener_companero_apuntado(_direccion_apuntado_tactico)
-	if receptor == null:
-		receptor = companero_banda if companero_banda != pateador else companero_frontal
-
-	if receptor == null or receptor == pateador:
-		return
-
-	# 2. Orientar al pateador hacia el receptor y reproducir animación de golpeo
-	var dir_pase: Vector3 = (receptor.global_position - balon.global_position).normalized()
-	dir_pase.y = 0.0
-	dir_pase = dir_pase.normalized()
-	pateador.rotation.y = atan2(-dir_pase.x, -dir_pase.z)
-	pateador.rotation.x = 0.0
-	pateador.rotation.z = 0.0
-	pateador._t_anim_patada = 0.28
-	pateador.soltar_posesion()
-	pateador.fijar_en_saque(false)
-
-	# 3. Reactivar compañeros de equipo y preparar al receptor para avance activo
-	_reactivar_companeros_ia_tiro_libre()
-	receptor.set_congelado(false)
-	receptor.fijar_en_saque(false)
-	receptor.set_physics_process(true)
-	receptor.iniciar_recepcion_pase_entrante(balon, false)
-	var vec_hacia_b: Vector3 = (balon.global_position - receptor.global_position).normalized()
-	vec_hacia_b.y = 0.0
-	receptor.look_at(receptor.global_position + vec_hacia_b * 5.0, Vector3.UP)
-	receptor.rotation.x = 0.0
-	receptor.rotation.z = 0.0
-	receptor._direccion_deseada = vec_hacia_b
-	receptor.velocity = vec_hacia_b * 4.2
-
-	# 4. Impulso físico directo al balón
-	if balon.linear_velocity.length() < 1.0:
-		var dist_rec: float = balon.global_position.distance_to(receptor.global_position)
-		var fuerza: float = clampf(VEL_PASE_AL_PIE + (potencia * 3.5), 8.0, 16.5)
-		var imp_vert: float = 3.85 if tipo_pase == Jugador3D.TipoPase.ELEVADO else 0.14
-		var imp: Vector3 = dir_pase * (fuerza * balon.mass) + Vector3(0.0, imp_vert * balon.mass, 0.0)
-		balon.sacador_autorizado = null
-		if tipo_pase == Jugador3D.TipoPase.ELEVADO:
-			balon.liberar_cucharita(imp, camara, 0, true)
-		elif balon.has_method("liberar_pase_raso"):
-			balon.liberar_pase_raso(imp, 0)
-		else:
-			balon.liberar(imp, 0, true)
-
-	toques_en_jugada = balon.toques_en_jugada
-	_disparo_realizado = true
-
-	# 5. Transferir control al receptor y pasar de inmediato a JUEGO_ACTIVO
-	_transferir_control_a(receptor)
-	_activar_continuidad_juego_activo("¡PASE A #%d %s! ¡JUEGO ACTIVO!" % [receptor.dorsal, receptor.nombre_jugador])
-
-
-## Ejecuta el pase al hueco (en profundidad) en vista táctica proyectando hacia el espacio libre:
-func _ejecutar_pase_hueco_tactico(potencia: float) -> void:
-	if estado_actual != EstadoEntrenamiento.EJECUCION or _disparo_realizado or _en_secuencia_carrera_tl:
-		return
-	if balon == null:
-		return
-
-	var pateador: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
-	if pateador == null or not is_instance_valid(pateador):
-		return
-
-	if timer_saque_4s:
-		timer_saque_4s.stop()
-	_actualizar_hud_cuenta_4s(0.0, false)
-
-	# 1. Localizar al compañero objetivo según la dirección apuntada
-	var receptor: Jugador3D = _obtener_companero_apuntado(_direccion_apuntado_tactico)
-	if receptor == null:
-		receptor = companero_frontal if companero_frontal != pateador else companero_banda
-
-	if receptor == null or receptor == pateador:
-		return
-
-	# 2. Calcular punto hacia el hueco en profundidad en la dirección apuntada
-	var avance: Vector3 = _direccion_apuntado_tactico.normalized()
-	var punto_hueco: Vector3 = receptor.global_position + avance * (3.2 + potencia * 2.8)
-	punto_hueco.x = clampf(punto_hueco.x, 2.0, 18.2)
-	punto_hueco.z = clampf(punto_hueco.z, -8.6, 8.6)
-	punto_hueco.y = 0.0
-
-	# 3. Orientar al pateador hacia el hueco y animar patada
-	var dir_pase: Vector3 = (punto_hueco - balon.global_position).normalized()
-	dir_pase.y = 0.0
-	dir_pase = dir_pase.normalized()
-	pateador.rotation.y = atan2(-dir_pase.x, -dir_pase.z)
-	pateador.rotation.x = 0.0
-	pateador.rotation.z = 0.0
-	pateador._t_anim_patada = 0.28
-	pateador.soltar_posesion()
-	pateador.fijar_en_saque(false)
-
-	# 4. Reactivar compañeros de equipo y lanzar al receptor hacia el hueco
-	_reactivar_companeros_ia_tiro_libre()
-	receptor.set_congelado(false)
-	receptor.fijar_en_saque(false)
-	receptor.set_physics_process(true)
-	receptor.iniciar_recepcion_pase_entrante(balon, true, punto_hueco)
-
-	# 5. Impulso en profundidad al balón
-	if balon.linear_velocity.length() < 1.0:
-		var fuerza: float = clampf(VEL_PASE_AL_HUECO + (potencia * 3.5), 10.5, 17.5)
-		var imp: Vector3 = dir_pase * (fuerza * balon.mass) + Vector3(0.0, 0.18 * balon.mass, 0.0)
-		balon.sacador_autorizado = null
-		if balon.has_method("liberar_al_hueco"):
-			balon.liberar_al_hueco(imp, punto_hueco, 0, true)
-		else:
-			balon.liberar(imp, 0, true)
-
-	toques_en_jugada = balon.toques_en_jugada
-	_disparo_realizado = true
-
-	# 6. Transferir control al receptor y activar continuidad en vivo
-	_transferir_control_a(receptor)
-	_activar_continuidad_juego_activo("¡PASE AL HUECO! CORRE #%d %s" % [receptor.dorsal, receptor.nombre_jugador])
-
-
-## Ejecuta disparo directo a portería en vista táctica a lo largo de la dirección apuntada
-func _ejecutar_tiro_tactico(potencia: float, tipo_tiro: int = Jugador3D.TipoTiro.NORMAL) -> void:
-	if estado_actual != EstadoEntrenamiento.EJECUCION or _disparo_realizado or _en_secuencia_carrera_tl:
-		return
-	if balon == null:
-		return
-
-	var pateador: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
-	if pateador == null or not is_instance_valid(pateador):
-		return
-
-	if timer_saque_4s:
-		timer_saque_4s.stop()
-	_actualizar_hud_cuenta_4s(0.0, false)
-
-	var dir_tiro: Vector3 = _direccion_apuntado_tactico.normalized()
-	pateador.rotation.y = atan2(-dir_tiro.x, -dir_tiro.z)
-	pateador.rotation.x = 0.0
-	pateador.rotation.z = 0.0
-	pateador._t_anim_patada = 0.28
-	pateador.soltar_posesion()
-	pateador.fijar_en_saque(false)
-
-	if balon.linear_velocity.length() < 1.0:
-		var rapidez: float = 14.5 + potencia * 12.0
-		var elev_y: float = 0.22 if tipo_tiro != Jugador3D.TipoTiro.VASELINA else 0.55
-		var imp: Vector3 = Vector3(dir_tiro.x, elev_y, dir_tiro.z).normalized() * (rapidez * balon.mass)
-		balon.sacador_autorizado = null
-		if tipo_tiro == Jugador3D.TipoTiro.COLOCADO:
-			var signo_curva: float = 1.0 if dir_tiro.z >= 0.0 else -1.0
-			var perp: Vector3 = Vector3(-dir_tiro.z, 0.0, dir_tiro.x).normalized() * signo_curva * 2.5
-			balon.liberar_con_efecto_magnus(imp, perp, 0)
-		elif tipo_tiro == Jugador3D.TipoTiro.VASELINA:
-			balon.liberar_cucharita(imp, camara, 0, false)
-		else:
-			balon.liberar(imp, 0, false)
-
-	toques_en_jugada = balon.toques_en_jugada
-	_disparo_realizado = true
-	_tiempo_post_impacto = 0.0
-	_intentos_totales += 1
-	_activar_continuidad_juego_activo("¡DISPARO A PUERTA!")
-
 
 ## Transforma el vector del trazo 2D al espacio 3D del mundo usando el vector frontal (`-camera.global_transform.basis.z`)
 ## y el vector lateral (`camera.global_transform.basis.x`) de la cámara activa, respetando la pérdida de velocidad lineal
@@ -1951,7 +1522,6 @@ func _aplicar_impacto_balon_post_carrera() -> void:
 
 	_disparo_realizado = true
 	_tiempo_post_impacto = 0.0
-	_intentos_totales += 1
 
 	var ejecutor: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
 	if ejecutor and is_instance_valid(ejecutor):
@@ -1975,13 +1545,11 @@ func _aplicar_impacto_balon_post_carrera() -> void:
 	else:
 		balon.liberar(_impulso_pendiente, 0, false)
 	toques_en_jugada = balon.toques_en_jugada
-
-	# Reactivación inmediata e integral de IA de compañeros para disputar rechace o jugada viva
-	_reactivar_companeros_ia_tiro_libre()
+	# `balon.liberar*` emitió `balon_liberado` -> _on_balon_liberado() ya activó LIVE_PLAY (IA real de todos los jugadores)
 
 
 func _on_capa_trazo_swipe_draw() -> void:
-	if capa_trazo_swipe == null or estado_actual != EstadoEntrenamiento.EJECUCION:
+	if capa_trazo_swipe == null or estado_actual != EstadoEntrenamiento.FREE_KICK_SETUP:
 		return
 
 	var view_size: Vector2 = get_viewport().get_visible_rect().size
@@ -2099,7 +1667,7 @@ func _actualizar_hud_cuenta_4s(segundos_restantes: float, activa: bool) -> void:
 func _on_timer_saque_4s_timeout() -> void:
 	if es_entrenamiento_activo():
 		return
-	if estado_actual != EstadoEntrenamiento.EJECUCION or _disparo_realizado or _en_secuencia_carrera_tl:
+	if estado_actual != EstadoEntrenamiento.FREE_KICK_SETUP or _disparo_realizado or _en_secuencia_carrera_tl:
 		return
 	_capturando_swipe = false
 	_swipe_touch_id = -1
@@ -2115,25 +1683,18 @@ func _on_timer_saque_4s_timeout() -> void:
 
 
 func _on_cambiar_vista_pressed() -> void:
-	if estado_actual != EstadoEntrenamiento.EJECUCION or _disparo_realizado or _en_secuencia_carrera_tl or camara == null:
+	if estado_actual != EstadoEntrenamiento.FREE_KICK_SETUP or _disparo_realizado or _en_secuencia_carrera_tl or camara == null:
 		return
 	_aplicar_modo_vista_tactica_o_tiro(not _vista_cenital_alterna, false)
 
 
-## Conmuta de forma adaptativa entre Vista Táctica/Cenital y Vista de Tiro Directo Sobre el Hombro (OTS):
-## - En Vista Táctica: desactiva el lienzo de trazo swipe y activa el HUD táctil estándar de juego abierto
-##   (TouchControls: joystick virtual a la izquierda y botones circulares Pase, Hueco, Tiro, Esprintar a la derecha).
-## - En Vista de Tiro Directo: oculta el HUD estándar y reactiva el lienzo de trazo de tiro curvo OTS.
 func _aplicar_modo_vista_tactica_o_tiro(es_tactica: bool, inmediato: bool = false) -> void:
 	_vista_cenital_alterna = es_tactica
 	_capturando_swipe = false
 	_swipe_puntos.clear()
 
-	# Reactivar IA de desmarques y apoyos en compañeros sin congelamiento
-	_reactivar_companeros_ia_tiro_libre()
-
 	if es_tactica:
-		# Vista Táctica / Cenital (Orientada a la creación de juego con HUD estándar TouchControls)
+		# Vista Táctica / Cenital (HUD estándar TouchControls: el modo Ataque/Defensa lo decide la posesión del motor)
 		_direccion_apuntado_tactico = _base_forward_tl
 		if _indicador_cono_pase:
 			_indicador_cono_pase.visible = true
@@ -2150,8 +1711,7 @@ func _aplicar_modo_vista_tactica_o_tiro(es_tactica: bool, inmediato: bool = fals
 			barra_potencia_swipe.visible = false
 		if touch_controls:
 			touch_controls.visible = true
-			touch_controls.establecer_modo(TouchControls.ModoHUD.ATAQUE)
-			touch_controls.asignar_jugador_referencia(_jugador_activo_actual if _jugador_activo_actual else lanzador)
+		_transferir_control_a(_obtener_ejecutor())
 		if label_guia_swipe:
 			label_guia_swipe.visible = true
 			label_guia_swipe.text = "VISTA TÁCTICA: APUNTA CON EL JOYSTICK Y USA LOS BOTONES DE JUEGO"
@@ -2159,7 +1719,7 @@ func _aplicar_modo_vista_tactica_o_tiro(es_tactica: bool, inmediato: bool = fals
 			btn_cambiar_vista.text = "🎥 VISTA DISPARO"
 	else:
 		# Vista Trasera OTS (Disparo directo con trazo curvo / Magnus)
-		var pateador_ots: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
+		var pateador_ots: Jugador3D = _obtener_ejecutor()
 		setup_kicker_transform(pateador_ots, balon.global_position if balon != null else _pos_ejecucion_efectiva, Vector3(20.0, 0.0, 0.0))
 
 		if _indicador_cono_pase:
@@ -2186,106 +1746,25 @@ func _aplicar_modo_vista_tactica_o_tiro(es_tactica: bool, inmediato: bool = fals
 			btn_cambiar_vista.text = "🎥 VISTA TÁCTICA"
 
 
-## Activa la continuidad de juego tras rebote en la barrera o parada del arquero (Modo Entrenamiento estilo eFootball).
-## Transiciona inmediatamente a 'Juego Activo' (Live Play), libera las restricciones de posición de los jugadores,
-## enfoca la cámara broadcast y entrega el control libre del jugador receptor mediante el HUD estándar TouchControls.
-func _activar_continuidad_juego_activo(motivo: String = "¡BALÓN EN JUEGO!") -> void:
-	if estado_actual == EstadoEntrenamiento.JUEGO_ACTIVO or estado_actual == EstadoEntrenamiento.TRANSICION_FADE:
-		return
-	estado_actual = EstadoEntrenamiento.JUEGO_ACTIVO
-	_tiempo_posesion_defensiva = 0.0
-	_tiempo_sin_movimiento_balon = 0.0
-
-	# 1. Liberar a todos los jugadores para juego abierto
-	if _indicador_cono_pase:
-		_indicador_cono_pase.visible = false
-	if lanzador and is_instance_valid(lanzador):
-		lanzador.fijar_en_saque(false)
-		lanzador.set_congelado(false)
-		lanzador.establecer_pose_barrera(false)
-		lanzador.en_pose_barrera = false
-	for def: Jugador3D in _defensores_barrera:
-		if def and is_instance_valid(def):
-			def.fijar_en_saque(false)
-			def.establecer_pose_barrera(false)
-			def.set_congelado(false)
-
-	# Reactivación completa de compañeros de equipo (IA ofensiva activa, desmarques y apoyos)
-	_reactivar_companeros_ia_tiro_libre()
-
-	# 2. Conmutar cámara a vista de transmisión / seguimiento dinámico
-	if camara:
-		camara.regresar_a_broadcast(0.75)
-
-	# 3. Activar HUD estándar de juego abierto (TouchControls)
-	if capa_trazo_swipe:
-		capa_trazo_swipe.visible = false
-		capa_trazo_swipe.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if barra_potencia_swipe:
-		barra_potencia_swipe.visible = false
-	if touch_controls:
-		touch_controls.visible = true
-		touch_controls.establecer_modo(TouchControls.ModoHUD.ATAQUE)
-		var receptor_cercano: Jugador3D = _jugador_activo_actual
-		if receptor_cercano == null or not is_instance_valid(receptor_cercano) or not receptor_cercano.es_controlado:
-			receptor_cercano = _obtener_jugador_local_mas_cercano(balon.global_position if balon else Vector3.ZERO)
-		if receptor_cercano:
-			_transferir_control_a(receptor_cercano)
-			touch_controls.asignar_jugador_referencia(receptor_cercano)
-
-	if label_guia_swipe:
-		label_guia_swipe.visible = true
-		label_guia_swipe.text = "¡JUEGO EN VIVO! DISPUTA EL REBOTE Y CONTINÚA LA JUGADA"
-	if btn_cambiar_vista:
-		btn_cambiar_vista.text = "🎥 VISTA JUEGO"
-
-	_mostrar_banner_resultado(motivo)
-
-
-## Retorna el jugador del equipo local más cercano a una posición 3D (para asignación rápida de control tras rebote)
-func _obtener_jugador_local_mas_cercano(pos: Vector3) -> Jugador3D:
-	var candidatos: Array[Jugador3D] = []
-	if lanzador and is_instance_valid(lanzador): candidatos.append(lanzador)
-	if companero_banda and is_instance_valid(companero_banda): candidatos.append(companero_banda)
-	if companero_frontal and is_instance_valid(companero_frontal): candidatos.append(companero_frontal)
-	if candidatos.is_empty():
-		return null
-	var mejor: Jugador3D = candidatos[0]
-	var d_min: float = pos.distance_to(mejor.global_position)
-	for i: int in range(1, candidatos.size()):
-		var c: Jugador3D = candidatos[i]
-		var d: float = pos.distance_to(c.global_position)
-		if d < d_min:
-			d_min = d
-			mejor = c
-	return mejor
-
-
-## Transfiere el foco de control del usuario hacia un nuevo jugador de campo
+## Transfiere el foco de control del usuario con la misma ruta que el partido normal
+## (grupo `jugador_activo`, cámara y TouchControls se sincronizan en Jugador3D._asignar_control_a_este_jugador)
 func _transferir_control_a(nuevo_jugador: Jugador3D) -> void:
 	if nuevo_jugador == null or not is_instance_valid(nuevo_jugador):
 		return
-	if _jugador_activo_actual != null and is_instance_valid(_jugador_activo_actual) and _jugador_activo_actual != nuevo_jugador:
-		_jugador_activo_actual.es_controlado = false
-		if _jugador_activo_actual.indicador_control:
-			_jugador_activo_actual.indicador_control.visible = false
-
 	_jugador_activo_actual = nuevo_jugador
-	nuevo_jugador.es_controlado = true
-	nuevo_jugador.set_congelado(false)
-	if nuevo_jugador.indicador_control:
-		nuevo_jugador.indicador_control.visible = true
-	if touch_controls:
-		touch_controls.asignar_jugador_referencia(nuevo_jugador)
+	nuevo_jugador._asignar_control_a_este_jugador()
 
 
 func _on_bloqueo_barrera_realizado(defensor: Jugador3D, _zona: String) -> void:
 	var nombre_def: String = "DEFENSOR"
 	if defensor and is_instance_valid(defensor):
 		nombre_def = defensor.nombre_jugador if defensor.nombre_jugador != "" else ("#%d" % defensor.dorsal)
-	var txt: String = "¡BLOQUEO DE LA BARRERA (%s)! ¡JUEGO ACTIVO!" % nombre_def
+	var txt: String = "¡BLOQUEO DE LA BARRERA (%s)! ¡SIGUE LA JUGADA!" % nombre_def
 	_ultimo_mensaje_atajada = txt
-	_activar_continuidad_juego_activo(txt)
+	_mostrar_banner_resultado(txt)
+	if estado_actual == EstadoEntrenamiento.LIVE_PLAY:
+		_liberar_barrera_a_ia()
+		_registrar_rebote()
 
 
 func _on_mano_en_barrera(defensor: Jugador3D, _posicion: Vector3, es_penal: bool) -> void:
@@ -2308,7 +1787,7 @@ func _on_mano_en_barrera(defensor: Jugador3D, _posicion: Vector3, es_penal: bool
 
 
 func _on_elegir_lanzador_pressed() -> void:
-	if estado_actual != EstadoEntrenamiento.EJECUCION or _disparo_realizado or _en_secuencia_carrera_tl or _en_jugada_de_pase:
+	if estado_actual != EstadoEntrenamiento.FREE_KICK_SETUP or _disparo_realizado or _en_secuencia_carrera_tl:
 		return
 
 	var candidatos: Array[Jugador3D] = []
@@ -2366,16 +1845,21 @@ func _on_salir_menu_pressed() -> void:
 func _physics_process(delta: float) -> void:
 	if balon != null and is_instance_valid(balon):
 		toques_en_jugada = balon.toques_en_jugada
+	if estado_actual == EstadoEntrenamiento.FREE_KICK_SETUP:
+		_procesar_setup_tiro_libre(delta)
+	elif estado_actual == EstadoEntrenamiento.LIVE_PLAY:
+		_procesar_live_play(delta)
 
-	if estado_actual != EstadoEntrenamiento.EJECUCION and estado_actual != EstadoEntrenamiento.JUEGO_ACTIVO:
-		return
 
+## FREE_KICK_SETUP (balón parado): único código propio del entrenamiento durante el setup.
+## Mantiene barrera y lanzador en su sitio hasta el golpeo; compañeros y arquero usan la IA real del partido.
+func _procesar_setup_tiro_libre(delta: float) -> void:
 	# Actualizar cuenta regresiva visual de 4 segundos solo si no es entrenamiento y el temporizador está activo
 	if not es_entrenamiento_activo() and not _disparo_realizado and not _en_secuencia_carrera_tl and timer_saque_4s != null and not timer_saque_4s.is_stopped():
 		_actualizar_hud_cuenta_4s(timer_saque_4s.time_left, true)
 
 	# Mantener fija la barrera en su sitio ÚNICAMENTE durante la fase previa de saque
-	if estado_actual == EstadoEntrenamiento.EJECUCION and not _disparo_realizado and not _en_jugada_de_pase:
+	if not _disparo_realizado:
 		for i: int in range(mini(_defensores_barrera.size(), _posiciones_barrera.size())):
 			var def: Jugador3D = _defensores_barrera[i]
 			if def and is_instance_valid(def):
@@ -2383,7 +1867,7 @@ func _physics_process(delta: float) -> void:
 				def.velocity = Vector3.ZERO
 
 	# Fijación del lanzador y orientación por vector en modo preparación de tiro libre
-	if estado_actual == EstadoEntrenamiento.EJECUCION and not _disparo_realizado and not _en_secuencia_carrera_tl and not _en_jugada_de_pase:
+	if not _disparo_realizado and not _en_secuencia_carrera_tl:
 		var pateador: Jugador3D = _jugador_activo_actual if _jugador_activo_actual != null else lanzador
 		if pateador and is_instance_valid(pateador):
 			pateador.global_position = _pos_fija_lanzador
@@ -2425,7 +1909,7 @@ func _physics_process(delta: float) -> void:
 		
 		# 3. Actualizar indicador visual de puntería (flecha en el suelo en la posición del balón)
 		if _indicador_cono_pase and is_instance_valid(_indicador_cono_pase) and balon:
-			var mostrar_indicador: bool = (_vista_cenital_alterna and not _disparo_realizado and not _en_secuencia_carrera_tl and not _en_jugada_de_pase)
+			var mostrar_indicador: bool = (_vista_cenital_alterna and not _disparo_realizado and not _en_secuencia_carrera_tl)
 			_indicador_cono_pase.visible = mostrar_indicador
 			if mostrar_indicador:
 				_indicador_cono_pase.global_position = Vector3(balon.global_position.x, 0.02, balon.global_position.z)
@@ -2448,92 +1932,242 @@ func _physics_process(delta: float) -> void:
 		_procesar_secuencia_carrera_tl(delta)
 		return
 
-	# Seguimiento de pase en tránsito hacia el compañero de equipo (Pase al Pie o Pase al Hueco)
-	if _en_jugada_de_pase and _pase_en_transito:
-		_tiempo_espera_pase += delta
-		if _receptor_pase and is_instance_valid(_receptor_pase):
-			var dist_b: float = balon.global_position.distance_to(_receptor_pase.global_position)
-			if _tipo_pase_activo == TipoPaseTL.HUECO:
-				var dist_meta: float = _receptor_pase.global_position.distance_to(_punto_hueco_objetivo)
-				if dist_meta < 0.95 or dist_b < 1.35 or (balon.esta_siendo_conducido() and balon.portador_actual == _receptor_pase):
-					_completar_recepcion_pase(_receptor_pase)
-					return
-			else:
-				_receptor_pase.look_at(balon.global_position, Vector3.UP)
-				_receptor_pase.rotation.x = 0.0
-				_receptor_pase.rotation.z = 0.0
-				if dist_b < 1.35 or (balon.esta_siendo_conducido() and balon.portador_actual == _receptor_pase):
-					_completar_recepcion_pase(_receptor_pase)
-					return
-		if _tiempo_espera_pase > 3.0:
-			_iniciar_ciclo_fin_jugada("PASE INTERCEPTADO / CORTE DEFENSIVO")
-			return
-		elif _tiempo_espera_pase > 0.8 and balon.linear_velocity.length() < 0.25:
-			_iniciar_ciclo_fin_jugada("PASE CORTO / INTENTO FINALIZADO")
-			return
-		return
 
-	if balon == null:
-		return
+# ==============================================================================
+# 4. TRANSICIÓN FREE_KICK_SETUP -> LIVE_PLAY (el motor de partido toma el control)
+# ==============================================================================
 
-	if estado_actual == EstadoEntrenamiento.EJECUCION and not _disparo_realizado:
+## Se dispara en el instante exacto en que el balón recibe impulso: trazo OTS, Pase, Hueco o Tiro del motor real.
+func _on_balon_liberado() -> void:
+	if estado_actual != EstadoEntrenamiento.FREE_KICK_SETUP:
+		return
+	_iniciar_live_play("¡BALÓN EN JUEGO!")
+
+
+## Pasa el control del escenario 100% al motor normal: libera barrera/lanzador/compañeros y activa el HUD por posesión.
+func _iniciar_live_play(motivo: String) -> void:
+	if estado_actual == EstadoEntrenamiento.LIVE_PLAY or estado_actual == EstadoEntrenamiento.TRANSICION_FADE:
+		return
+	estado_actual = EstadoEntrenamiento.LIVE_PLAY
+	_disparo_realizado = true
+	_intentos_totales += 1
+	_tiempo_post_impacto = 0.0
+	_tiempo_posesion_defensiva = 0.0
+	_tiempo_sin_movimiento_balon = 0.0
+	_buscando_rebote = false
+	_capturando_swipe = false
+	_pan_touch_id = -1
+	_swipe_puntos.clear()
+	_pos_origen_golpeo = balon.global_position if balon != null else _pos_ejecucion_efectiva
+
+	if timer_saque_4s:
+		timer_saque_4s.stop()
+	_actualizar_hud_cuenta_4s(0.0, false)
+	if _indicador_cono_pase:
+		_indicador_cono_pase.visible = false
+
+	# Barrera: sigue activa una ventana corta para poder bloquear el disparo; luego usa la IA defensiva normal
+	_barrera_en_ventana = false
+	for def: Jugador3D in _defensores_barrera:
+		if def != null and is_instance_valid(def) and def.en_pose_barrera:
+			_barrera_en_ventana = true
+	_t_ventana_barrera = VENTANA_BARRERA_VIVA
+	if not _barrera_en_ventana:
+		_liberar_barrera_a_ia()
+
+	# Lanzador: breve cooldown de golpeo (0.25 s) y vuelve a ser un jugador controlable más del partido
+	var kicker: Jugador3D = _obtener_ejecutor()
+	if kicker != null:
+		_kicker_en_cooldown = kicker
+		_t_cooldown_golpeo = COOLDOWN_GOLPEO_LANZADOR
+
+	# Compañeros: sin anclas ni congelados; Jugador3D._procesar_ia_tactica decide apoyo, desmarque o rechace
+	for local: Jugador3D in _obtener_locales_entrenamiento():
+		if local == kicker:
+			continue
+		local.fijar_en_saque(false)
+		local.set_congelado(false)
+		local.set_physics_process(true)
+
+	# Cámara: tras un tiro OTS sigue el vuelo del balón un instante y luego pasa a la cámara de transmisión
+	_regresar_camara_pendiente = (not _vista_cenital_alterna) and camara != null
+	_t_regreso_camara = REGRESO_CAMARA_TRAS_TIRO_S
+
+	if capa_trazo_swipe:
+		capa_trazo_swipe.visible = false
+		capa_trazo_swipe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		capa_trazo_swipe.queue_redraw()
+	if barra_potencia_swipe:
+		barra_potencia_swipe.visible = false
+	if touch_controls:
+		touch_controls.visible = true
+	if label_guia_swipe:
+		label_guia_swipe.visible = true
+		label_guia_swipe.text = "¡JUEGO EN VIVO! DISPUTA EL REBOTE Y CONTINÚA LA JUGADA"
+	_mostrar_banner_resultado(motivo)
+
+
+## Rompe la formación de barrera: los defensores pasan a la IA defensiva normal de marcaje y despeje
+func _liberar_barrera_a_ia() -> void:
+	_barrera_en_ventana = false
+	for def: Jugador3D in _defensores_barrera:
+		if def == null or not is_instance_valid(def):
+			continue
+		def.fijar_en_saque(false)
+		def.establecer_pose_barrera(false)
+		def.set_congelado(false)
+		def.set_physics_process(true)
+
+
+## Devuelve el jugador local que ejecuta la falta (cursor activo del motor o, en su defecto, el lanzador original)
+func _obtener_ejecutor() -> Jugador3D:
+	if _jugador_activo_actual != null and is_instance_valid(_jugador_activo_actual):
+		return _jugador_activo_actual
+	return lanzador
+
+
+## Los tres jugadores locales de la escena de entrenamiento (sin nulos)
+func _obtener_locales_entrenamiento() -> Array[Jugador3D]:
+	var res: Array[Jugador3D] = []
+	for j: Jugador3D in [lanzador, companero_banda, companero_frontal]:
+		if j != null and is_instance_valid(j):
+			res.append(j)
+	return res
+
+
+## Jugador local que el motor tiene como cursor del usuario (grupo `jugador_activo`)
+func _obtener_jugador_activo_motor() -> Jugador3D:
+	for n: Node in get_tree().get_nodes_in_group("jugador_activo"):
+		var j: Jugador3D = n as Jugador3D
+		if j != null and j.equipo == Jugador3D.Equipo.LOCAL:
+			return j
+	return null
+
+
+## Marca un rebote/desvío: el cursor buscará al local más cercano al balón y la cámara vuelve a transmisión
+func _registrar_rebote() -> void:
+	_buscando_rebote = true
+	_t_reevaluar_cursor = 0.0
+	if _regresar_camara_pendiente and camara != null:
+		_regresar_camara_pendiente = false
+		camara.regresar_a_broadcast(0.6)
+
+
+# ==============================================================================
+# 5. LIVE_PLAY: partido real hasta una condición terminal (gol, fuera, arquero, rival consolidado)
+# ==============================================================================
+
+func _procesar_live_play(delta: float) -> void:
+	if balon == null or not is_instance_valid(balon):
 		return
 
 	_tiempo_post_impacto += delta
 	var pos_b: Vector3 = balon.global_position
 	var vel_lineal: float = balon.linear_velocity.length()
 
-	# 1. Reglas perimetrales del campo:
-	# a) Línea de meta fuera de portería -> Saque de puerta
+	_actualizar_cooldown_golpeo(delta)
+	_actualizar_ventana_barrera(delta, pos_b)
+
+	if _regresar_camara_pendiente and camara != null:
+		_t_regreso_camara -= delta
+		if _t_regreso_camara <= 0.0:
+			_regresar_camara_pendiente = false
+			camara.regresar_a_broadcast(0.75)
+
+	# Condiciones terminales 2: el balón sale por línea de banda o de fondo
 	if pos_b.x > 20.08 and absf(pos_b.z) > 1.88:
 		_iniciar_ciclo_fin_jugada("¡FUERA! SAQUE DE PUERTA")
 		return
-	# b) Línea de meta en propio campo
 	if pos_b.x < -20.08:
 		_iniciar_ciclo_fin_jugada("FIN DE LA JUGADA")
 		return
-	# c) Líneas laterales de banda
 	if absf(pos_b.z) > 10.08:
 		_iniciar_ciclo_fin_jugada("¡FUERA DE BANDA!")
 		return
 
-	# 2. Posesión defensiva controlada (Rival / Arquero) > 1.5 segundos
-	var rival_con_balon: bool = false
+	# Condiciones terminales 3: arquero asegura en manos, o rival controla de forma limpia > 2.0 s
+	var portador: Jugador3D = null
 	if balon.esta_siendo_conducido() and balon.portador_actual != null and is_instance_valid(balon.portador_actual):
-		if balon.portador_actual == portero_rival or balon.portador_actual in _defensores_barrera or (balon.portador_actual is Jugador3D and (balon.portador_actual as Jugador3D).equipo != Jugador3D.Equipo.LOCAL):
-			rival_con_balon = true
-
-	if rival_con_balon:
+		portador = balon.portador_actual as Jugador3D
+	if portador != null and portador.equipo != Jugador3D.Equipo.LOCAL:
+		if portador.tiene_balon_en_manos:
+			_iniciar_ciclo_fin_jugada(_ultimo_mensaje_atajada if _ultimo_mensaje_atajada != "" else "¡EL ARQUERO ATRAPA Y ASEGURA EL BALÓN!")
+			return
 		_tiempo_posesion_defensiva += delta
-		if _tiempo_posesion_defensiva >= _limite_tiempo_posesion_defensiva:
-			var txt_recup: String = _ultimo_mensaje_atajada if _ultimo_mensaje_atajada != "" else "RECUPERACIÓN DEFENSIVA"
-			_iniciar_ciclo_fin_jugada(txt_recup)
+		if _tiempo_posesion_defensiva >= LIMITE_POSESION_RIVAL_S:
+			_iniciar_ciclo_fin_jugada(_ultimo_mensaje_atajada if _ultimo_mensaje_atajada != "" else "RECUPERACIÓN DEFENSIVA")
 			return
 	else:
 		_tiempo_posesion_defensiva = 0.0
 
-	# 3. Transición automática a JUEGO_ACTIVO tras rebote en barrera, poste o desvío
-	if estado_actual == EstadoEntrenamiento.EJECUCION and _disparo_realizado:
-		# Si tras salir hacia portería el balón desacelera tras impacto (< 8.0 m/s) o invierte su velocidad en X
-		if (_tiempo_post_impacto > 0.45 and vel_lineal < 8.0) or (_tiempo_post_impacto > 0.25 and balon.linear_velocity.x < -0.2):
-			_activar_continuidad_juego_activo("¡BALÓN EN JUEGO!")
+	# Desvío no registrado por señales (poste, travesaño): el balón pierde velocidad tras el impacto
+	if not _buscando_rebote and portador == null and _tiempo_post_impacto > 0.45 and vel_lineal < 8.0:
+		_registrar_rebote()
+
+	_actualizar_control_en_vivo(delta, portador)
+
+	# Seguridad: balón detenido sin dueño (> 4.5 s)
+	if vel_lineal < 0.15 and portador == null:
+		_tiempo_sin_movimiento_balon += delta
+		if _tiempo_sin_movimiento_balon >= 4.5:
+			_iniciar_ciclo_fin_jugada("BALÓN DETENIDO — FIN DE LA JUGADA")
 			return
+	else:
+		_tiempo_sin_movimiento_balon = 0.0
 
-	# 4. Dinámica de juego activo continuo (Modo Entrenamiento estilo eFootball)
-	if estado_actual == EstadoEntrenamiento.JUEGO_ACTIVO:
-		# Auto-transferencia de control al compañero que tenga la posesión del balón
-		if balon.esta_siendo_conducido() and balon.portador_actual != null and is_instance_valid(balon.portador_actual):
-			if balon.portador_actual is Jugador3D and (balon.portador_actual as Jugador3D).equipo == Jugador3D.Equipo.LOCAL and balon.portador_actual != _jugador_activo_actual:
-				_transferir_control_a(balon.portador_actual as Jugador3D)
 
-		# Inactividad si el balón queda completamente detenido en el suelo sin posesión (> 4.5 segundos)
-		if vel_lineal < 0.15 and not balon.esta_siendo_conducido():
-			_tiempo_sin_movimiento_balon += delta
-			if _tiempo_sin_movimiento_balon >= 4.5:
-				_iniciar_ciclo_fin_jugada("BALÓN DETENIDO — FIN DE LA JUGADA")
-				return
-		else:
-			_tiempo_sin_movimiento_balon = 0.0
+## Tras el golpeo el ejecutor espera 0.25 s anclado y luego queda libre como cualquier jugador del partido
+func _actualizar_cooldown_golpeo(delta: float) -> void:
+	if _kicker_en_cooldown == null:
+		return
+	_t_cooldown_golpeo -= delta
+	if _t_cooldown_golpeo > 0.0:
+		return
+	var kicker: Jugador3D = _kicker_en_cooldown
+	_kicker_en_cooldown = null
+	if is_instance_valid(kicker):
+		kicker._en_carrera_tiro_libre = false
+		kicker.fijar_en_saque(false)
+		kicker.set_congelado(false)
+
+
+## La barrera mantiene sus hitboxes de bloqueo mientras el balón la atraviesa; después rompe filas
+func _actualizar_ventana_barrera(delta: float, pos_b: Vector3) -> void:
+	if not _barrera_en_ventana:
+		return
+	_t_ventana_barrera -= delta
+	var recorrido: float = Vector2(pos_b.x - _pos_origen_golpeo.x, pos_b.z - _pos_origen_golpeo.z).length()
+	if _t_ventana_barrera <= 0.0 or recorrido > distancia_barrera + 1.2:
+		_liberar_barrera_a_ia()
+
+
+## Cursor del usuario: sigue al portador local; en rebotes pasa al local más cercano al punto de caída del balón
+func _actualizar_control_en_vivo(delta: float, portador: Jugador3D) -> void:
+	var activo: Jugador3D = _obtener_jugador_activo_motor()
+	if activo != null:
+		_jugador_activo_actual = activo
+
+	if portador != null and portador.equipo == Jugador3D.Equipo.LOCAL:
+		_buscando_rebote = false
+		if portador != activo and portador.posicion_tactica != "PORTERO":
+			_transferir_control_a(portador)
+		return
+
+	if not _buscando_rebote or portador != null:
+		return
+	_t_reevaluar_cursor -= delta
+	if _t_reevaluar_cursor > 0.0:
+		return
+	_t_reevaluar_cursor = 0.2
+	var ref: Jugador3D = activo if activo != null else lanzador
+	if ref == null:
+		return
+	var cercano: Jugador3D = ref.obtener_local_mas_cercano(balon.global_position)
+	if cercano == null or cercano == activo:
+		return
+	var d_activo: float = activo.global_position.distance_to(balon.global_position) if activo != null else INF
+	if d_activo - cercano.global_position.distance_to(balon.global_position) > HISTERESIS_CURSOR_M:
+		_transferir_control_a(cercano)
 
 
 ## Callback ante atajadas anatómicas registradas por Balon3D o Jugador3D
@@ -2554,14 +2188,14 @@ func _on_atajada_realizada(zona: String, nombre_arquero: String) -> void:
 	_ultimo_mensaje_atajada = texto_cartel
 	_mostrar_banner_resultado(texto_cartel)
 
-	# Si no fue una captura controlada en manos del arquero (es un desvío o rebote al área),
-	# transicionar inmediatamente a continuidad de juego activo
-	if balon != null and not (balon.esta_siendo_conducido() and balon.portador_actual == portero_rival):
-		_activar_continuidad_juego_activo(texto_cartel)
+	# Desvío o rebote al área (no es captura en manos): el cursor pasa al local más cercano al punto de caída
+	if estado_actual == EstadoEntrenamiento.LIVE_PLAY and balon != null:
+		if not (balon.esta_siendo_conducido() and balon.portador_actual == portero_rival):
+			_registrar_rebote()
 
 
 func _on_area_gol_derecha_body_entered(body: Node3D) -> void:
-	if (estado_actual != EstadoEntrenamiento.EJECUCION and estado_actual != EstadoEntrenamiento.JUEGO_ACTIVO):
+	if (estado_actual != EstadoEntrenamiento.FREE_KICK_SETUP and estado_actual != EstadoEntrenamiento.LIVE_PLAY):
 		return
 	if body != balon:
 		return
@@ -2591,11 +2225,6 @@ func _iniciar_ciclo_fin_jugada(motivo: String) -> void:
 	_actualizar_hud_cuenta_4s(0.0, false)
 	estado_actual = EstadoEntrenamiento.TRANSICION_FADE
 	_disparo_realizado = false
-	_en_jugada_de_pase = false
-	_pase_en_transito = false
-	_receptor_pase = null
-	_tipo_pase_activo = TipoPaseTL.NINGUNO
-	_punto_hueco_objetivo = Vector3.ZERO
 	if _indicador_cono_pase:
 		_indicador_cono_pase.visible = false
 	if touch_controls:
