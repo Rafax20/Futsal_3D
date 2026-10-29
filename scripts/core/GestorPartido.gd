@@ -238,6 +238,15 @@ func _physics_process(delta: float) -> void:
 	if GameManager:
 		GameManager.reloj_neto_activo = (estado == EstadoPartido.EN_JUEGO and not esperando_pitazo_arbitro and not _en_cinematica_falta)
 	
+	# Guardián de cámara: en juego vivo o saque de arquero (SAQUE_META), forzar que la cámara principal esté activa
+	if estado == EstadoPartido.EN_JUEGO or estado == EstadoPartido.SAQUE_META:
+		var cam_guard: CamaraTransmision = _obtener_camara_transmision()
+		if cam_guard != null and is_instance_valid(cam_guard):
+			if not cam_guard.is_current():
+				cam_guard.make_current()
+			if cam_guard.modo_camara == CamaraTransmision.ModoCamara.CINEMATICA_FALTA or cam_guard.modo_camara == CamaraTransmision.ModoCamara.REPETICION_JUGADA:
+				cam_guard.regresar_a_broadcast(0.5)
+	
 	if _balon != null and is_instance_valid(_balon):
 		es_tiro_indirecto = _balon.es_tiro_indirecto
 		toques_en_jugada = _balon.toques_en_jugada
@@ -499,6 +508,14 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int,
 	es_tiro_indirecto = tiro_indirecto or tipo == EstadoPartido.SAQUE_BANDA or tipo == EstadoPartido.SAQUE_META
 	toques_en_jugada = 0
 	_cambiar_estado(tipo)
+	
+	# En reanudaciones regulares (banda, meta, centro, esquina), garantizar cámara broadcast principal
+	if tipo != EstadoPartido.TIRO_LIBRE and tipo != EstadoPartido.DOBLE_PENALTI:
+		var cam_rean: CamaraTransmision = _obtener_camara_transmision()
+		if cam_rean != null and is_instance_valid(cam_rean):
+			cam_rean.regresar_a_broadcast(0.75)
+			cam_rean.make_current()
+			cam_rean.aplicar_lod_bias_personajes(1.0)
 	
 	var todos: Array[Node] = get_tree().get_nodes_in_group("jugadores_futsal")
 	for n: Node in todos:
@@ -819,19 +836,25 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 # SECUENCIA CINEMÁTICA DE FALTAS, TARJETAS, REPETICIÓN Y VENTANA PRE-PITAZO
 # ==============================================================================
 
-## Obtiene la cámara de transmisión activa
+## Obtiene la cámara de transmisión principal
 func _obtener_camara_transmision() -> CamaraTransmision:
 	if _camara_referencia != null and is_instance_valid(_camara_referencia):
 		return _camara_referencia
-	var cam: Camera3D = get_viewport().get_camera_3d() if get_viewport() else null
-	if cam is CamaraTransmision:
-		_camara_referencia = cam as CamaraTransmision
-		return _camara_referencia
+	var arbol: SceneTree = get_tree()
+	if arbol != null:
+		var cam_g: Node = arbol.get_first_node_in_group("camara_transmision")
+		if cam_g is CamaraTransmision:
+			_camara_referencia = cam_g as CamaraTransmision
+			return _camara_referencia
 	if get_parent() != null:
 		var cam_p: Node = get_parent().get_node_or_null("Camera3D")
 		if cam_p is CamaraTransmision:
 			_camara_referencia = cam_p as CamaraTransmision
 			return _camara_referencia
+	var cam: Camera3D = get_viewport().get_camera_3d() if get_viewport() else null
+	if cam is CamaraTransmision:
+		_camara_referencia = cam as CamaraTransmision
+		return _camara_referencia
 	return null
 
 
@@ -972,6 +995,18 @@ func _finalizar_cinematica_y_pasar_a_pre_pitazo() -> void:
 	else:
 		var pos_tl: Vector3 = Vector3(clampf(pos_falta.x, -14.0, 14.0), 0.25, clampf(pos_falta.z, -8.5, 8.5))
 		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, pos_tl, equipo_favorecido, false)
+
+	# Si la falta la cobra la CPU (Visitante), NUNCA activar cámara trasera y restaurar HUD defensivo
+	if equipo_favorecido != 0:
+		if cam:
+			cam.regresar_a_broadcast(0.5)
+			cam.make_current()
+			cam.aplicar_lod_bias_personajes(1.0)
+		_en_ataque_local_actual = false
+		_equipo_poseedor_actual = equipo_favorecido
+		posesion_cambiada.emit(false, equipo_favorecido)
+		if hud and hud.touch_controls:
+			hud.touch_controls.actualizar_modo(TouchControls.ModoHUD.DEFENSA)
 
 	# 2. Congelar la cuenta de los 4 segundos durante 1.3 segundos de reconocimiento visual
 	esperando_pitazo_arbitro = true
@@ -1545,6 +1580,14 @@ func _finalizar_reanudacion() -> void:
 		_defensores_barrera_tl.clear()
 		_posiciones_barrera_tl.clear()
 		_sacador_actual = null
+		
+		# Restaurar cámara principal de transmisión y LOD reglamentario
+		var cam_fin: CamaraTransmision = _obtener_camara_transmision()
+		if cam_fin != null and is_instance_valid(cam_fin):
+			cam_fin.regresar_a_broadcast(0.75)
+			cam_fin.make_current()
+			cam_fin.aplicar_lod_bias_personajes(1.0)
+		
 		_cambiar_estado(EstadoPartido.EN_JUEGO)
 
 

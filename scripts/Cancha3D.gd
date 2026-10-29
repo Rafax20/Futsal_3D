@@ -18,6 +18,17 @@ func _ready() -> void:
 		area_gol_izq.body_entered.connect(_on_gol_arco_izquierdo)
 	if area_gol_der:
 		area_gol_der.body_entered.connect(_on_gol_arco_derecho)
+	if balon and not balon.gol_detectado.is_connected(_on_balon_gol_detectado):
+		balon.gol_detectado.connect(_on_balon_gol_detectado)
+
+
+func _on_balon_gol_detectado(es_arco_derecho: bool) -> void:
+	if gestor and gestor.estado != GestorPartido.EstadoPartido.EN_JUEGO:
+		return
+	if es_arco_derecho:
+		_on_gol_arco_derecho(balon)
+	else:
+		_on_gol_arco_izquierdo(balon)
 
 
 ## Verifica y asigna la paleta de materiales StandardMaterial3D a los 10 jugadores en cancha:

@@ -208,6 +208,8 @@ func _ready() -> void:
 		# Instante exacto del impulso (trazo, Pase, Hueco o Tiro del motor real): FREE_KICK_SETUP -> LIVE_PLAY
 		if not balon.balon_liberado.is_connected(_on_balon_liberado):
 			balon.balon_liberado.connect(_on_balon_liberado)
+		if not balon.gol_detectado.is_connected(_on_balon_gol_detectado):
+			balon.gol_detectado.connect(_on_balon_gol_detectado)
 	
 	if area_gol_der and not area_gol_der.body_entered.is_connected(_on_area_gol_derecha_body_entered):
 		area_gol_der.body_entered.connect(_on_area_gol_derecha_body_entered)
@@ -2203,6 +2205,12 @@ func _on_atajada_realizada(zona: String, nombre_arquero: String) -> void:
 	if estado_actual == EstadoEntrenamiento.LIVE_PLAY and balon != null:
 		if not (balon.esta_siendo_conducido() and balon.portador_actual == portero_rival):
 			_registrar_rebote()
+
+
+func _on_balon_gol_detectado(es_arco_derecho: bool) -> void:
+	if not es_arco_derecho:
+		return
+	_on_area_gol_derecha_body_entered(balon)
 
 
 func _on_area_gol_derecha_body_entered(body: Node3D) -> void:

@@ -90,6 +90,7 @@ var _en_cinematica_activa: bool = false
 
 
 func _ready() -> void:
+	add_to_group("camara_transmision")
 	if has_node(ruta_balon):
 		_nodo_balon = get_node(ruta_balon) as Node3D
 	if has_node(ruta_jugador_activo):
@@ -109,7 +110,8 @@ func _conectar_gestor_partido() -> void:
 
 func _on_estado_partido_cambiado(nuevo_estado: GestorPartido.EstadoPartido) -> void:
 	if nuevo_estado == GestorPartido.EstadoPartido.TIRO_LIBRE or nuevo_estado == GestorPartido.EstadoPartido.DOBLE_PENALTI:
-		if _gestor_partido and _gestor_partido.obtener_equipo_sacador() == 0:
+		var eq_sacador: int = _gestor_partido.obtener_equipo_sacador() if _gestor_partido else -1
+		if eq_sacador == 0:
 			var pos_b: Vector3 = _gestor_partido.obtener_pos_saque()
 			var pos_arco: Vector3 = Vector3(20.0, 0.0, 0.0) # Portería rival para equipo local
 			var dist_al_arco: float = pos_b.distance_to(pos_arco)
@@ -117,9 +119,11 @@ func _on_estado_partido_cambiado(nuevo_estado: GestorPartido.EstadoPartido) -> v
 				activar_camara_tiro_libre(pos_b, pos_arco, 5.0)
 			else:
 				regresar_a_broadcast(0.75)
-	elif nuevo_estado == GestorPartido.EstadoPartido.EN_JUEGO:
-		if modo_camara == ModoCamara.TIRO_LIBRE and not _balon_pateado_tl:
-			regresar_a_broadcast(0.85)
+		else:
+			# Si saca la CPU / Visitante, NUNCA activar cámara trasera de tiro libre
+			regresar_a_broadcast(0.5)
+	elif nuevo_estado == GestorPartido.EstadoPartido.EN_JUEGO or nuevo_estado == GestorPartido.EstadoPartido.SAQUE_META or nuevo_estado == GestorPartido.EstadoPartido.SAQUE_BANDA or nuevo_estado == GestorPartido.EstadoPartido.SAQUE_CENTRO:
+		regresar_a_broadcast(0.75)
 
 
 const LIMITE_YAW_TL_RAD: float = deg_to_rad(40.0) # Cono de paneo horizontal reglamentario (±40°)
@@ -239,16 +243,26 @@ func notificar_impacto_tiro_libre() -> void:
 
 ## Inicia la transición interpolada suave de regreso a la vista broadcast
 func regresar_a_broadcast(duracion: float = 0.9) -> void:
+	_en_cinematica_activa = false
+	aplicar_lod_bias_personajes(1.0)
+	if not is_current():
+		make_current()
 	if modo_camara == ModoCamara.BROADCAST or modo_camara == ModoCamara.TRANSICION_BROADCAST:
 		return
-	if _en_cinematica_activa:
-		_en_cinematica_activa = false
-		aplicar_lod_bias_personajes(1.0)
 	fov = fov_broadcast
 	_tf_origen_transicion = global_transform
 	_t_transicion_acumulada = 0.0
 	_duracion_transicion_actual = duracion
 	modo_camara = ModoCamara.TRANSICION_BROADCAST
+
+
+## Asegura que la cámara principal de transmisión esté activa, en perspectiva broadcast y con LOD normal
+func asegurar_camara_principal() -> void:
+	if not is_current():
+		make_current()
+	if modo_camara == ModoCamara.CINEMATICA_FALTA or modo_camara == ModoCamara.REPETICION_JUGADA or modo_camara == ModoCamara.TIRO_LIBRE:
+		regresar_a_broadcast(0.5)
+	aplicar_lod_bias_personajes(1.0)
 
 
 ## Modifica el sesgo de LOD (lod_bias) en todos los jugadores del campo y en el árbitro

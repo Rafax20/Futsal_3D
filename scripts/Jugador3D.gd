@@ -334,6 +334,7 @@ var _doble_atajada_activa: bool = false
 var _tiempo_dive_activo: float = 0.0
 var _velocidad_dive_actual: float = 0.0
 var _lado_dive: float = 0.0
+var _target_z_dive: float = 0.0
 
 # Ángulos interpolados para animación esqueletal humanoide
 var _ang_pierna_izq_x: float = 0.0
@@ -1463,18 +1464,14 @@ func _physics_process(delta: float) -> void:
 		global_position.y = 0.0
 		velocity.y = 0.0
 	
-	# Aislar posición del arquero con balón fuera de la línea de gol (impide autogol accidental)
+	# Límite de seguridad permanente (Hard Clamp) para PORTERO en defensa del arco
 	var gk_bloqueado_con_manos: bool = (posicion_tactica == "PORTERO" and (tiene_balon_en_manos or _estado == EstadoJugador.ESTADO_PORTERO_MANOS))
-	if gk_bloqueado_con_manos:
+	if posicion_tactica == "PORTERO":
+		global_position.z = clampf(global_position.z, -2.10, 2.10)
 		if equipo == Equipo.LOCAL:
-			global_position.x = clampf(global_position.x, -18.2, -14.5)
+			global_position.x = clampf(global_position.x, -19.85, -16.50)
 		else:
-			global_position.x = clampf(global_position.x, 14.5, 18.2)
-		global_position.z = clampf(global_position.z, -2.8, 2.8)
-	elif posicion_tactica == "PORTERO" and tiene_posesion:
-		# Si el arquero controla el balón con los pies (tras cesión de compañero), mantener margen de seguridad frente a su línea de meta
-		global_position.x = clampf(global_position.x, -18.3, 18.3)
-		global_position.z = clampf(global_position.z, -9.8, 9.8)
+			global_position.x = clampf(global_position.x, 16.50, 19.85)
 	else:
 		global_position.x = clampf(global_position.x, -20.2, 20.2)
 		global_position.z = clampf(global_position.z, -11.9, 10.5)
@@ -1525,6 +1522,12 @@ func _physics_process(delta: float) -> void:
 	else:
 		move_and_slide()
 		_chequear_contacto_fisico_falta()
+		if posicion_tactica == "PORTERO":
+			global_position.z = clampf(global_position.z, -2.10, 2.10)
+			if equipo == Equipo.LOCAL:
+				global_position.x = clampf(global_position.x, -19.85, -16.50)
+			else:
+				global_position.x = clampf(global_position.x, 16.50, 19.85)
 	
 	# Captura proactiva del balón libre
 	_chequear_proximidad_balon()
@@ -1728,19 +1731,18 @@ func atrapar_con_manos(balon: Balon3D) -> void:
 	tiene_posesion = true
 	tiene_balon_en_manos = true
 	_en_achique_cruz_k = false
+	_tiempo_dive_activo = 0.0
 	_estado = EstadoJugador.ESTADO_PORTERO_MANOS
 	velocity = Vector3.ZERO
 	_direccion_deseada = Vector3.ZERO
 	
-	# Asegurar posición interior segura lejos de AreaGolIzquierda / AreaGolDerecha
-	if equipo == Equipo.LOCAL:
-		global_position.x = clampf(global_position.x, -18.2, -14.5)
-	else:
-		global_position.x = clampf(global_position.x, 14.5, 18.2)
-	global_position.z = clampf(global_position.z, -2.8, 2.8)
-	
+	# Iniciar el saque con la mano desde las coordenadas exactas de la atajada (sin sobrescribir global_position)
+	# Reorientar suavemente la rotación hacia la cancha con slerp/lerp_angle
 	var dir_frente: Vector3 = Vector3(1.0 if equipo == Equipo.LOCAL else -1.0, 0.0, 0.0)
-	rotation.y = atan2(-dir_frente.x, -dir_frente.z)
+	var angulo_meta: float = atan2(-dir_frente.x, -dir_frente.z)
+	rotation.y = lerp_angle(rotation.y, angulo_meta, 0.35)
+	rotation.x = 0.0
+	rotation.z = 0.0
 	
 	_tiempo_inmunidad_robo = 9999.0 # Inmune a robos con la mano
 	balon.capturar_por(self)
@@ -1831,12 +1833,13 @@ func _gestionar_conduccion_y_robos(delta: float) -> void:
 		return
 	
 	if tiene_balon_en_manos:
-		# Balón a la altura de las manos / pecho del arquero, siempre proyectado hacia la cancha
-		var pos_manos: Vector3 = global_position - global_transform.basis.z * 0.58 + Vector3(0.0, 0.85, 0.0)
+		# Balón a la altura de las manos / pecho del arquero proyectado al frente según su rotación
+		var pos_manos: Vector3 = global_position - global_transform.basis.z * 0.55 + Vector3(0.0, 0.85, 0.0)
 		if equipo == Equipo.LOCAL:
-			pos_manos.x = maxf(pos_manos.x, -18.0)
+			pos_manos.x = clampf(pos_manos.x, -19.80, -16.0)
 		else:
-			pos_manos.x = minf(pos_manos.x, 18.0)
+			pos_manos.x = clampf(pos_manos.x, 16.0, 19.80)
+		pos_manos.z = clampf(pos_manos.z, -2.15, 2.15)
 		_balon_referencia.conducir_hacia(pos_manos, delta, 99.0, self)
 	elif not _en_posicion_saque:
 		var pos_destino: Vector3 = punto_conduccion.global_position if punto_conduccion else global_position - global_transform.basis.z * 0.62
@@ -3050,8 +3053,8 @@ func _comportamiento_portero(delta: float, pos_balon: Vector3, balon: Balon3D) -
 		return
 	
 	if es_tiro_peligroso and not es_pase_companero and dist_al_balon < 15.0:
-		var limite_cobertura_z: float = 1.35 + (gk_posicionamiento / 99.0) * 0.35
-		var intercept_z: float = clampf(pos_balon.z + (vel_balon.z / maxf(0.1, abs(vel_balon.x))) * abs(global_position.x - pos_balon.x), -limite_cobertura_z, limite_cobertura_z)
+		var intercept_z: float = clampf(pos_balon.z + (vel_balon.z / maxf(0.1, abs(vel_balon.x))) * abs(global_position.x - pos_balon.x), -1.75, 1.75)
+		_target_z_dive = intercept_z
 		var pos_bloqueo: Vector3 = Vector3(global_position.x, 0.0, intercept_z)
 		_direccion_deseada = (pos_bloqueo - global_position).normalized()
 		sprint_activo = true
@@ -3069,7 +3072,7 @@ func _comportamiento_portero(delta: float, pos_balon: Vector3, balon: Balon3D) -
 				var f_ref: float = factor_stat(gk_reflejos)
 				var f_ach: float = factor_stat(gk_alcance_achique)
 				var rapidez_dive: float = lerpf(9.5, 12.5, f_ref * 0.5 + f_ach * 0.5)
-				_tiempo_dive_activo = minf(dist_al_balon / rapidez_tiro + 0.10, 0.36)
+				_tiempo_dive_activo = minf(dist_al_balon / rapidez_tiro + 0.10, 0.30)
 				_velocidad_dive_actual = rapidez_dive
 				_lado_dive = _lado_pose_arquero
 				velocity.z = _lado_pose_arquero * rapidez_dive
@@ -3148,8 +3151,8 @@ func _reaccionar_a_disparo_inmediato(pos_origen: Vector3, vel_disparo: Vector3) 
 	var z_inter: float = pos_origen.z + vel_disparo.z * t_inter
 	var y_inter: float = pos_origen.y + vel_disparo.y * t_inter - 0.5 * 9.8 * t_inter * t_inter
 	
-	var lim_z: float = 1.35 + factor_stat(gk_posicionamiento) * 0.35
-	var z_bloqueo: float = clampf(z_inter, -lim_z, lim_z)
+	var z_bloqueo: float = clampf(z_inter, -1.75, 1.75)
+	_target_z_dive = z_bloqueo
 	var diff_z: float = z_bloqueo - global_position.z
 	var dir_lat: float = signf(diff_z) if absf(diff_z) > 0.08 else 0.0
 	
@@ -3161,7 +3164,7 @@ func _reaccionar_a_disparo_inmediato(pos_origen: Vector3, vel_disparo: Vector3) 
 		var f_ref: float = factor_stat(gk_reflejos)
 		var f_ach: float = factor_stat(gk_alcance_achique)
 		var rapidez_dive: float = lerpf(9.5, 12.5, f_ref * 0.5 + f_ach * 0.5)
-		_tiempo_dive_activo = minf(t_inter + 0.12, 0.38)
+		_tiempo_dive_activo = minf(t_inter + 0.12, 0.30)
 		_velocidad_dive_actual = rapidez_dive
 		_lado_dive = _lado_pose_arquero
 		velocity.z = _lado_pose_arquero * rapidez_dive
@@ -3762,12 +3765,36 @@ func _aplicar_movimiento(delta: float) -> void:
 	if posicion_tactica == "PORTERO" and _tiempo_dive_activo > 0.0:
 		_tiempo_dive_activo -= delta
 		vel_max_efectiva = maxf(vel_max_efectiva, _velocidad_dive_actual)
+		
+		# Cancelar estirada al alcanzar target_z, rebasar 1.78m o si el balón rebotó/pasó
+		var paso_target: bool = (_lado_dive > 0.0 and global_position.z >= _target_z_dive) or (_lado_dive < 0.0 and global_position.z <= _target_z_dive)
+		var excedio_limite: bool = absf(global_position.z) >= 1.78
+		var balon_paso_o_reboto: bool = false
+		var b_chk: Balon3D = _obtener_balon_juego()
+		if b_chk != null and is_instance_valid(b_chk):
+			if equipo == Equipo.LOCAL and b_chk.linear_velocity.x > 0.5:
+				balon_paso_o_reboto = true
+			elif equipo == Equipo.VISITANTE and b_chk.linear_velocity.x < -0.5:
+				balon_paso_o_reboto = true
+			if equipo == Equipo.LOCAL and b_chk.global_position.x < global_position.x - 0.2:
+				balon_paso_o_reboto = true
+			elif equipo == Equipo.VISITANTE and b_chk.global_position.x > global_position.x + 0.2:
+				balon_paso_o_reboto = true
+		
+		if paso_target or excedio_limite or balon_paso_o_reboto:
+			velocity.z = 0.0
+			_velocidad_dive_actual = 0.0
+			_tiempo_dive_activo = 0.0
 	
 	var vel_horizontal: Vector3 = Vector3(velocity.x, 0.0, velocity.z)
 	
 	if posicion_tactica == "PORTERO" and _tiempo_dive_activo > 0.0:
 		vel_horizontal.z = lerpf(vel_horizontal.z, _velocidad_dive_actual * _lado_dive, clampf(18.0 * delta, 0.0, 1.0))
 		vel_horizontal.x = vel_horizontal.x * 0.35
+		if absf(global_position.z) >= 1.78 or (_lado_dive > 0.0 and global_position.z >= _target_z_dive) or (_lado_dive < 0.0 and global_position.z <= _target_z_dive):
+			vel_horizontal.z = 0.0
+			velocity.z = 0.0
+			_tiempo_dive_activo = 0.0
 	elif _direccion_deseada.length_squared() > 0.01:
 		var vel_objetivo: Vector3 = _direccion_deseada * vel_max_efectiva
 		vel_horizontal = vel_horizontal.move_toward(vel_objetivo, acel_base * delta)
