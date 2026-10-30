@@ -101,9 +101,9 @@ static func despejar_con_pie(portero: Jugador3D, balon: Balon3D) -> void:
 # GEOMETRÍA DE BISECTRIZ Y ACHIQUE DE FUTSAL REAL (ARCO 3x2 M)
 # ==============================================================================
 
-const RADIO_PIERNA: float = 0.17
-const RADIO_TORSO: float = 0.26
-const RADIO_BRAZO: float = 0.15
+const RADIO_PIERNA: float = 0.13
+const RADIO_TORSO: float = 0.22
+const RADIO_BRAZO: float = 0.13
 
 
 ## Calcula la posición óptima del arquero sobre la bisectriz geométrica del arco

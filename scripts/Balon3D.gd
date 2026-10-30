@@ -495,6 +495,18 @@ func _limpiar_portadores_previos(excepto: Node3D = null) -> void:
 
 ## Pasa el balón al estado de posesión magnética con el jugador indicado
 func capturar_por(jugador: Node3D) -> void:
+	# Prohibición estricta de captura aérea: si el balón está por encima de 1.15m
+	# solo el portero con las manos dentro de su área puede tomarlo.
+	if global_position.y > 1.15:
+		var es_portero_manos: bool = false
+		if jugador != null:
+			if ("tiene_balon_en_manos" in jugador and bool(jugador.tiene_balon_en_manos)):
+				es_portero_manos = true
+			elif ("posicion_tactica" in jugador and str(jugador.posicion_tactica) == "PORTERO" and jugador.has_method("_esta_en_area_propia") and jugador._esta_en_area_propia(global_position)):
+				es_portero_manos = true
+		if not es_portero_manos:
+			return
+
 	if jugador != null and jugador != ultimo_pasador and jugador != ultimo_ejecutor_saque:
 		if ultimo_pasador != null and is_instance_valid(ultimo_pasador) and ultimo_pasador.has_method("desbloquear_recaptura"):
 			ultimo_pasador.desbloquear_recaptura()
@@ -598,14 +610,13 @@ func liberar(impulso: Vector3, equipo_origen: int = -1, es_pase_pie_companero: b
 	var vel_inicial: Vector3 = (impulso / mass) if mass > 0.0 else impulso
 	linear_velocity = vel_inicial
 	angular_velocity = Vector3.ZERO
-	apply_central_impulse(impulso)
 	if linear_velocity.length() < 1.0 and impulso.length_squared() > 0.01:
 		linear_velocity = impulso.normalized() * 9.5
 	balon_liberado.emit()
 
 
 ## Mecánica de "Cucharita" (Pase elevado / Vaselina):
-## - Reduce la fuerza de avance hacia adelante (Z) en un 40-50% (factor 0.55) a favor de la componente vertical (Y).
+## - Mantiene una trayectoria parabólica tensa de futsal con altura máxima calibrada (1.8 a 2.6 m).
 ## - Aplica un torque negativo sobre el eje local X de la cámara activa para generar backspin regresivo:
 ##   `apply_torque_impulse(-camera.global_transform.basis.x * backspin_factor)`
 func liberar_cucharita(
@@ -618,13 +629,15 @@ func liberar_cucharita(
 	if cam_activa == null and get_viewport() != null:
 		cam_activa = get_viewport().get_camera_3d()
 	
-	# Reducir la fuerza hacia adelante (plano XZ / frontal Z) en un 45% (rango 40-50%) a favor de la componente vertical (Y)
 	var imp_horiz: Vector3 = Vector3(impulso_base.x, 0.0, impulso_base.z)
-	var mag_horiz_original: float = imp_horiz.length()
-	var imp_horiz_reducido: Vector3 = imp_horiz * 0.55
-	var transferencia_vertical: float = mag_horiz_original * 0.45
-	var imp_vertical_final: float = maxf(impulso_base.y, transferencia_vertical)
-	var impulso_cucharita: Vector3 = Vector3(imp_horiz_reducido.x, imp_vertical_final, imp_horiz_reducido.z)
+	var m: float = mass if mass > 0.0 else 0.43
+	# Impulso vertical estricto para arco tenso de futsal (vy entre 5.75 y 6.85 m/s)
+	var imp_vert: float = impulso_base.y
+	if imp_vert <= 0.0:
+		imp_vert = 5.75 * m
+	else:
+		imp_vert = clampf(imp_vert, 5.75 * m, 6.85 * m)
+	var impulso_cucharita: Vector3 = Vector3(imp_horiz.x, imp_vert, imp_horiz.z)
 	
 	liberar(impulso_cucharita, equipo_origen, es_pase_pie_companero)
 	
@@ -788,53 +801,39 @@ func _amortiguar_en_red() -> void:
 
 
 ## Evalúa geométricamente si el balón cruzó el plano de meta de cualquiera de las porterías
-## Detección continua mediante segmento pos_ant -> pos_act y soporte de rebote intra-frame en el fondo de la red.
+## Detección continua estricta mediante segmento pos_ant -> pos_act cruzando la línea de cal (|X| >= 20.02).
 ## Retorna 0 para arco derecho (gol de LOCAL), 1 para arco izquierdo (gol de VISITANTE), o -1 si no hubo gol.
-func _evaluar_cruce_plano_meta(pos_ant: Vector3, vel_ant: Vector3, pos_act: Vector3, vel_act: Vector3) -> int:
+func _evaluar_cruce_plano_meta(pos_ant: Vector3, _vel_ant: Vector3, pos_act: Vector3, _vel_act: Vector3) -> int:
 	if esta_fuera_de_juego:
 		return -1
 	if not es_gol_valido_reglamentario():
 		return -1
 
-	# ARCO DERECHO (X = 20.0, gol de LOCAL)
-	# Caso A (Cruce directo hacia afuera de la cancha):
-	if pos_ant.x < 20.0 and pos_act.x >= 19.98:
+	# ARCO DERECHO (X = 20.02, gol de LOCAL)
+	# Cruce directo hacia adentro de la portería derecha:
+	if pos_ant.x < 20.02 and pos_act.x >= 20.02:
 		var dx: float = pos_act.x - pos_ant.x
-		var t: float = clampf((20.0 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
+		var t: float = clampf((20.02 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
 		var y_cruce: float = lerpf(pos_ant.y, pos_act.y, t)
 		var z_cruce: float = lerpf(pos_ant.z, pos_act.z, t)
 		if absf(z_cruce) <= 1.48 and y_cruce <= 1.98 and y_cruce >= -0.05:
 			return 0
 
-	# Caso B (Rebote intra-frame dentro de la red del arco derecho):
-	# Venía desde dentro de la cancha (pos_ant.x < 20.0, vel_ant.x > 0.0)
-	# y rebotó hacia atrás (vel_act.x < 0.0) estando cerca de la boca del arco (pos_act.x >= 19.30)
-	if pos_ant.x < 20.0 and vel_ant.x > 0.0 and vel_act.x < 0.0 and pos_act.x >= 19.30:
-		if absf(pos_act.z) <= 1.48 and pos_act.y <= 1.98 and pos_act.y >= -0.05:
-			return 0
-
-	# ARCO IZQUIERDO (X = -20.0, gol de VISITANTE)
-	# Caso A (Cruce directo hacia afuera de la cancha):
-	if pos_ant.x > -20.0 and pos_act.x <= -19.98:
+	# ARCO IZQUIERDO (X = -20.02, gol de VISITANTE)
+	# Cruce directo hacia adentro de la portería izquierda:
+	if pos_ant.x > -20.02 and pos_act.x <= -20.02:
 		var dx_izq: float = pos_act.x - pos_ant.x
-		var t_izq: float = clampf((-20.0 - pos_ant.x) / dx_izq, 0.0, 1.0) if absf(dx_izq) > 0.0001 else 0.5
+		var t_izq: float = clampf((-20.02 - pos_ant.x) / dx_izq, 0.0, 1.0) if absf(dx_izq) > 0.0001 else 0.5
 		var y_cruce_izq: float = lerpf(pos_ant.y, pos_act.y, t_izq)
 		var z_cruce_izq: float = lerpf(pos_ant.z, pos_act.z, t_izq)
 		if absf(z_cruce_izq) <= 1.48 and y_cruce_izq <= 1.98 and y_cruce_izq >= -0.05:
-			return 1
-
-	# Caso B (Rebote intra-frame dentro de la red del arco izquierdo):
-	# Venía desde dentro de la cancha (pos_ant.x > -20.0, vel_ant.x < 0.0)
-	# y rebotó hacia atrás (vel_act.x > 0.0) estando cerca de la boca del arco (pos_act.x <= -19.30)
-	if pos_ant.x > -20.0 and vel_ant.x < 0.0 and vel_act.x > 0.0 and pos_act.x <= -19.30:
-		if absf(pos_act.z) <= 1.48 and pos_act.y <= 1.98 and pos_act.y >= -0.05:
 			return 1
 
 	return -1
 
 
 ## Valida si el balón ingresó legítimamente a la portería desde el terreno de juego
-## Detección Geométrica de Cruce de Plano con soporte para rebotes intra-frame en la red
+## Detección Geométrica de Cruce de Plano estricta en |X| >= 20.02 (sin detección de rebote antes de línea)
 func es_gol_valido_posicional(es_arco_derecho: bool) -> bool:
 	if esta_fuera_de_juego:
 		return false
@@ -843,49 +842,35 @@ func es_gol_valido_posicional(es_arco_derecho: bool) -> bool:
 	
 	var pos: Vector3 = global_position
 	var pos_ant: Vector3 = _pos_anterior_step if _pos_anterior_step != Vector3.ZERO else pos_previa
-	var vel_ant: Vector3 = _vel_anterior_step if _vel_anterior_step != Vector3.ZERO else vel_previa
-	var vel_act: Vector3 = linear_velocity
 	
 	if es_arco_derecho:
-		# Caso A: Cruce directo
-		if pos_ant.x < 20.0 and pos.x >= 19.98:
+		# Cruce directo hacia adentro del arco derecho
+		if pos_ant.x < 20.02 and pos.x >= 20.02:
 			var dx: float = pos.x - pos_ant.x
-			var t: float = clampf((20.0 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
+			var t: float = clampf((20.02 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
 			var y_cruce: float = lerpf(pos_ant.y, pos.y, t)
 			var z_cruce: float = lerpf(pos_ant.z, pos.z, t)
 			if absf(z_cruce) <= 1.48 and y_cruce <= 1.98 and y_cruce >= -0.05:
 				_amortiguar_en_red()
 				return true
 		
-		# Caso B: Rebote intra-frame dentro de la red
-		if pos_ant.x < 20.0 and vel_ant.x > 0.0 and vel_act.x < 0.0 and pos.x >= 19.30:
-			if absf(pos.z) <= 1.48 and pos.y <= 1.98 and pos.y >= -0.05:
-				_amortiguar_en_red()
-				return true
-		
-		# Posición profunda dentro de la red
-		if pos.x >= 20.0 and absf(pos.z) <= 1.48 and pos.y <= 1.98 and pos.y >= -0.05:
+		# Posición profunda dentro de la red (claramente rebasó la línea)
+		if pos.x >= 20.05 and absf(pos.z) <= 1.48 and pos.y <= 1.98 and pos.y >= -0.05:
 			_amortiguar_en_red()
 			return true
 	else:
-		# Caso A: Cruce directo arco izquierdo
-		if pos_ant.x > -20.0 and pos.x <= -19.98:
+		# Cruce directo hacia adentro del arco izquierdo
+		if pos_ant.x > -20.02 and pos.x <= -20.02:
 			var dx: float = pos.x - pos_ant.x
-			var t: float = clampf((-20.0 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
+			var t: float = clampf((-20.02 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
 			var y_cruce: float = lerpf(pos_ant.y, pos.y, t)
 			var z_cruce: float = lerpf(pos_ant.z, pos.z, t)
 			if absf(z_cruce) <= 1.48 and y_cruce <= 1.98 and y_cruce >= -0.05:
-				_amortiguar_en_red()
-				return true
-		
-		# Caso B: Rebote intra-frame dentro de la red arco izquierdo
-		if pos_ant.x > -20.0 and vel_ant.x < 0.0 and vel_act.x > 0.0 and pos.x <= -19.30:
-			if absf(pos.z) <= 1.48 and pos.y <= 1.98 and pos.y >= -0.05:
 				_amortiguar_en_red()
 				return true
 		
 		# Posición profunda dentro de la red arco izquierdo
-		if pos.x <= -20.0 and absf(pos.z) <= 1.48 and pos.y <= 1.98 and pos.y >= -0.05:
+		if pos.x <= -20.05 and absf(pos.z) <= 1.48 and pos.y <= 1.98 and pos.y >= -0.05:
 			_amortiguar_en_red()
 			return true
 			
