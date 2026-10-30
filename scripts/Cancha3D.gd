@@ -67,9 +67,15 @@ func _physics_process(_delta: float) -> void:
 		_procesar_saque_de_banda(pos)
 		return
 	
-	# 2. Comprobación estricta e inmediata de líneas de fondo / meta (|X| >= 20.05 m)
+	# 2. Comprobación de líneas de fondo / meta (|X| >= 20.05 m)
 	if abs(pos.x) >= 20.05:
-		var dentro_marco: bool = (abs(pos.z) <= 1.52 and pos.y <= 2.02 and pos.y >= -0.05)
+		if balon._gol_ya_notificado:
+			return
+		var es_derecho: bool = pos.x > 0.0
+		if balon.es_gol_valido_posicional(es_derecho):
+			_on_balon_gol_detectado(es_derecho)
+			return
+		var dentro_marco: bool = (abs(pos.z) <= 1.82 and pos.y <= 2.15 and pos.y >= -0.05)
 		if not dentro_marco:
 			balon.esta_fuera_de_juego = true
 			_procesar_saque_fondo(pos)

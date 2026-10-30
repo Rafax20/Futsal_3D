@@ -171,10 +171,10 @@ func _physics_process(delta: float) -> void:
 				_gol_ya_notificado = true
 				_amortiguar_en_red()
 				gol_detectado.emit(res_gol == 0)
+				return
 
-		# Detección estricta e inmediata de cruce de Línea de Fondo (|X| >= 20.05) fuera de portería
-		if not esta_fuera_de_juego and absf(global_position.x) >= 20.05:
-			var dentro_marco: bool = (absf(global_position.z) <= 1.52 and global_position.y <= 2.02 and global_position.y >= -0.05)
+		if not esta_fuera_de_juego and not _gol_ya_notificado and absf(global_position.x) >= 20.05:
+			var dentro_marco: bool = (absf(global_position.z) <= 1.82 and global_position.y <= 2.15 and global_position.y >= -0.05)
 			if not dentro_marco:
 				esta_fuera_de_juego = true
 				linea_fondo_cruzada_fuera.emit(global_position, global_position.x > 0.0)
@@ -809,24 +809,22 @@ func _evaluar_cruce_plano_meta(pos_ant: Vector3, _vel_ant: Vector3, pos_act: Vec
 	if not es_gol_valido_reglamentario():
 		return -1
 
-	# ARCO DERECHO (X = 20.02, gol de LOCAL)
-	# Cruce directo hacia adentro de la portería derecha:
-	if pos_ant.x < 20.02 and pos_act.x >= 20.02:
+	# ARCO DERECHO (X = 20.0, gol de LOCAL)
+	if pos_ant.x < 20.00 and pos_act.x >= 20.00:
 		var dx: float = pos_act.x - pos_ant.x
-		var t: float = clampf((20.02 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
+		var t: float = clampf((20.00 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
 		var y_cruce: float = lerpf(pos_ant.y, pos_act.y, t)
 		var z_cruce: float = lerpf(pos_ant.z, pos_act.z, t)
-		if absf(z_cruce) <= 1.48 and y_cruce <= 1.98 and y_cruce >= -0.05:
+		if absf(z_cruce) <= 1.80 and y_cruce <= 2.12 and y_cruce >= -0.05:
 			return 0
 
-	# ARCO IZQUIERDO (X = -20.02, gol de VISITANTE)
-	# Cruce directo hacia adentro de la portería izquierda:
-	if pos_ant.x > -20.02 and pos_act.x <= -20.02:
+	# ARCO IZQUIERDO (X = -20.0, gol de VISITANTE)
+	if pos_ant.x > -20.00 and pos_act.x <= -20.00:
 		var dx_izq: float = pos_act.x - pos_ant.x
-		var t_izq: float = clampf((-20.02 - pos_ant.x) / dx_izq, 0.0, 1.0) if absf(dx_izq) > 0.0001 else 0.5
+		var t_izq: float = clampf((-20.00 - pos_ant.x) / dx_izq, 0.0, 1.0) if absf(dx_izq) > 0.0001 else 0.5
 		var y_cruce_izq: float = lerpf(pos_ant.y, pos_act.y, t_izq)
 		var z_cruce_izq: float = lerpf(pos_ant.z, pos_act.z, t_izq)
-		if absf(z_cruce_izq) <= 1.48 and y_cruce_izq <= 1.98 and y_cruce_izq >= -0.05:
+		if absf(z_cruce_izq) <= 1.80 and y_cruce_izq <= 2.12 and y_cruce_izq >= -0.05:
 			return 1
 
 	return -1
@@ -844,33 +842,27 @@ func es_gol_valido_posicional(es_arco_derecho: bool) -> bool:
 	var pos_ant: Vector3 = _pos_anterior_step if _pos_anterior_step != Vector3.ZERO else pos_previa
 	
 	if es_arco_derecho:
-		# Cruce directo hacia adentro del arco derecho
-		if pos_ant.x < 20.02 and pos.x >= 20.02:
+		if pos_ant.x < 20.00 and pos.x >= 20.00:
 			var dx: float = pos.x - pos_ant.x
-			var t: float = clampf((20.02 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
+			var t: float = clampf((20.00 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
 			var y_cruce: float = lerpf(pos_ant.y, pos.y, t)
 			var z_cruce: float = lerpf(pos_ant.z, pos.z, t)
-			if absf(z_cruce) <= 1.48 and y_cruce <= 1.98 and y_cruce >= -0.05:
+			if absf(z_cruce) <= 1.80 and y_cruce <= 2.12 and y_cruce >= -0.05:
 				_amortiguar_en_red()
 				return true
-		
-		# Posición profunda dentro de la red (claramente rebasó la línea)
-		if pos.x >= 20.05 and absf(pos.z) <= 1.48 and pos.y <= 1.98 and pos.y >= -0.05:
+		if pos.x >= 20.00 and absf(pos.z) <= 1.80 and pos.y <= 2.12 and pos.y >= -0.05:
 			_amortiguar_en_red()
 			return true
 	else:
-		# Cruce directo hacia adentro del arco izquierdo
-		if pos_ant.x > -20.02 and pos.x <= -20.02:
+		if pos_ant.x > -20.00 and pos.x <= -20.00:
 			var dx: float = pos.x - pos_ant.x
-			var t: float = clampf((-20.02 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
+			var t: float = clampf((-20.00 - pos_ant.x) / dx, 0.0, 1.0) if absf(dx) > 0.0001 else 0.5
 			var y_cruce: float = lerpf(pos_ant.y, pos.y, t)
 			var z_cruce: float = lerpf(pos_ant.z, pos.z, t)
-			if absf(z_cruce) <= 1.48 and y_cruce <= 1.98 and y_cruce >= -0.05:
+			if absf(z_cruce) <= 1.80 and y_cruce <= 2.12 and y_cruce >= -0.05:
 				_amortiguar_en_red()
 				return true
-		
-		# Posición profunda dentro de la red arco izquierdo
-		if pos.x <= -20.05 and absf(pos.z) <= 1.48 and pos.y <= 1.98 and pos.y >= -0.05:
+		if pos.x <= -20.00 and absf(pos.z) <= 1.80 and pos.y <= 2.12 and pos.y >= -0.05:
 			_amortiguar_en_red()
 			return true
 			
@@ -940,6 +932,10 @@ func colocar_en_reanudacion(nueva_posicion: Vector3) -> void:
 		PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, Transform3D(Basis(), pos_ajustada))
 		PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, Vector3.ZERO)
 		PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY, Vector3.ZERO)
+	pos_previa = pos_ajustada
+	_pos_anterior_step = pos_ajustada
+	vel_previa = Vector3.ZERO
+	_vel_anterior_step = Vector3.ZERO
 	esta_fuera_de_juego = false
 
 

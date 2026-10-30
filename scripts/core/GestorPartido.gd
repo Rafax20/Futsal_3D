@@ -963,7 +963,10 @@ func omitir_secuencia_falta() -> void:
 	if _tween_cinematica != null and _tween_cinematica.is_valid():
 		_tween_cinematica.kill()
 	Engine.time_scale = 1.0
-	_finalizar_cinematica_y_pasar_a_pre_pitazo()
+	if esperando_pitazo_arbitro:
+		_autorizar_saque_tiro_libre()
+	else:
+		_finalizar_cinematica_y_pasar_a_pre_pitazo()
 
 
 ## ETAPA 3: FASE DE POSICIONAMIENTO Y RECONOCIMIENTO PRE-PITAZO (1.3 s SIN CORRER EL TIEMPO)
@@ -1028,6 +1031,8 @@ func _finalizar_cinematica_y_pasar_a_pre_pitazo() -> void:
 
 ## ETAPA 4: PITAZO DE AUTORIZACIÓN E INICIO DE LOS 4 SEGUNDOS REGLAMENTARIOS
 func _autorizar_saque_tiro_libre() -> void:
+	esperando_pitazo_arbitro = false
+	_en_cinematica_falta = false
 	if estado != EstadoPartido.TIRO_LIBRE and estado != EstadoPartido.DOBLE_PENALTI:
 		return
 
@@ -1037,7 +1042,6 @@ func _autorizar_saque_tiro_libre() -> void:
 	if hud:
 		hud.mostrar_anuncio("¡SAQUE AUTORIZADO! (4.0 s)", 1.2)
 
-	esperando_pitazo_arbitro = false
 	_timer_timeout = 4.0
 	cuenta_regresiva_4s_actualizada.emit(4.0, true)
 
@@ -1557,6 +1561,10 @@ func _on_balon_liberado() -> void:
 
 ## Finaliza la reanudación pasando al estado EN_JUEGO y activando el reloj neto
 func _finalizar_reanudacion() -> void:
+	esperando_pitazo_arbitro = false
+	_en_cinematica_falta = false
+	if _tween_cinematica != null and _tween_cinematica.is_valid():
+		_tween_cinematica.kill()
 	if _esperando_toque or (estado != EstadoPartido.EN_JUEGO and estado != EstadoPartido.ENTRADA_EQUIPOS and estado != EstadoPartido.TIEMPO_MUERTO):
 		_esperando_toque = false
 		cuenta_regresiva_4s_actualizada.emit(0.0, false)
