@@ -2308,19 +2308,37 @@ func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> voi
 		_balon_referencia.receptor_destino = null
 		var dir_defecto: Vector3 = dir_busqueda.rotated(Vector3.UP, desvio_angulo).normalized()
 		var vel_def: float = _calcular_velocidad_pase_raso(potencia)
-		var imp_def: Vector3 = dir_defecto * (vel_def * _balon_referencia.mass)
 		if era_saque_mano:
 			_balon_referencia.global_position = global_position + Vector3(0.0, 0.25, 0.0)
 		soltar_posesion()
 		_t_bloqueo_recaptura = 1.0
 		if control_balon_area:
 			control_balon_area.set_deferred("monitoring", false)
-		_balon_referencia.liberar_pase_raso(imp_def, int(equipo), es_pase_pie_campo, self)
+		if tipo_pase == TipoPase.ELEVADO:
+			var vy_elev: float = lerpf(5.75, 6.85, clampf(potencia, 0.0, 1.0))
+			var cam_p: Camera3D = get_viewport().get_camera_3d() if get_viewport() else null
+			var imp_elev: Vector3 = dir_defecto * (vel_def * _balon_referencia.mass) + Vector3(0.0, vy_elev * _balon_referencia.mass, 0.0)
+			_balon_referencia.liberar_cucharita(imp_elev, cam_p, int(equipo), es_pase_pie_campo)
+			if equipo == Equipo.LOCAL:
+				_emitir_anuncio_hud("¡PASE ELEVADO / SOMBRERITO!")
+		else:
+			var imp_def: Vector3 = dir_defecto * (vel_def * _balon_referencia.mass)
+			_balon_referencia.liberar_pase_raso(imp_def, int(equipo), es_pase_pie_campo, self)
 		var gestor_sc2: Node = get_tree().get_first_node_in_group("gestor_partido")
 		if gestor_sc2 and gestor_sc2.has_method("notificar_toque_saque_centro"):
 			gestor_sc2.notificar_toque_saque_centro()
 		if posicion_tactica == "PORTERO" and equipo == Equipo.LOCAL and es_controlado:
 			cambiar_a_mas_cercano_al_balon(false)
+
+
+## Ejecuta un pase elevado / bombeado por encima de defensores (Swipe Up)
+func ejecutar_pase_elevado(potencia: float = 0.5) -> void:
+	ejecutar_pase(potencia, TipoPase.ELEVADO)
+
+
+## Alias para pase picado / sombrerito
+func sombrerito(potencia: float = 0.5) -> void:
+	ejecutar_pase(potencia, TipoPase.ELEVADO)
 
 
 # ==============================================================================
@@ -3068,7 +3086,7 @@ func _comportamiento_sacador_ia(_pos_balon: Vector3, balon: Balon3D) -> void:
 ## - Selección de técnica según trayectoria: Despliegue en L, Despeje con el Pie, Bloqueo de Pecho, Estirada Alta o Manos Seguras.
 func _comportamiento_portero(delta: float, pos_balon: Vector3, balon: Balon3D) -> void:
 	# Si el portero IA tiene el balón (ESTADO_PORTERO_MANOS), su traslación está bloqueada; rota hacia un compañero y distribuye con la mano
-	if tiene_posesion or balon.portador_actual == self:
+	if tiene_posesion or (balon != null and balon.portador_actual == self):
 		_en_achique_cruz_k = false
 		pose_arquero_actual = PoseArquero.MANOS_SEGURAS
 		sprint_activo = false
@@ -3236,7 +3254,7 @@ func _comportamiento_portero(delta: float, pos_balon: Vector3, balon: Balon3D) -
 
 ## Notifica en tiempo real a los arqueros del equipo contrario un disparo a puerta
 func _notificar_disparo_a_arquero_rival(pos_origen: Vector3, vel_disparo: Vector3) -> void:
-	if get_tree() == null:
+	if not is_inside_tree() or get_tree() == null:
 		return
 	var grupo_rivales: String = "equipo_visitante" if equipo == Equipo.LOCAL else "equipo_local"
 	var rivales: Array[Node] = get_tree().get_nodes_in_group(grupo_rivales)
@@ -3248,7 +3266,7 @@ func _notificar_disparo_a_arquero_rival(pos_origen: Vector3, vel_disparo: Vector
 
 ## Comprueba si hay defensas o barrera entre el balón y el arquero que obstaculicen su línea de visión directa
 func _hay_obstaculo_vision_arquero() -> bool:
-	if get_tree() == null:
+	if not is_inside_tree() or get_tree() == null:
 		return false
 	var balon: Balon3D = _obtener_balon_juego()
 	if balon == null or not is_instance_valid(balon):
@@ -3833,7 +3851,7 @@ func _comportamiento_defensa_local(_delta: float, pos_balon: Vector3, balon: Bal
 func _obtener_balon_juego() -> Balon3D:
 	if _balon_referencia != null and is_instance_valid(_balon_referencia):
 		return _balon_referencia
-	if get_tree() != null:
+	if is_inside_tree() and get_tree() != null:
 		var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
 		if not balones.is_empty():
 			return balones[0] as Balon3D
@@ -3842,7 +3860,7 @@ func _obtener_balon_juego() -> Balon3D:
 
 ## Calcula la repulsión antipenetración y mantiene el radio de dispersión mínimo de 2.5m entre compañeros
 func _calcular_separacion() -> Vector3:
-	if es_controlado or _en_posicion_saque or tiene_balon_en_manos or get_tree() == null:
+	if es_controlado or _en_posicion_saque or tiene_balon_en_manos or not is_inside_tree() or get_tree() == null:
 		return Vector3.ZERO
 	
 	var empuje: Vector3 = Vector3.ZERO
