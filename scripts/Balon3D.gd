@@ -64,7 +64,7 @@ var _t_cooldown_impacto_barrera: float = 0.0
 
 @export_group("Límites de Velocidad, Curva Magnus y Cucharita")
 ## Velocidad máxima en m/s para prevenir túneles de colisión a altas velocidades (~120 km/h).
-@export var velocidad_maxima: float = 34.0
+@export var velocidad_maxima: float = 42.0
 
 ## Umbral de velocidad (m/s) por debajo del cual el balón frena por completo.
 @export var umbral_detencion: float = 0.15
@@ -284,7 +284,8 @@ func _controlar_rodadura_y_velocidad(delta: float = 0.016) -> void:
 		var vel_xz: Vector2 = Vector2(linear_velocity.x, linear_velocity.z)
 		var rapidez_xz: float = vel_xz.length()
 		if rapidez_xz > 0.01:
-			var nueva_rapidez_xz: float = move_toward(rapidez_xz, 0.0, desaceleracion_rodadura * delta)
+			var desacel_efectiva: float = desaceleracion_rodadura * (0.35 if vel_actual > 16.0 else 1.0)
+			var nueva_rapidez_xz: float = move_toward(rapidez_xz, 0.0, desacel_efectiva * delta)
 			var dir_xz: Vector2 = vel_xz / rapidez_xz
 			linear_velocity.x = dir_xz.x * nueva_rapidez_xz
 			linear_velocity.z = dir_xz.y * nueva_rapidez_xz
@@ -328,13 +329,13 @@ func procesar_impacto_arquero(zona: String, arquero: Jugador3D) -> void:
 			var prob_embolsar: float = 0.55
 			if arquero and is_instance_valid(arquero) and arquero.has_method("factor_stat"):
 				prob_embolsar = arquero.factor_stat(arquero.gk_bloqueo_control) * 0.80
-			if vel_tiro < 12.0 or randf() < prob_embolsar:
+			var puede_manos: bool = (arquero and is_instance_valid(arquero) and Portero.puede_usar_manos(arquero, self))
+			if (vel_tiro < 12.0 or randf() < prob_embolsar) and puede_manos:
 				# Velocidad baja (< 12 m/s) o alto bloqueo_control: El arquero embolsa (bloquea y asegura posesión)
 				linear_velocity = Vector3.ZERO
 				angular_velocity = Vector3.ZERO
-				if arquero and is_instance_valid(arquero):
-					arquero.atrapar_con_manos(self)
-				atajada_realizada.emit("manos", nombre_arq)
+				arquero.atrapar_con_manos(self)
+				atajada_realizada.emit("atrapada", nombre_arq)
 			else:
 				# Tiro potente (> 12 m/s): Aplica un desvío angular hacia el lateral/córner con atenuación lineal (linear_velocity *= 0.45)
 				var dir_alej_x: float = -1.0 if (arquero and arquero.global_position.x > 0.0) else 1.0
@@ -344,6 +345,15 @@ func procesar_impacto_arquero(zona: String, arquero: Jugador3D) -> void:
 				linear_velocity = dir_desvio * rapidez_atenuada
 				angular_velocity = Vector3(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0), randf_range(-4.0, 4.0))
 				atajada_realizada.emit("manos", nombre_arq)
+		
+		"antebrazos":
+			# Desvío físico rápido hacia bandas o córner; nunca atrapa
+			var dir_alej_x: float = -1.0 if (arquero and arquero.global_position.x > 0.0) else 1.0
+			var dir_lat_z: float = 1.0 if (arquero and global_position.z >= arquero.global_position.z) else -1.0
+			var dir_desvio: Vector3 = Vector3(dir_alej_x * 0.48, 0.20, dir_lat_z * 0.86).normalized()
+			linear_velocity = dir_desvio * (vel_tiro * 0.48)
+			angular_velocity = Vector3(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0), randf_range(-4.0, 4.0))
+			atajada_realizada.emit("antebrazos", nombre_arq)
 		
 		"pecho", "cabeza":
 			# Rebote hacia el frente con bajo coeficiente de restitución (bounce = 0.2), suelto en el área
@@ -364,14 +374,12 @@ func procesar_impacto_arquero(zona: String, arquero: Jugador3D) -> void:
 			linear_velocity = dir_piernas * rapidez_piernas
 			linear_velocity.y = linear_velocity.y * 0.20
 			angular_velocity = Vector3(0.0, randf_range(-3.0, 3.0), 0.0)
-			atajada_realizada.emit("piernas", nombre_arq)
+			var zona_p: String = "cruz" if (arquero and (arquero.pose_arquero_actual == arquero.PoseArquero.LA_CRUZ or arquero._en_achique_cruz_k)) else "piernas"
+			atajada_realizada.emit(zona_p, nombre_arq)
 		
 		_:
 			linear_velocity *= 0.40
 			atajada_realizada.emit(zona, nombre_arq)
-	
-	if arquero and is_instance_valid(arquero) and arquero.has_signal("atajada_realizada"):
-		arquero.atajada_realizada.emit(zona, nombre_arq)
 
 
 ## Procesa la respuesta física de rebote o sanción disciplinaria ante impactos con la barrera defensiva
@@ -932,6 +940,7 @@ func colocar_en_reanudacion(nueva_posicion: Vector3) -> void:
 		PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, Transform3D(Basis(), pos_ajustada))
 		PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, Vector3.ZERO)
 		PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY, Vector3.ZERO)
+	_t_cooldown_impacto_arquero = 0.65
 	pos_previa = pos_ajustada
 	_pos_anterior_step = pos_ajustada
 	vel_previa = Vector3.ZERO

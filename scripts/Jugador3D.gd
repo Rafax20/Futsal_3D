@@ -256,8 +256,9 @@ static var _textura_glb_normal_cache: Texture2D = null
 @onready var punto_conduccion: Marker3D = $PuntoConduccion
 var _mat_flecha_guia: StandardMaterial3D = null
 
-# Hitboxes anatómicas de contacto para el arquero (Manos, Pecho, Piernas, Cabeza)
+# Hitboxes anatómicas de contacto para el arquero (Manos, Antebrazos, Pecho, Piernas, Cabeza)
 var area_manos: Area3D = null
+var area_antebrazos: Area3D = null
 var area_pecho: Area3D = null
 var area_piernas: Area3D = null
 var area_cabeza: Area3D = null
@@ -578,7 +579,8 @@ func _inicializar_nodos_modelo_glb() -> void:
 			_rest_right_foot = esqueleto_humanoide.get_bone_rest(_idx_right_foot).basis.get_rotation_quaternion()
 
 		# Relajar articulaciones inicialmente desde la T-Pose
-		if posicion_tactica == "PORTERO":
+		if posicion_tactica == "PORTERO" or es_arquero:
+			_configurar_hitboxes_anatomicas_portero()
 			_actualizar_pose_esqueleto_arquero(0.016)
 		else:
 			_aplicar_pose_esqueleto_actual()
@@ -621,6 +623,17 @@ func _aplicar_posicion_hips_lerp(offset_pos: Vector3, factor: float) -> void:
 	if curr_pos.is_equal_approx(Vector3.ZERO):
 		curr_pos = _rest_hips_pos
 	esqueleto_humanoide.set_bone_pose_position(_idx_hips, curr_pos.lerp(target_pos, clampf(factor, 0.0, 1.0)))
+
+
+## Determina si el arquero está en suelo, estirada o achique activo y debe bloquear su rotación corporal
+func _arquero_en_compromiso_suelo() -> bool:
+	return (
+		_t_anim_atajada > 0.0
+		or _t_bloqueo_recuperacion_suelo > 0.0
+		or _tiempo_dive_activo > 0.0
+		or _en_achique_cruz_k
+		or pose_arquero_actual in [PoseArquero.LA_CRUZ, PoseArquero.DESPLIEGUE_L, PoseArquero.CAIDA_LATERAL]
+	)
 
 
 ## Actualiza procedimentalmente las 7 poses esqueléticas de futsal (`mixamorig5:*`)
@@ -847,6 +860,18 @@ func _actualizar_pose_esqueleto_arquero(delta: float) -> void:
 				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.20, 0.0, -0.45), f)
 				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.15, 0.0, 0.0), f)
 				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.10, 0.0, 0.0), f)
+	
+	# Mientras el arquero está en compromiso de suelo o estrella, la cabeza sigue visualmente el balón (±0.45 rad)
+	if _arquero_en_compromiso_suelo() and _idx_head >= 0:
+		var b_mira: Balon3D = _obtener_balon_juego()
+		if b_mira != null and is_instance_valid(b_mira):
+			var hacia_b: Vector3 = b_mira.global_position - global_position
+			hacia_b.y = 0.0
+			if hacia_b.length_squared() > 0.04:
+				var ang_mundo_balon: float = atan2(-hacia_b.x, -hacia_b.z)
+				var ang_relativo: float = wrapf(ang_mundo_balon - rotation.y, -PI, PI)
+				var ang_cabeza_y: float = clampf(ang_relativo, -0.45, 0.45)
+				_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(6.0), ang_cabeza_y, 0.0), f)
 
 
 ## Actualiza procedimentalmente la postura compacta de defensor en barrera de tiro libre
@@ -2122,11 +2147,11 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 		var destino_poste_lejano: Vector3 = Vector3(arco_x, elevacion_colocado, z_apertura)
 		var dir_tiro: Vector3 = (destino_poste_lejano - pos_origen_tiro).normalized()
 		
-		var vel_max_tiro: float = lerpf(17.5, 25.5, factor_stat(potencia_tiro))
+		var vel_max_colocado: float = lerpf(22.0, 31.0, factor_stat(potencia_tiro))
 		if tiene_rasgo("Cañonero"):
-			vel_max_tiro *= 1.08
-		var fuerza_colocado: float = (vel_max_tiro * 0.55 + potencia * vel_max_tiro * 0.45) * 0.86
-		var impulso_colocado: Vector3 = (dir_tiro * fuerza_colocado + Vector3(0.0, 0.55 + potencia * 0.35, 0.0)) * _balon_referencia.mass
+			vel_max_colocado *= 1.10
+		var vel_colocado: float = vel_max_colocado * lerpf(0.60, 0.95, clampf(potencia, 0.0, 1.0))
+		var impulso_colocado: Vector3 = (dir_tiro * vel_colocado + Vector3(0.0, 0.28 + potencia * 0.25, 0.0)) * _balon_referencia.mass
 		
 		var dir_plana_avance: Vector3 = Vector3(dir_tiro.x, 0.0, dir_tiro.z).normalized()
 		var dir_perp_a_poste: Vector3 = Vector3(0.0, 0.0, signo_curva)
@@ -2156,17 +2181,20 @@ func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> v
 			_emitir_anuncio_hud("¡VASELINA / PICADITA!")
 	else:
 		# TOQUE NORMAL -> DISPARO SECO Y POTENTE DIRECTO A PUERTA
-		var elevacion_y: float = lerpf(0.28, 1.45, clampf(potencia, 0.0, 0.92))
+		var vel_max_tiro: float = lerpf(24.5, 35.0, factor_stat(potencia_tiro))
+		if tiene_rasgo("Cañonero"):
+			vel_max_tiro *= 1.10
+		var factor_carga: float = lerpf(0.62, 1.0, clampf(potencia, 0.0, 1.0))
+		var vel_salida: float = vel_max_tiro * factor_carga
+		
+		var elevacion_y: float = lerpf(0.18, 1.35, clampf(potencia, 0.0, 0.92))
 		if potencia > 0.92:
 			error_dispersion += 0.18
-			elevacion_y = randf_range(1.35, 2.05)
+			elevacion_y = randf_range(1.35, 1.88)
+		
 		var destino_tiro: Vector3 = Vector3(arco_x, elevacion_y, z_colocado)
 		var vector_tiro: Vector3 = (destino_tiro - pos_origen_tiro).normalized()
-		var vel_max_tiro: float = lerpf(17.5, 25.5, factor_stat(potencia_tiro))
-		if tiene_rasgo("Cañonero"):
-			vel_max_tiro *= 1.08
-		var fuerza_total: float = (vel_max_tiro * 0.45 + potencia * vel_max_tiro * 0.55)
-		var impulso_final: Vector3 = (vector_tiro * fuerza_total + Vector3(0.0, 0.45 + potencia * 0.35, 0.0)) * _balon_referencia.mass
+		var impulso_final: Vector3 = (vector_tiro * vel_salida + Vector3(0.0, 0.25 + potencia * 0.25, 0.0)) * _balon_referencia.mass
 		_balon_referencia.liberar(impulso_final, int(equipo), false)
 		_notificar_disparo_a_arquero_rival(pos_origen_tiro, impulso_final / maxf(0.1, _balon_referencia.mass))
 	
@@ -3219,24 +3247,34 @@ func _comportamiento_portero(delta: float, pos_balon: Vector3, balon: Balon3D) -
 				_lado_dive = _lado_pose_arquero
 				velocity.z = _lado_pose_arquero * rapidez_dive
 			
-			if pos_balon.y < 0.75 and absf(diff_z) > 0.28:
+			if pos_balon.y < 0.65 and absf(diff_z) <= 0.85:
+				if dist_al_balon < 4.5:
+					pose_arquero_actual = PoseArquero.LA_CRUZ
+					_en_achique_cruz_k = true
+					_tipo_atajada_actual = EstadoJugador.ACHIQUE_CRUZ_K
+					_t_anim_atajada = 0.55
+				elif absf(diff_z) > 0.15:
+					pose_arquero_actual = PoseArquero.DESPLIEGUE_L
+					_tipo_atajada_actual = EstadoJugador.ATAJADA_BAJA
+					_t_anim_atajada = 0.58
+					_t_bloqueo_recuperacion_suelo = randf_range(0.50, 0.65)
+				else:
+					pose_arquero_actual = PoseArquero.DESPEJE_PIE
+					_tipo_atajada_actual = EstadoJugador.ATAJADA_BAJA
+					_t_anim_atajada = 0.48
+			elif (pos_balon.y < 0.65 and absf(diff_z) > 0.85) or (pos_balon.y >= 0.65 and pos_balon.y <= 1.20 and absf(diff_z) > 0.50):
 				pose_arquero_actual = PoseArquero.CAIDA_LATERAL
 				_tipo_atajada_actual = EstadoJugador.ATAJADA_BAJA
 				_t_anim_atajada = 0.65
 				_t_bloqueo_recuperacion_suelo = randf_range(0.55, 0.75)
-			elif pos_balon.y >= 0.75 and (absf(diff_z) > 0.40 or pos_balon.y > 1.05):
+			elif pos_balon.y > 1.20 or (pos_balon.y >= 0.65 and absf(diff_z) > 0.40):
 				pose_arquero_actual = PoseArquero.ESTIRADA_ALTA
 				_tipo_atajada_actual = EstadoJugador.ATAJADA_MEDIA
 				_t_anim_atajada = 0.55
-			elif pos_balon.y >= 0.75 and absf(diff_z) <= 0.40:
+			elif pos_balon.y >= 0.65 and absf(diff_z) <= 0.40:
 				pose_arquero_actual = PoseArquero.BLOQUEO_PECHO
 				_tipo_atajada_actual = EstadoJugador.ATAJADA_MEDIA
 				_t_anim_atajada = 0.50
-			elif absf(diff_z) > 0.20:
-				pose_arquero_actual = PoseArquero.DESPLIEGUE_L
-				_tipo_atajada_actual = EstadoJugador.ATAJADA_BAJA
-				_t_anim_atajada = 0.58
-				_t_bloqueo_recuperacion_suelo = randf_range(0.50, 0.65)
 			else:
 				pose_arquero_actual = PoseArquero.DESPEJE_PIE
 				_tipo_atajada_actual = EstadoJugador.ATAJADA_BAJA
@@ -3353,20 +3391,28 @@ func _reaccionar_a_disparo_inmediato(pos_origen: Vector3, vel_disparo: Vector3) 
 		velocity.x = 0.0
 	
 	# Transición instantánea a la pose de atajada según altura y desfase lateral
-	if y_inter < 0.65 and absf(diff_z) > 0.35:
+	if y_inter < 0.65 and absf(diff_z) <= 0.85:
+		if dist_origen < 4.5:
+			pose_arquero_actual = PoseArquero.LA_CRUZ
+			_en_achique_cruz_k = true
+			_t_anim_atajada = 0.55
+		elif absf(diff_z) > 0.15:
+			pose_arquero_actual = PoseArquero.DESPLIEGUE_L
+			_t_anim_atajada = 0.55
+			_t_bloqueo_recuperacion_suelo = randf_range(0.50, 0.65)
+		else:
+			pose_arquero_actual = PoseArquero.DESPEJE_PIE
+			_t_anim_atajada = 0.48
+	elif (y_inter < 0.65 and absf(diff_z) > 0.85) or (y_inter >= 0.65 and y_inter <= 1.20 and absf(diff_z) > 0.50):
 		pose_arquero_actual = PoseArquero.CAIDA_LATERAL
 		_t_anim_atajada = 0.60
 		_t_bloqueo_recuperacion_suelo = randf_range(0.55, 0.75)
-	elif y_inter >= 0.65 and (absf(diff_z) > 0.40 or y_inter > 1.0):
+	elif y_inter > 1.20 or (y_inter >= 0.65 and absf(diff_z) > 0.40):
 		pose_arquero_actual = PoseArquero.ESTIRADA_ALTA
 		_t_anim_atajada = 0.55
 	elif y_inter >= 0.65 and absf(diff_z) <= 0.40:
 		pose_arquero_actual = PoseArquero.BLOQUEO_PECHO
 		_t_anim_atajada = 0.50
-	elif absf(diff_z) > 0.55:
-		pose_arquero_actual = PoseArquero.DESPLIEGUE_L
-		_t_anim_atajada = 0.52
-		_t_bloqueo_recuperacion_suelo = randf_range(0.50, 0.65)
 	else:
 		pose_arquero_actual = PoseArquero.DESPEJE_PIE
 		_t_anim_atajada = 0.48
@@ -3925,6 +3971,11 @@ func _aplicar_movimiento(delta: float) -> void:
 			rotation.y = lerp_angle(rotation.y, angulo_base_campo, clampf(8.0 * delta, 0.0, 1.0))
 		return
 	
+	# Bloqueo total de movimiento y orientación cuando el arquero está en compromiso de suelo o estrella
+	if (posicion_tactica == "PORTERO" or es_arquero) and _arquero_en_compromiso_suelo() and _tiempo_dive_activo <= 0.0:
+		velocity = Vector3.ZERO
+		return
+	
 	# 2. BLOQUEO DE TRASLACIÓN EN SAQUE DE CENTRO Y REANUDACIONES DETENIDAS:
 	# El sacador no puede caminar ni conducir; el joystick solo rota al jugador para apuntar el pase obligatorio.
 	if _en_posicion_saque:
@@ -4057,7 +4108,8 @@ func _animar_extremidades(delta: float) -> void:
 				hacia_b.y = 0.0
 				if hacia_b.length_squared() > 0.04:
 					dir_mira_gk = hacia_b.normalized()
-			rotation.y = lerp_angle(rotation.y, atan2(-dir_mira_gk.x, -dir_mira_gk.z), clampf(18.0 * delta, 0.0, 1.0))
+			if not _arquero_en_compromiso_suelo():
+				rotation.y = lerp_angle(rotation.y, atan2(-dir_mira_gk.x, -dir_mira_gk.z), clampf(18.0 * delta, 0.0, 1.0))
 
 		# Actualizar esqueleto procedural humanoide Mixamo
 		if esqueleto_humanoide != null:
@@ -4633,11 +4685,69 @@ func _asignar_zona_instancia_malla(
 # HITBOXES Y DETECCIÓN ANATÓMICA DE ATAJADAS DEL ARQUERO (FIFA / EFOOTBALL)
 # ==============================================================================
 
-## Configura las 4 zonas anatómicas de contacto del arquero (Manos, Pecho, Piernas, Cabeza)
+## Configura las zonas anatómicas de contacto del arquero (Manos, Antebrazos, Pecho, Piernas, Cabeza)
 func _configurar_hitboxes_anatomicas_portero() -> void:
 	if not (es_arquero or posicion_tactica == "PORTERO"):
 		return
 	
+	if esqueleto_humanoide != null:
+		# 1. Manos (SphereShape3D r=0.15 en _idx_left_hand y _idx_right_hand)
+		if _idx_left_hand >= 0:
+			var s_mano_i: SphereShape3D = SphereShape3D.new()
+			s_mano_i.radius = 0.15
+			area_manos = _crear_bone_hitbox(_idx_left_hand, "ManoIzq", "manos", s_mano_i)
+		if _idx_right_hand >= 0:
+			var s_mano_d: SphereShape3D = SphereShape3D.new()
+			s_mano_d.radius = 0.15
+			_crear_bone_hitbox(_idx_right_hand, "ManoDer", "manos", s_mano_d)
+
+		# 2. Antebrazos (CapsuleShape3D r=0.11, h=0.34 en _idx_left_forearm y _idx_right_forearm)
+		if _idx_left_forearm >= 0:
+			var c_ant_i: CapsuleShape3D = CapsuleShape3D.new()
+			c_ant_i.radius = 0.11
+			c_ant_i.height = 0.34
+			area_antebrazos = _crear_bone_hitbox(_idx_left_forearm, "AntebrazoIzq", "antebrazos", c_ant_i)
+		if _idx_right_forearm >= 0:
+			var c_ant_d: CapsuleShape3D = CapsuleShape3D.new()
+			c_ant_d.radius = 0.11
+			c_ant_d.height = 0.34
+			_crear_bone_hitbox(_idx_right_forearm, "AntebrazoDer", "antebrazos", c_ant_d)
+
+		# 3. Pecho y Cabeza (BoxShape3D 0.38 x 0.42 x 0.24 en _idx_spine1 y SphereShape3D r=0.15 en _idx_head)
+		var idx_torso: int = _idx_spine1 if _idx_spine1 >= 0 else _idx_spine
+		if idx_torso >= 0:
+			var b_pecho: BoxShape3D = BoxShape3D.new()
+			b_pecho.size = Vector3(0.38, 0.42, 0.24)
+			area_pecho = _crear_bone_hitbox(idx_torso, "Pecho", "pecho", b_pecho)
+		if _idx_head >= 0:
+			var s_cabeza: SphereShape3D = SphereShape3D.new()
+			s_cabeza.radius = 0.15
+			area_cabeza = _crear_bone_hitbox(_idx_head, "Cabeza", "cabeza", s_cabeza)
+
+		# 4. Piernas y Pies (CapsuleShape3D r=0.12, h=0.42 en legs y feet)
+		if _idx_left_leg >= 0:
+			var c_leg_i: CapsuleShape3D = CapsuleShape3D.new()
+			c_leg_i.radius = 0.12
+			c_leg_i.height = 0.42
+			area_piernas = _crear_bone_hitbox(_idx_left_leg, "PiernaIzq", "piernas", c_leg_i)
+		if _idx_right_leg >= 0:
+			var c_leg_d: CapsuleShape3D = CapsuleShape3D.new()
+			c_leg_d.radius = 0.12
+			c_leg_d.height = 0.42
+			_crear_bone_hitbox(_idx_right_leg, "PiernaDer", "piernas", c_leg_d)
+		if _idx_left_foot >= 0:
+			var c_foot_i: CapsuleShape3D = CapsuleShape3D.new()
+			c_foot_i.radius = 0.12
+			c_foot_i.height = 0.42
+			_crear_bone_hitbox(_idx_left_foot, "PieIzq", "piernas", c_foot_i)
+		if _idx_right_foot >= 0:
+			var c_foot_d: CapsuleShape3D = CapsuleShape3D.new()
+			c_foot_d.radius = 0.12
+			c_foot_d.height = 0.42
+			_crear_bone_hitbox(_idx_right_foot, "PieDer", "piernas", c_foot_d)
+		return
+
+	# Fallback cuando no existe rig esquelético humanoide
 	# 1. AreaManos: Cubriendo las manos y muñecas
 	area_manos = get_node_or_null("AreaManos") as Area3D
 	if area_manos == null and visual != null:
@@ -4707,6 +4817,35 @@ func _configurar_hitboxes_anatomicas_portero() -> void:
 	_configurar_propiedades_hitbox(area_cabeza, "cabeza")
 
 
+func _crear_bone_hitbox(bone_idx: int, nombre_sub: String, zona: String, shape: Shape3D, offset_pos: Vector3 = Vector3.ZERO) -> Area3D:
+	if esqueleto_humanoide == null or bone_idx < 0 or bone_idx >= esqueleto_humanoide.get_bone_count():
+		return null
+	
+	var bone_name: String = esqueleto_humanoide.get_bone_name(bone_idx)
+	var attach_name: String = "BoneAttach_" + nombre_sub
+	var attachment: BoneAttachment3D = esqueleto_humanoide.get_node_or_null(attach_name) as BoneAttachment3D
+	if attachment == null:
+		attachment = BoneAttachment3D.new()
+		attachment.name = attach_name
+		attachment.bone_name = bone_name
+		esqueleto_humanoide.add_child(attachment)
+	
+	var area_name: String = "Area_" + nombre_sub
+	var area: Area3D = attachment.get_node_or_null(area_name) as Area3D
+	if area == null:
+		area = Area3D.new()
+		area.name = area_name
+		var col: CollisionShape3D = CollisionShape3D.new()
+		col.name = "Shape_" + nombre_sub
+		col.shape = shape
+		col.position = offset_pos
+		area.add_child(col)
+		attachment.add_child(area)
+	
+	_configurar_propiedades_hitbox(area, zona)
+	return area
+
+
 func _configurar_propiedades_hitbox(area: Area3D, zona: String) -> void:
 	if area == null:
 		return
@@ -4729,32 +4868,61 @@ func _configurar_propiedades_hitbox(area: Area3D, zona: String) -> void:
 
 
 func _on_hitbox_arquero_body_entered(body: Node3D, zona: String) -> void:
-	if body is Balon3D:
-		var balon_obj: Balon3D = body as Balon3D
-		if balon_obj and not balon_obj.esta_fuera_de_juego:
-			match zona:
-				"piernas":
-					_tipo_atajada_actual = EstadoJugador.ATAJADA_BAJA
-					_t_anim_atajada = 0.50
-					_lado_atajada = 1.0 if body.global_position.z >= global_position.z else -1.0
-					if absf(body.global_position.z - global_position.z) > 0.22:
-						pose_arquero_actual = PoseArquero.CAIDA_LATERAL
-						_t_bloqueo_recuperacion_suelo = randf_range(0.50, 0.75)
-					else:
-						pose_arquero_actual = PoseArquero.DESPEJE_PIE
-				"pecho", "cabeza":
-					_tipo_atajada_actual = EstadoJugador.ATAJADA_MEDIA
-					_t_anim_atajada = 0.46
-					pose_arquero_actual = PoseArquero.BLOQUEO_PECHO
-				"manos":
-					_t_anim_atajada = 0.35
-			
-			balon_obj.procesar_impacto_arquero(zona, self)
+	if not (body is Balon3D):
+		return
+	var balon_obj: Balon3D = body as Balon3D
+	if balon_obj == null or not is_instance_valid(balon_obj):
+		return
+	
+	var gestor: Node = get_tree().get_first_node_in_group("gestor_partido")
+	if gestor != null and "estado" in gestor:
+		var en_juego: bool = (int(gestor.estado) == 2 or int(gestor.estado) == 10 or ("modo_entrenamiento" in gestor and gestor.modo_entrenamiento))
+		if not en_juego:
+			return
+	
+	if balon_obj.esta_fuera_de_juego or balon_obj.sacador_autorizado != null or balon_obj.esta_siendo_conducido():
+		return
+	if tiene_posesion or tiene_balon_en_manos or _tiempo_paradon_reciente > 0.0:
+		return
+	
+	var ya_en_pose: bool = (_t_anim_atajada > 0.0 or _en_achique_cruz_k)
+	match zona:
+		"piernas":
+			_tipo_atajada_actual = EstadoJugador.ATAJADA_BAJA
+			_t_anim_atajada = 0.50
+			_lado_atajada = 1.0 if body.global_position.z >= global_position.z else -1.0
+			if not ya_en_pose:
+				var diff_lat: float = absf(body.global_position.z - global_position.z)
+				if diff_lat > 0.55:
+					pose_arquero_actual = PoseArquero.DESPLIEGUE_L
+					_t_bloqueo_recuperacion_suelo = randf_range(0.45, 0.65)
+				elif diff_lat > 0.22:
+					pose_arquero_actual = PoseArquero.CAIDA_LATERAL
+					_t_bloqueo_recuperacion_suelo = randf_range(0.50, 0.75)
+				else:
+					pose_arquero_actual = PoseArquero.DESPEJE_PIE
+		"pecho", "cabeza":
+			_tipo_atajada_actual = EstadoJugador.ATAJADA_MEDIA
+			_t_anim_atajada = 0.46
+			if not ya_en_pose:
+				pose_arquero_actual = PoseArquero.BLOQUEO_PECHO
+		"antebrazos":
+			_t_anim_atajada = 0.40
+			if not ya_en_pose:
+				pose_arquero_actual = PoseArquero.ESTIRADA_ALTA if body.global_position.y > 1.1 else PoseArquero.GUARDIA_BAJA
+		"manos":
+			_t_anim_atajada = 0.35
+			if not ya_en_pose:
+				pose_arquero_actual = PoseArquero.ESTIRADA_ALTA if body.global_position.y > 1.1 else PoseArquero.GUARDIA_BAJA
+	
+	balon_obj.procesar_impacto_arquero(zona, self)
 
 
 ## Sincroniza la posición de las hitboxes anatómicas ante cambios dinámicos de pose del arquero
 func _actualizar_hitboxes_portero() -> void:
 	if not (es_arquero or posicion_tactica == "PORTERO"):
+		return
+	if esqueleto_humanoide != null:
 		return
 	if area_piernas == null or area_pecho == null:
 		return
@@ -4779,8 +4947,8 @@ func _actualizar_hitboxes_portero() -> void:
 
 
 ## Evalúa las colisiones continuas entre el vector de desplazamiento del balón
-## (pos_previa -> pos_actual) y los 10 segmentos esqueléticos del rig de arquero (Mixamo),
-## garantizando CERO efecto túnel incluso ante remates a 27 m/s a quemarropa.
+## (pos_previa -> pos_actual) y los segmentos esqueléticos del rig de arquero (Mixamo),
+## garantizando CERO efecto túnel incluso ante remates a gran velocidad a quemarropa.
 func _evaluar_colisiones_esqueleto_arquero(_delta: float) -> void:
 	if not (es_arquero or posicion_tactica == "PORTERO"):
 		return
@@ -4791,6 +4959,15 @@ func _evaluar_colisiones_esqueleto_arquero(_delta: float) -> void:
 	
 	var balon: Balon3D = _obtener_balon_juego()
 	if balon == null or not is_instance_valid(balon) or balon.esta_fuera_de_juego:
+		return
+	
+	var gestor: Node = get_tree().get_first_node_in_group("gestor_partido")
+	if gestor != null and "estado" in gestor:
+		var en_juego: bool = (int(gestor.estado) == 2 or int(gestor.estado) == 10 or ("modo_entrenamiento" in gestor and gestor.modo_entrenamiento))
+		if not en_juego:
+			return
+	
+	if balon.esta_fuera_de_juego or balon.sacador_autorizado != null or balon.esta_siendo_conducido():
 		return
 	if balon.esta_siendo_conducido() and balon.portador_actual == self:
 		return
@@ -4834,10 +5011,10 @@ func _evaluar_colisiones_esqueleto_arquero(_delta: float) -> void:
 		[pos_r_upleg, pos_r_leg, radio_pierna, "piernas"],
 		[pos_r_leg, pos_r_foot, radio_pierna, "piernas"],
 		[pos_hips, pos_spine1, radio_torso, "pecho"],
-		[pos_spine1, pos_head, radio_torso, "pecho"],
-		[pos_l_arm, pos_l_forearm, radio_brazo, "manos"],
+		[pos_spine1, pos_head, radio_torso, "cabeza"],
+		[pos_l_arm, pos_l_forearm, radio_brazo, "antebrazos"],
 		[pos_l_forearm, pos_l_hand, radio_brazo, "manos"],
-		[pos_r_arm, pos_r_forearm, radio_brazo, "manos"],
+		[pos_r_arm, pos_r_forearm, radio_brazo, "antebrazos"],
 		[pos_r_forearm, pos_r_hand, radio_brazo, "manos"]
 	]
 	
@@ -4889,6 +5066,7 @@ func _procesar_impacto_hueso_arquero(balon: Balon3D, zona: String, punto_balon: 
 	balon.global_position = punto_hueso + normal_contacto * 0.22
 	balon.pos_previa = balon.global_position
 	
+	var ya_en_pose: bool = (_t_anim_atajada > 0.0 or _en_achique_cruz_k)
 	match zona:
 		"manos":
 			var vel_tiro: float = balon.linear_velocity.length()
@@ -4897,30 +5075,36 @@ func _procesar_impacto_hueso_arquero(balon: Balon3D, zona: String, punto_balon: 
 				atrapar_con_manos(balon)
 				pose_arquero_actual = PoseArquero.MANOS_SEGURAS
 				_t_anim_atajada = 0.55
-				_emitir_anuncio_hud("¡PARADÓN Y BALÓN ASEGURADO!")
+				var nombre_arq: String = nombre_jugador if nombre_jugador != "" else ("#%d" % dorsal)
+				balon.atajada_realizada.emit("atrapada", nombre_arq)
 			else:
-				pose_arquero_actual = PoseArquero.ESTIRADA_ALTA if punto_balon.y > 1.1 else PoseArquero.GUARDIA_BAJA
+				if not ya_en_pose:
+					pose_arquero_actual = PoseArquero.ESTIRADA_ALTA if punto_balon.y > 1.1 else PoseArquero.GUARDIA_BAJA
 				_t_anim_atajada = 0.45
 				balon.procesar_impacto_arquero("manos", self)
-				_emitir_anuncio_hud("¡DESVÍO PROVIDENCIAL A CÓRNER!")
-		"pecho":
-			pose_arquero_actual = PoseArquero.BLOQUEO_PECHO
+		"antebrazos":
+			if not ya_en_pose:
+				pose_arquero_actual = PoseArquero.ESTIRADA_ALTA if punto_balon.y > 1.1 else PoseArquero.GUARDIA_BAJA
+			_t_anim_atajada = 0.40
+			balon.procesar_impacto_arquero("antebrazos", self)
+		"pecho", "cabeza":
+			if not ya_en_pose:
+				pose_arquero_actual = PoseArquero.BLOQUEO_PECHO
 			_t_anim_atajada = 0.48
 			balon.procesar_impacto_arquero("pecho", self)
-			_emitir_anuncio_hud("¡BLOQUEO DE PECHO!")
 		"piernas":
-			var diff_lat: float = absf(punto_balon.z - global_position.z)
-			if diff_lat > 0.55:
-				pose_arquero_actual = PoseArquero.DESPLIEGUE_L
-				_t_bloqueo_recuperacion_suelo = randf_range(0.45, 0.65)
-			elif diff_lat > 0.22:
-				pose_arquero_actual = PoseArquero.CAIDA_LATERAL
-				_t_bloqueo_recuperacion_suelo = randf_range(0.50, 0.75)
-			else:
-				pose_arquero_actual = PoseArquero.DESPEJE_PIE
+			if not ya_en_pose:
+				var diff_lat: float = absf(punto_balon.z - global_position.z)
+				if diff_lat > 0.55:
+					pose_arquero_actual = PoseArquero.DESPLIEGUE_L
+					_t_bloqueo_recuperacion_suelo = randf_range(0.45, 0.65)
+				elif diff_lat > 0.22:
+					pose_arquero_actual = PoseArquero.CAIDA_LATERAL
+					_t_bloqueo_recuperacion_suelo = randf_range(0.50, 0.75)
+				else:
+					pose_arquero_actual = PoseArquero.DESPEJE_PIE
 			_t_anim_atajada = 0.50
 			balon.procesar_impacto_arquero("piernas", self)
-			_emitir_anuncio_hud("¡PARADA CON EL PIE / ACHIQUE EN CRUZ!")
 
 
 func _obtener_pos_global_hueso(idx: int) -> Vector3:

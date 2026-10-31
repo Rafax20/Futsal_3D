@@ -2187,16 +2187,18 @@ func _actualizar_control_en_vivo(delta: float, portador: Jugador3D) -> void:
 func _on_atajada_realizada(zona: String, nombre_arquero: String) -> void:
 	var texto_cartel: String = ""
 	match zona:
-		"manos":
-			texto_cartel = "¡MANOTAZO SALVADOR DE %s!" % nombre_arquero
+		"atrapada":
+			texto_cartel = "¡PARADÓN Y BALÓN ASEGURADO!"
+		"manos", "antebrazos":
+			texto_cartel = "¡DESVÍO CON LA MANO DE %s!" % nombre_arquero
+		"pecho", "cabeza":
+			texto_cartel = "¡BLOQUEO DE PECHO DE %s!" % nombre_arquero
+		"cruz":
+			texto_cartel = "¡ACHIQUE EN CRUZ DE %s!" % nombre_arquero
 		"piernas":
 			texto_cartel = "¡PARADA CON EL PIE DE %s!" % nombre_arquero
-		"pecho":
-			texto_cartel = "¡BLOQUEO DE PECHO DE %s!" % nombre_arquero
-		"cabeza":
-			texto_cartel = "¡BLOQUEO DE CABEZA DE %s!" % nombre_arquero
 		_:
-			texto_cartel = "¡ATAJADA DE %s!" % nombre_arquero
+			texto_cartel = "¡DESVÍO DEL ARQUERO!"
 
 	_ultimo_mensaje_atajada = texto_cartel
 	_mostrar_banner_resultado(texto_cartel)

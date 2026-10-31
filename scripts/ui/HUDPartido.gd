@@ -284,16 +284,18 @@ func _conectar_eventos_atajadas() -> void:
 func _on_atajada_realizada(zona: String, nombre_arquero: String) -> void:
 	var mensaje: String = ""
 	match zona:
-		"manos":
-			mensaje = "¡MANOTAZO SALVADOR DE %s!" % nombre_arquero
+		"atrapada":
+			mensaje = "¡PARADÓN Y BALÓN ASEGURADO!"
+		"manos", "antebrazos":
+			mensaje = "¡DESVÍO CON LA MANO DE %s!" % nombre_arquero
+		"pecho", "cabeza":
+			mensaje = "¡BLOQUEO DE PECHO DE %s!" % nombre_arquero
+		"cruz":
+			mensaje = "¡ACHIQUE EN CRUZ DE %s!" % nombre_arquero
 		"piernas":
 			mensaje = "¡PARADA CON EL PIE DE %s!" % nombre_arquero
-		"pecho":
-			mensaje = "¡BLOQUEO DE PECHO DE %s!" % nombre_arquero
-		"cabeza":
-			mensaje = "¡BLOQUEO DE CABEZA DE %s!" % nombre_arquero
 		_:
-			mensaje = "¡ATAJADA DE %s!" % nombre_arquero
+			mensaje = "¡DESVÍO DEL ARQUERO!"
 	mostrar_anuncio(mensaje, 2.0)
 
 
