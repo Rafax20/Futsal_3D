@@ -78,7 +78,9 @@ const FiguraArbitro3DClass = preload("res://scripts/visual/FiguraArbitro3D.gd")
 
 var esperando_pitazo_arbitro: bool = false
 var _en_cinematica_falta: bool = false
+var _transicion_fade_activa: bool = false
 var _tween_cinematica: Tween = null
+var _tween_repeticion: Tween = null
 var _figura_arbitro_instancia: Node3D = null
 var _replay_buffer = null
 var _datos_falta_pendiente: Dictionary = {}
@@ -103,19 +105,32 @@ func _ready() -> void:
 func _inicializar_silbato_arbitral() -> void:
 	_reproductor_silbato = AudioStreamPlayer.new()
 	_reproductor_silbato.name = "SilbatoArbitral"
-	_reproductor_silbato.volume_db = -5.0
+	_reproductor_silbato.volume_db = -12.0
 	add_child(_reproductor_silbato)
+
+	# Verificar si existe algún archivo de audio real
+	var rutas_audio: Array[String] = [
+		"res://assets/audio/whistle.wav",
+		"res://assets/sounds/silbato.wav",
+		"res://assets/audio/silbato.wav",
+		"res://assets/audio/silbato.ogg"
+	]
+	for r: String in rutas_audio:
+		if ResourceLoader.exists(r):
+			_reproductor_silbato.stream = load(r)
+			return
+
+	# Si no existe archivo de audio, generar pitido suave y atenuado (~1800 Hz Hann sin armónicos chillones)
 	var sample_rate: int = 22050
-	var duracion: float = 0.42
+	var duracion: float = 0.25
 	var total_muestras: int = int(sample_rate * duracion)
 	var datos_pcm: PackedByteArray = PackedByteArray()
 	datos_pcm.resize(total_muestras * 2)
 	for i: int in range(total_muestras):
 		var t: float = float(i) / float(sample_rate)
-		var env: float = clampf(t / 0.02, 0.0, 1.0) * clampf((duracion - t) / 0.06, 0.0, 1.0)
-		var mod_trino: float = 1.0 + 0.04 * sin(TAU * 28.0 * t)
-		var onda: float = (sin(TAU * 2850.0 * mod_trino * t) * 0.65 + sin(TAU * 5700.0 * mod_trino * t) * 0.25) * env
-		var muestra_i16: int = clampi(int(onda * 24000.0), -32767, 32767)
+		var env: float = sin(PI * t / duracion)
+		var onda: float = sin(TAU * 1800.0 * t) * env * 0.3
+		var muestra_i16: int = clampi(int(onda * 16000.0), -32767, 32767)
 		datos_pcm.encode_s16(i * 2, muestra_i16)
 	var wav: AudioStreamWAV = AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_16_BITS
@@ -590,7 +605,7 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int,
 	for n: Node in todos:
 		var j: Jugador3D = n as Jugador3D
 		if j:
-			if j == sacador:
+			if j == sacador and not esperando_pitazo_arbitro and not _en_cinematica_falta:
 				j.set_congelado(false)
 			else:
 				j.set_congelado(true)
@@ -609,7 +624,10 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int,
 		for n: Node in todos:
 			var j: Jugador3D = n as Jugador3D
 			if j and is_instance_valid(j):
-				j.set_congelado(false)
+				if esperando_pitazo_arbitro or _en_cinematica_falta:
+					j.set_congelado(true)
+				else:
+					j.set_congelado(false)
 
 
 # ==============================================================================
@@ -792,12 +810,29 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 		# Falta común (sin tarjeta)
 		_emitir_anuncio_hud("¡FALTA! (%d/5 ACUMULADAS) - TIRO LIBRE DIRECTO" % total_faltas)
 	
-	# ETAPA 1: DETENCIÓN INMEDIATA Y CÁMARA LENTA AL PITAR FALTA (0.5 s)
+	# ETAPA 1: DETENCIÓN INMEDIATA SIN SLOW-MOTION (Engine.time_scale permanece en 1.0)
+	_en_cinematica_falta = true
 	esperando_pitazo_arbitro = true
 	if GameManager:
 		GameManager.reloj_neto_activo = false
 	cuenta_regresiva_4s_actualizada.emit(0.0, false)
 	_reproducir_pitido_arbitral()
+
+	# Detener inmediatamente el balón
+	if _balon and is_instance_valid(_balon):
+		_balon.soltar_posesion()
+		_balon.esta_fuera_de_juego = true
+		_balon.detener()
+
+	# Detener inmediatamente y congelar a todos los jugadores
+	var todos: Array[Node] = get_tree().get_nodes_in_group("jugadores_futsal")
+	for n: Node in todos:
+		var j: Jugador3D = n as Jugador3D
+		if j and is_instance_valid(j):
+			j.detener_carrera_espacio()
+			j.soltar_posesion()
+			j.set_congelado(true)
+			j.velocity = Vector3.ZERO
 
 	_datos_falta_pendiente = {
 		"infractor": infractor,
@@ -809,26 +844,22 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 		"equipo_favorecido": equipo_favorecido
 	}
 
-	# Desaceleración breve (Engine.time_scale = 0.35 durante 0.45 s reales) mientras el balón rueda inerte
-	Engine.time_scale = 0.35
+	Engine.time_scale = 1.0
 	if _tween_cinematica != null and _tween_cinematica.is_valid():
 		_tween_cinematica.kill()
+	if _tween_repeticion != null and _tween_repeticion.is_valid():
+		_tween_repeticion.kill()
 
 	var desglose: Array = resultado_eval.get("desglose", [])
-	_tween_cinematica = create_tween().set_ignore_time_scale(true)
-	_tween_cinematica.tween_interval(0.45)
-	_tween_cinematica.tween_callback(func() -> void:
-		Engine.time_scale = 1.0
-		_iniciar_secuencia_presentacion_falta(
-			infractor,
-			poseedor,
-			tipo_tarjeta,
-			pos_falta,
-			puntaje,
-			desglose,
-			total_faltas,
-			equipo_favorecido
-		)
+	_iniciar_secuencia_presentacion_falta(
+		infractor,
+		poseedor,
+		tipo_tarjeta,
+		pos_falta,
+		puntaje,
+		desglose,
+		total_faltas,
+		equipo_favorecido
 	)
 
 
@@ -878,6 +909,7 @@ func _iniciar_secuencia_presentacion_falta(
 	equipo_favorecido: int
 ) -> void:
 	_en_cinematica_falta = true
+	_transicion_fade_activa = false
 	_datos_falta_pendiente = {
 		"infractor": infractor,
 		"victima": victima,
@@ -897,10 +929,18 @@ func _iniciar_secuencia_presentacion_falta(
 			hud.mostrar_placa_tarjeta(infractor, tipo_tarjeta, puntaje, desglose)
 	
 	var cam: CamaraTransmision = _obtener_camara_transmision()
+	if cam:
+		cam.aplicar_lod_bias_personajes(0.0)
+
 	var pos_ref_infractor: Vector3 = infractor.global_position if infractor and is_instance_valid(infractor) else pos_falta
 	var pos_ref_victima: Vector3 = victima.global_position if victima and is_instance_valid(victima) else (pos_falta + Vector3(1.0, 0.0, 0.0))
 
-	# 1. Si la falta conlleva Tarjeta Amarilla o Roja: Árbitro 3D + plano contrapicado
+	if _tween_cinematica != null and _tween_cinematica.is_valid():
+		_tween_cinematica.kill()
+	if _tween_repeticion != null and _tween_repeticion.is_valid():
+		_tween_repeticion.kill()
+
+	# 1. Si la falta conlleva Tarjeta Amarilla o Roja: Árbitro 3D (1.6 s) + Repetición (1.5 s)
 	if tipo_tarjeta != "":
 		_limpiar_figura_arbitro()
 		_figura_arbitro_instancia = FiguraArbitro3DClass.new()
@@ -918,75 +958,116 @@ func _iniciar_secuencia_presentacion_falta(
 		
 		if cam:
 			cam.activar_camara_cinematica_falta(pos_ref_infractor, _figura_arbitro_instancia.global_position, true)
+
+		# Árbitro 3D muestra la tarjeta durante 1.6 s
+		_tween_cinematica = create_tween().set_ignore_time_scale(true)
+		_tween_cinematica.tween_interval(1.6)
+		_tween_cinematica.tween_callback(func() -> void:
+			_limpiar_figura_arbitro()
+			var frames_rep: Array = _replay_buffer.obtener_frames(1.5) if _replay_buffer else []
+			if frames_rep.size() >= 15:
+				_reproducir_repeticion_falta(frames_rep, pos_falta, 1.5)
+			else:
+				_iniciar_transicion_fade_tiro_libre()
+		)
 	else:
-		# 2. Falta sin tarjeta: si hay frames en el ring buffer de repetición, reproducir repetición rápida
+		# 2. Falta sin tarjeta: repetición de 1.5 s directa (o cámara cercana 1.5 s si no hay buffer)
 		var frames_rep: Array = _replay_buffer.obtener_frames(1.5) if _replay_buffer else []
 		if frames_rep.size() >= 15:
-			if hud:
-				hud.mostrar_indicador_repeticion(true)
-			if cam:
-				cam.activar_camara_repeticion(pos_falta)
-			
-			var duracion_rep: float = 1.3
-			var step_t: float = duracion_rep / float(frames_rep.size())
-			var tw_rep: Tween = create_tween().set_ignore_time_scale(true)
-			for f_idx: int in range(frames_rep.size()):
-				var f_snap = frames_rep[f_idx]
-				tw_rep.tween_callback(func() -> void:
-					if _en_cinematica_falta and _replay_buffer:
-						_replay_buffer.aplicar_snapshot(f_snap, _balon)
-				)
-				tw_rep.tween_interval(step_t)
-			tw_rep.tween_callback(func() -> void:
-				if hud:
-					hud.mostrar_indicador_repeticion(false)
-			)
+			_reproducir_repeticion_falta(frames_rep, pos_falta, 1.5)
 		else:
 			if cam:
 				cam.activar_camara_cinematica_falta(pos_ref_infractor, pos_ref_victima, false)
+			_tween_cinematica = create_tween().set_ignore_time_scale(true)
+			_tween_cinematica.tween_interval(1.5)
+			_tween_cinematica.tween_callback(func() -> void:
+				_iniciar_transicion_fade_tiro_libre()
+			)
 
-	# 3. Duración de la presentación: 2.2 s reales (saltable en cualquier momento vía botón OMITIR)
-	if _tween_cinematica != null and _tween_cinematica.is_valid():
-		_tween_cinematica.kill()
 
-	_tween_cinematica = create_tween().set_ignore_time_scale(true)
-	_tween_cinematica.tween_interval(2.2)
-	_tween_cinematica.tween_callback(func() -> void:
-		_finalizar_cinematica_y_pasar_a_pre_pitazo()
+func _reproducir_repeticion_falta(frames_rep: Array, pos_falta: Vector3, duracion: float) -> void:
+	var hud: HUDPartido = _obtener_hud_partido()
+	var cam: CamaraTransmision = _obtener_camara_transmision()
+	if hud:
+		hud.mostrar_indicador_repeticion(true)
+	if cam:
+		cam.activar_camara_repeticion(pos_falta)
+
+	if _tween_repeticion != null and _tween_repeticion.is_valid():
+		_tween_repeticion.kill()
+
+	var step_t: float = duracion / float(frames_rep.size())
+	_tween_repeticion = create_tween().set_ignore_time_scale(true)
+	for f_idx: int in range(frames_rep.size()):
+		var f_snap = frames_rep[f_idx]
+		_tween_repeticion.tween_callback(func() -> void:
+			if _en_cinematica_falta and _replay_buffer:
+				_replay_buffer.aplicar_snapshot(f_snap, _balon)
+		)
+		_tween_repeticion.tween_interval(step_t)
+
+	_tween_repeticion.tween_callback(func() -> void:
+		if hud:
+			hud.mostrar_indicador_repeticion(false)
+		_iniciar_transicion_fade_tiro_libre()
 	)
 
 
-## Permite al usuario omitir inmediatamente la cinemática de faltas o repetición (vía botón "OMITIR ⏭")
+## Permite al usuario omitir inmediatamente la cinemática de faltas o la ventana pre-pitazo (vía botón "OMITIR ⏭")
 func omitir_secuencia_falta() -> void:
-	if not _en_cinematica_falta and not esperando_pitazo_arbitro:
+	if not _en_cinematica_falta and not esperando_pitazo_arbitro and not _transicion_fade_activa:
 		return
+
 	if _tween_cinematica != null and _tween_cinematica.is_valid():
 		_tween_cinematica.kill()
+	if _tween_repeticion != null and _tween_repeticion.is_valid():
+		_tween_repeticion.kill()
+
 	Engine.time_scale = 1.0
-	if esperando_pitazo_arbitro:
+
+	if _transicion_fade_activa:
+		var hud: HUDPartido = _obtener_hud_partido()
+		if hud:
+			hud.cancelar_fade_transicion()
+		_on_fade_punto_negro()
+		_autorizar_saque_tiro_libre()
+	elif esperando_pitazo_arbitro and not _en_cinematica_falta:
 		_autorizar_saque_tiro_libre()
 	else:
-		_finalizar_cinematica_y_pasar_a_pre_pitazo()
+		_iniciar_transicion_fade_tiro_libre()
 
 
-## ETAPA 3: FASE DE POSICIONAMIENTO Y RECONOCIMIENTO PRE-PITAZO (1.3 s SIN CORRER EL TIEMPO)
-func _finalizar_cinematica_y_pasar_a_pre_pitazo() -> void:
-	_en_cinematica_falta = false
-	Engine.time_scale = 1.0
+## ETAPA 3: FADE OUT (1.0 s) -> REPOSICIONAMIENTO Y CÁMARA INTELIGENTE -> FADE IN (1.0 s)
+func _iniciar_transicion_fade_tiro_libre() -> void:
+	if _transicion_fade_activa:
+		return
+	_transicion_fade_activa = true
 
+	if _tween_cinematica != null and _tween_cinematica.is_valid():
+		_tween_cinematica.kill()
+	if _tween_repeticion != null and _tween_repeticion.is_valid():
+		_tween_repeticion.kill()
+
+	var hud: HUDPartido = _obtener_hud_partido()
+	if hud:
+		hud.ejecutar_fade_transicion(
+			1.0,
+			1.0,
+			Callable(self, "_on_fade_punto_negro"),
+			Callable(self, "_on_fade_completado")
+		)
+	else:
+		_on_fade_punto_negro()
+		_on_fade_completado()
+
+
+func _on_fade_punto_negro() -> void:
 	_limpiar_figura_arbitro()
 
 	var hud: HUDPartido = _obtener_hud_partido()
 	if hud:
-		hud.mostrar_boton_omitir(false)
 		hud.ocultar_placa_tarjeta()
 		hud.mostrar_indicador_repeticion(false)
-		if hud.touch_controls:
-			hud.touch_controls.visible = true
-
-	var cam: CamaraTransmision = _obtener_camara_transmision()
-	if cam:
-		cam.aplicar_lod_bias_personajes(1.0)
 
 	var pos_falta: Vector3 = _datos_falta_pendiente.get("pos_falta", _pos_saque)
 	var equipo_favorecido: int = int(_datos_falta_pendiente.get("equipo_favorecido", 0))
@@ -999,31 +1080,74 @@ func _finalizar_cinematica_y_pasar_a_pre_pitazo() -> void:
 		var pos_tl: Vector3 = Vector3(clampf(pos_falta.x, -14.0, 14.0), 0.25, clampf(pos_falta.z, -8.5, 8.5))
 		iniciar_reanudacion(EstadoPartido.TIRO_LIBRE, pos_tl, equipo_favorecido, false)
 
-	# Si la falta la cobra la CPU (Visitante), NUNCA activar cámara trasera y restaurar HUD defensivo
-	if equipo_favorecido != 0:
+	# 2. Asegurar que todos los jugadores sigan congelados durante la reubicación
+	var todos: Array[Node] = get_tree().get_nodes_in_group("jugadores_futsal")
+	for n: Node in todos:
+		var j: Jugador3D = n as Jugador3D
+		if j and is_instance_valid(j):
+			j.set_congelado(true)
+			j.velocity = Vector3.ZERO
+
+	# 3. Cámara inteligente según equipo y distancia:
+	var cam: CamaraTransmision = _obtener_camara_transmision()
+	var pos_arco_rival: Vector3 = Vector3(20.0 if equipo_favorecido == 0 else -20.0, 0.0, 0.0)
+	var dist_al_arco: float = Vector2(_pos_saque.x, _pos_saque.z).distance_to(Vector2(pos_arco_rival.x, pos_arco_rival.z))
+	var es_tiro_peligroso: bool = (dist_al_arco <= 15.0 or total_faltas >= 6)
+
+	if equipo_favorecido == 0 and es_tiro_peligroso:
+		# Falta favorable al usuario (Local) en zona peligrosa o doble penalti: cámara de tiro libre y alto detalle LOD
+		_en_ataque_local_actual = true
+		_equipo_poseedor_actual = 0
 		if cam:
-			cam.regresar_a_broadcast(0.5)
+			cam.activar_camara_tiro_libre(_pos_saque, pos_arco_rival, 5.0, -1.0, Vector3.ZERO, true)
+			cam.aplicar_lod_bias_personajes(0.0)
+		if hud and hud.touch_controls:
+			hud.touch_controls.actualizar_modo(TouchControls.ModoHUD.TIRO_LIBRE)
+	else:
+		# Falta lejana (> 15m) o a favor de la CPU (Visitante): cámara broadcast
+		if cam:
+			cam.regresar_a_broadcast(0.0)
 			cam.make_current()
 			cam.aplicar_lod_bias_personajes(1.0)
-		_en_ataque_local_actual = false
-		_equipo_poseedor_actual = equipo_favorecido
-		posesion_cambiada.emit(false, equipo_favorecido)
-		if hud and hud.touch_controls:
-			hud.touch_controls.actualizar_modo(TouchControls.ModoHUD.DEFENSA)
+		if equipo_favorecido != 0:
+			_en_ataque_local_actual = false
+			_equipo_poseedor_actual = equipo_favorecido
+			posesion_cambiada.emit(false, equipo_favorecido)
+			if hud and hud.touch_controls:
+				hud.touch_controls.actualizar_modo(TouchControls.ModoHUD.DEFENSA)
+		else:
+			_en_ataque_local_actual = true
+			_equipo_poseedor_actual = 0
+			posesion_cambiada.emit(true, 0)
+			if hud and hud.touch_controls:
+				hud.touch_controls.actualizar_modo(TouchControls.ModoHUD.SAQUE_PIE)
 
-	# 2. Congelar la cuenta de los 4 segundos durante 1.3 segundos de reconocimiento visual
+	# 4. Mantener la cuenta de los 4 segundos en pausa reglamentaria
 	esperando_pitazo_arbitro = true
 	_timer_timeout = 4.0
 	cuenta_regresiva_4s_actualizada.emit(4.0, false)
 
-	if hud:
-		hud.mostrar_anuncio("COLOCANDO BARRERA... PREPÁRATE", 1.3)
 
+func _on_fade_completado() -> void:
+	_transicion_fade_activa = false
+
+	var hud: HUDPartido = _obtener_hud_partido()
+	if hud:
+		hud.mostrar_anuncio("COLOCANDO BARRERA... PREPÁRATE", 2.0)
+		if hud.touch_controls:
+			hud.touch_controls.visible = true
+		hud.mostrar_boton_omitir(true)
+
+	esperando_pitazo_arbitro = true
+	_timer_timeout = 4.0
+	cuenta_regresiva_4s_actualizada.emit(4.0, false)
+
+	# Ventana pre-pitazo 100% visible durante exactamente 2.0 s
 	if _tween_cinematica != null and _tween_cinematica.is_valid():
 		_tween_cinematica.kill()
 
 	_tween_cinematica = create_tween().set_ignore_time_scale(true)
-	_tween_cinematica.tween_interval(1.3)
+	_tween_cinematica.tween_interval(2.0)
 	_tween_cinematica.tween_callback(func() -> void:
 		_autorizar_saque_tiro_libre()
 	)
@@ -1033,12 +1157,20 @@ func _finalizar_cinematica_y_pasar_a_pre_pitazo() -> void:
 func _autorizar_saque_tiro_libre() -> void:
 	esperando_pitazo_arbitro = false
 	_en_cinematica_falta = false
+	_transicion_fade_activa = false
+
+	if _tween_cinematica != null and _tween_cinematica.is_valid():
+		_tween_cinematica.kill()
+
+	var hud: HUDPartido = _obtener_hud_partido()
+	if hud:
+		hud.mostrar_boton_omitir(false)
+
 	if estado != EstadoPartido.TIRO_LIBRE and estado != EstadoPartido.DOBLE_PENALTI:
 		return
 
 	_reproducir_pitido_arbitral()
 
-	var hud: HUDPartido = _obtener_hud_partido()
 	if hud:
 		hud.mostrar_anuncio("¡SAQUE AUTORIZADO! (4.0 s)", 1.2)
 
@@ -1261,6 +1393,9 @@ func iniciar_doble_penalti(equipo_ejecutor: int, num_falta: int = 6, pos_falta: 
 			j_limpio.establecer_pose_barrera(false)
 			j_limpio.fijar_en_saque(false)
 			j_limpio.soltar_posesion()
+			if esperando_pitazo_arbitro or _en_cinematica_falta:
+				j_limpio.set_congelado(true)
+				j_limpio.velocity = Vector3.ZERO
 	
 	var ejecutor: Jugador3D = _obtener_sacador_centro(equipo_ejecutor)
 	var portero_rival: Jugador3D = _obtener_portero(1 if equipo_ejecutor == 0 else 0)
@@ -1297,6 +1432,8 @@ func iniciar_doble_penalti(equipo_ejecutor: int, num_falta: int = 6, pos_falta: 
 		ejecutor.fijar_en_saque(true, pos_anclaje)
 		ejecutor.rotation.y = atan2(-dir_arco.x, -dir_arco.z)
 		ejecutor.velocity = Vector3.ZERO
+		if esperando_pitazo_arbitro or _en_cinematica_falta:
+			ejecutor.set_congelado(true)
 		if _balon:
 			ejecutor.tomar_posesion(_balon)
 			ejecutor._tiempo_inmunidad_robo = t_timeout_saque + 2.0

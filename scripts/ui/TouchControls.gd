@@ -512,6 +512,10 @@ func _input(event: InputEvent) -> void:
 		_manejar_input_swipe_tiro_libre(event)
 		return
 	
+	# Si el árbitro pitó falta o está en cinemática/pre-pitazo, bloquear acciones de juego abierto
+	if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
+		return
+	
 	# A. Eventos Táctiles Nativos (Android / Pantallas Multitouch)
 	if event is InputEventScreenTouch:
 		var touch: InputEventScreenTouch = event
@@ -962,11 +966,15 @@ func _manejar_input_swipe_tiro_libre(event: InputEvent) -> void:
 		var touch: InputEventScreenTouch = event
 		if touch.pressed:
 			if _es_posicion_en_boton_pase_corto(touch.position):
+				if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
+					return
 				_on_btn_pase_corto_pressed()
 				return
 			if touch.position.x < limite_x_paneo:
 				_iniciar_paneo_camara_tl(touch.index, touch.position)
 			else:
+				if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
+					return
 				_iniciar_swipe_tiro_libre(touch.index, touch.position)
 		else:
 			if touch.index == _pan_touch_id:
@@ -987,11 +995,15 @@ func _manejar_input_swipe_tiro_libre(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
 				if _es_posicion_en_boton_pase_corto(mb.position):
+					if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
+						return
 					_on_btn_pase_corto_pressed()
 					return
 				if mb.position.x < limite_x_paneo:
 					_iniciar_paneo_camara_tl(-98, mb.position)
 				else:
+					if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
+						return
 					_iniciar_swipe_tiro_libre(-99, mb.position)
 			else:
 				if _pan_touch_id == -98:
@@ -1048,6 +1060,9 @@ func _finalizar_paneo_camara_tl(pos: Vector2 = Vector2.ZERO) -> void:
 		var duracion: float = (Time.get_ticks_msec() / 1000.0) - _pan_tiempo_inicio
 		var dist_recorrida: float = pos.distance_to(_pan_pos_inicio)
 		if dist_recorrida < 25.0 and duracion < 0.40:
+			if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
+				_pan_touch_id = -1
+				return
 			_intentar_pase_tactil_tl(pos)
 	_pan_touch_id = -1
 
@@ -1445,6 +1460,8 @@ func _aplicar_impacto_post_carrera_tl() -> void:
 
 func _on_btn_pase_corto_pressed() -> void:
 	if not _modo_tiro_libre_activo or _en_secuencia_carrera_tl:
+		return
+	if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
 		return
 
 	var sacador: Jugador3D = null

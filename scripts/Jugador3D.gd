@@ -1395,12 +1395,20 @@ func _asignar_grupos() -> void:
 func puede_tomar_balon() -> bool:
 	if _t_bloqueo_recaptura > 0.0 or _t_aturdimiento > 0.0 or _congelado or _en_entrada or en_pose_barrera:
 		return false
+	var gestor: Node = get_tree().get_first_node_in_group("gestor_partido")
+	if gestor != null:
+		if "estado" in gestor and int(gestor.estado) != 2 and not ("modo_entrenamiento" in gestor and gestor.modo_entrenamiento):
+			return false
+		if ("esperando_pitazo_arbitro" in gestor and gestor.esperando_pitazo_arbitro) or ("_en_cinematica_falta" in gestor and gestor._en_cinematica_falta):
+			return false
 	if _en_posicion_saque:
 		var balon_saque: Balon3D = _obtener_balon_juego()
 		if balon_saque == null or balon_saque.sacador_autorizado != self:
 			return false
 	var balon: Balon3D = _obtener_balon_juego()
 	if balon == null or not is_instance_valid(balon):
+		return false
+	if balon.esta_fuera_de_juego or (balon.sacador_autorizado != null and balon.sacador_autorizado != self):
 		return false
 	# Prohibición estricta de captura aérea: si el balón está por encima de 1.15m
 	# solo el portero con manos dentro de su área propia puede tomarlo.
@@ -1742,6 +1750,14 @@ func _conectar_sensores_balon() -> void:
 func _on_control_balon_area_body_entered(body: Node3D) -> void:
 	if body is Balon3D:
 		var balon: Balon3D = body as Balon3D
+		if balon.esta_fuera_de_juego or (balon.sacador_autorizado != null and balon.sacador_autorizado != self):
+			return
+		var gestor: Node = get_tree().get_first_node_in_group("gestor_partido")
+		if gestor != null:
+			if "estado" in gestor and int(gestor.estado) != 2 and not ("modo_entrenamiento" in gestor and gestor.modo_entrenamiento):
+				return
+			if ("esperando_pitazo_arbitro" in gestor and gestor.esperando_pitazo_arbitro) or ("_en_cinematica_falta" in gestor and gestor._en_cinematica_falta):
+				return
 		if balon.global_position.y > 1.15:
 			if posicion_tactica != "PORTERO" or not _esta_en_area_propia(balon.global_position):
 				return
@@ -2859,11 +2875,12 @@ func _transferir_control_tras_expulsion() -> void:
 func establecer_lod_bias(bias: float) -> void:
 	if visual == null:
 		return
+	var valor_bias: float = 128.0 if bias <= 0.05 else bias
 	var mallas: Array[Node] = visual.find_children("*", "MeshInstance3D", true, false)
 	for m: Node in mallas:
 		var mi: MeshInstance3D = m as MeshInstance3D
 		if mi and is_instance_valid(mi):
-			mi.lod_bias = bias
+			mi.lod_bias = valor_bias
 
 
 ## Reacción procedural ante una amonestación (tarjeta amarilla o roja) encarando al árbitro
@@ -4875,9 +4892,10 @@ func _on_hitbox_arquero_body_entered(body: Node3D, zona: String) -> void:
 		return
 	
 	var gestor: Node = get_tree().get_first_node_in_group("gestor_partido")
-	if gestor != null and "estado" in gestor:
-		var en_juego: bool = (int(gestor.estado) == 2 or int(gestor.estado) == 10 or ("modo_entrenamiento" in gestor and gestor.modo_entrenamiento))
-		if not en_juego:
+	if gestor != null:
+		if "estado" in gestor and int(gestor.estado) != 2 and not ("modo_entrenamiento" in gestor and gestor.modo_entrenamiento):
+			return
+		if ("esperando_pitazo_arbitro" in gestor and gestor.esperando_pitazo_arbitro) or ("_en_cinematica_falta" in gestor and gestor._en_cinematica_falta):
 			return
 	
 	if balon_obj.esta_fuera_de_juego or balon_obj.sacador_autorizado != null or balon_obj.esta_siendo_conducido():
@@ -4962,9 +4980,10 @@ func _evaluar_colisiones_esqueleto_arquero(_delta: float) -> void:
 		return
 	
 	var gestor: Node = get_tree().get_first_node_in_group("gestor_partido")
-	if gestor != null and "estado" in gestor:
-		var en_juego: bool = (int(gestor.estado) == 2 or int(gestor.estado) == 10 or ("modo_entrenamiento" in gestor and gestor.modo_entrenamiento))
-		if not en_juego:
+	if gestor != null:
+		if "estado" in gestor and int(gestor.estado) != 2 and not ("modo_entrenamiento" in gestor and gestor.modo_entrenamiento):
+			return
+		if ("esperando_pitazo_arbitro" in gestor and gestor.esperando_pitazo_arbitro) or ("_en_cinematica_falta" in gestor and gestor._en_cinematica_falta):
 			return
 	
 	if balon.esta_fuera_de_juego or balon.sacador_autorizado != null or balon.esta_siendo_conducido():

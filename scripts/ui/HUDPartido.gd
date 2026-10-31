@@ -44,6 +44,8 @@ var label_titulo_tarjeta: Label = null
 var label_jugador_tarjeta: Label = null
 var label_motivo_tarjeta: Label = null
 var badge_repeticion: PanelContainer = null
+var fade_rect: ColorRect = null
+var _tween_fade: Tween = null
 
 var _jugador_referencia: Jugador3D = null
 var _gestor_partido: GestorPartido = null
@@ -459,6 +461,62 @@ func _inicializar_ui_cinematica_falta() -> void:
 	lbl_rep.add_theme_color_override("font_color", Color.WHITE)
 	badge_repeticion.add_child(lbl_rep)
 	add_child(badge_repeticion)
+
+	# 4. Rectángulo negro de pantalla completa para transiciones Fade Out / Fade In (2.0 s)
+	fade_rect = ColorRect.new()
+	fade_rect.name = "FadeTransicionRect"
+	fade_rect.color = Color(0.0, 0.0, 0.0, 0.0)
+	fade_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fade_rect.visible = false
+	add_child(fade_rect)
+
+
+## Ejecuta una transición cinematográfica suave con Fade Out -> Fade In de pantalla completa
+func ejecutar_fade_transicion(
+	duracion_out: float,
+	duracion_in: float,
+	callback_punto_negro: Callable,
+	callback_completado: Callable = Callable()
+) -> void:
+	if fade_rect == null:
+		if callback_punto_negro.is_valid():
+			callback_punto_negro.call()
+		if callback_completado.is_valid():
+			callback_completado.call()
+		return
+	
+	if _tween_fade != null and _tween_fade.is_valid():
+		_tween_fade.kill()
+	
+	fade_rect.visible = true
+	fade_rect.color = Color(0.0, 0.0, 0.0, 0.0)
+	
+	_tween_fade = create_tween().set_ignore_time_scale(true)
+	# Fade Out: opacidad de 0.0 a 1.0
+	_tween_fade.tween_property(fade_rect, "color:a", 1.0, duracion_out).set_trans(Tween.TRANS_SINE)
+	# En punto negro:
+	_tween_fade.tween_callback(func() -> void:
+		if callback_punto_negro.is_valid():
+			callback_punto_negro.call()
+	)
+	# Fade In: opacidad de 1.0 a 0.0
+	_tween_fade.tween_property(fade_rect, "color:a", 0.0, duracion_in).set_trans(Tween.TRANS_SINE)
+	_tween_fade.tween_callback(func() -> void:
+		if fade_rect:
+			fade_rect.visible = false
+		if callback_completado.is_valid():
+			callback_completado.call()
+	)
+
+
+## Cancela la transición de pantalla negra
+func cancelar_fade_transicion() -> void:
+	if _tween_fade != null and _tween_fade.is_valid():
+		_tween_fade.kill()
+	if fade_rect:
+		fade_rect.visible = false
+		fade_rect.color = Color(0.0, 0.0, 0.0, 0.0)
 
 
 ## Muestra u oculta el botón "OMITIR ⏭"
