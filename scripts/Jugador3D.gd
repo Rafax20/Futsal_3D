@@ -2889,6 +2889,10 @@ func reaccionar_amonestacion(_tipo_tarjeta: String, pos_arbitro: Vector3) -> voi
 	_en_barrida = false
 	_tiempo_barrida = 0.0
 	_t_aturdimiento = 0.0
+	en_pose_barrera = false
+	if visual:
+		visual.rotation = Vector3.ZERO
+		visual.position = Vector3.ZERO
 	
 	var dir_hacia_arbitro: Vector3 = pos_arbitro - global_position
 	dir_hacia_arbitro.y = 0.0

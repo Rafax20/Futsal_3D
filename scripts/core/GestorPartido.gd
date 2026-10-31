@@ -254,7 +254,7 @@ func _physics_process(delta: float) -> void:
 		GameManager.reloj_neto_activo = (estado == EstadoPartido.EN_JUEGO and not esperando_pitazo_arbitro and not _en_cinematica_falta)
 	
 	# Guardián de cámara: en juego vivo o saque de arquero (SAQUE_META), forzar que la cámara principal esté activa
-	if estado == EstadoPartido.EN_JUEGO or estado == EstadoPartido.SAQUE_META:
+	if (estado == EstadoPartido.EN_JUEGO or estado == EstadoPartido.SAQUE_META) and not _en_cinematica_falta and not esperando_pitazo_arbitro:
 		var cam_guard: CamaraTransmision = _obtener_camara_transmision()
 		if cam_guard != null and is_instance_valid(cam_guard):
 			if not cam_guard.is_current():
@@ -277,7 +277,7 @@ func _physics_process(delta: float) -> void:
 		if _replay_buffer and _balon:
 			_replay_buffer.registrar_frame(delta, _balon, get_tree().get_nodes_in_group("jugadores_futsal"))
 	
-	if estado == EstadoPartido.EN_JUEGO or estado == EstadoPartido.ENTRADA_EQUIPOS or estado == EstadoPartido.TIEMPO_MUERTO:
+	if (estado == EstadoPartido.EN_JUEGO and not _en_cinematica_falta and not esperando_pitazo_arbitro) or estado == EstadoPartido.ENTRADA_EQUIPOS or estado == EstadoPartido.TIEMPO_MUERTO:
 		cuenta_regresiva_4s_actualizada.emit(0.0, false)
 		if estado == EstadoPartido.EN_JUEGO and _balon and not _balon.esta_fuera_de_juego:
 			var pos_b: Vector3 = _balon.global_position
@@ -623,7 +623,7 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int,
 	if estado == tipo:
 		for n: Node in todos:
 			var j: Jugador3D = n as Jugador3D
-			if j and is_instance_valid(j):
+			if j and is_instance_valid(j) and not j.esta_expulsado:
 				if esperando_pitazo_arbitro or _en_cinematica_falta:
 					j.set_congelado(true)
 				else:
@@ -779,22 +779,20 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 	
 	var tipo_tarjeta: String = ""
 	if puntaje >= 6.5:
-		# Tarjeta Roja Directa (Expulsión)
+		# Tarjeta Roja Directa (Expulsión diferida tras la cinemática arbitral)
 		tipo_tarjeta = "ROJA_DIRECTA"
 		print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 		tarjeta_mostrada.emit(infractor, "ROJA_DIRECTA", puntaje)
 		_emitir_anuncio_hud("¡TARJETA ROJA DIRECTA! ¡EXPULSIÓN! #%d %s (Severidad: %.1f)" % [dorsal_infractor, nombre_infractor, puntaje])
-		_procesar_expulsion(infractor, false, puntaje)
 	elif puntaje >= 3.5:
 		if infractor != null:
 			infractor.tarjetas_amarillas += 1
 			if infractor.tarjetas_amarillas >= 2:
-				# Segunda Amarilla -> Tarjeta Roja (Expulsión)
+				# Segunda Amarilla -> Tarjeta Roja (Expulsión diferida tras la cinemática arbitral)
 				tipo_tarjeta = "SEGUNDA_AMARILLA"
 				print("[ARBITRO] Tarjeta/Sanción aplicada a: ", offender_team_name)
 				tarjeta_mostrada.emit(infractor, "SEGUNDA_AMARILLA", puntaje)
 				_emitir_anuncio_hud("¡SEGUNDA AMARILLA! ¡EXPULSIÓN! #%d %s" % [dorsal_infractor, nombre_infractor])
-				_procesar_expulsion(infractor, true, puntaje)
 			else:
 				# Tarjeta Amarilla (Amonestación)
 				tipo_tarjeta = "AMARILLA"
@@ -834,6 +832,9 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 			j.set_congelado(true)
 			j.velocity = Vector3.ZERO
 
+	var debe_expulsar: bool = (tipo_tarjeta == "ROJA_DIRECTA" or tipo_tarjeta == "SEGUNDA_AMARILLA")
+	var por_doble_amarilla: bool = (tipo_tarjeta == "SEGUNDA_AMARILLA")
+
 	_datos_falta_pendiente = {
 		"infractor": infractor,
 		"victima": poseedor,
@@ -841,7 +842,9 @@ func registrar_falta(equipo_infractor: int, pos_falta: Vector3, infractor: Jugad
 		"pos_falta": pos_falta,
 		"puntaje": puntaje,
 		"total_faltas": total_faltas,
-		"equipo_favorecido": equipo_favorecido
+		"equipo_favorecido": equipo_favorecido,
+		"debe_expulsar": debe_expulsar,
+		"por_doble_amarilla": por_doble_amarilla
 	}
 
 	Engine.time_scale = 1.0
@@ -917,7 +920,9 @@ func _iniciar_secuencia_presentacion_falta(
 		"pos_falta": pos_falta,
 		"puntaje": puntaje,
 		"total_faltas": total_faltas,
-		"equipo_favorecido": equipo_favorecido
+		"equipo_favorecido": equipo_favorecido,
+		"debe_expulsar": (tipo_tarjeta == "ROJA_DIRECTA" or tipo_tarjeta == "SEGUNDA_AMARILLA"),
+		"por_doble_amarilla": (tipo_tarjeta == "SEGUNDA_AMARILLA")
 	}
 	
 	var hud: HUDPartido = _obtener_hud_partido()
@@ -1023,6 +1028,7 @@ func omitir_secuencia_falta() -> void:
 	if _tween_repeticion != null and _tween_repeticion.is_valid():
 		_tween_repeticion.kill()
 
+	_limpiar_figura_arbitro()
 	Engine.time_scale = 1.0
 
 	if _transicion_fade_activa:
@@ -1035,6 +1041,16 @@ func omitir_secuencia_falta() -> void:
 		_autorizar_saque_tiro_libre()
 	else:
 		_iniciar_transicion_fade_tiro_libre()
+
+
+## Finaliza la cinemática arbitral y ejecuta la expulsión diferida en el punto ciego del fade
+func _finalizar_cinematica_y_pasar_a_pre_pitazo() -> void:
+	if _datos_falta_pendiente.get("debe_expulsar", false):
+		var infractor_exp: Jugador3D = _datos_falta_pendiente.get("infractor", null)
+		var doble_am: bool = _datos_falta_pendiente.get("por_doble_amarilla", false)
+		var punt: float = float(_datos_falta_pendiente.get("puntaje", 0.0))
+		_datos_falta_pendiente["debe_expulsar"] = false
+		_procesar_expulsion(infractor_exp, doble_am, punt)
 
 
 ## ETAPA 3: FADE OUT (1.0 s) -> REPOSICIONAMIENTO Y CÁMARA INTELIGENTE -> FADE IN (1.0 s)
@@ -1062,6 +1078,7 @@ func _iniciar_transicion_fade_tiro_libre() -> void:
 
 
 func _on_fade_punto_negro() -> void:
+	_finalizar_cinematica_y_pasar_a_pre_pitazo()
 	_limpiar_figura_arbitro()
 
 	var hud: HUDPartido = _obtener_hud_partido()
@@ -1456,7 +1473,7 @@ func _mantener_despeje_doble_penalti() -> void:
 	var idx_fila: int = 0
 	for n: Node in todos:
 		var j: Jugador3D = n as Jugador3D
-		if j == null or j == _sacador_actual:
+		if j == null or j == _sacador_actual or j.esta_expulsado:
 			continue
 		if j.posicion_tactica == "PORTERO":
 			# El portero defensor debe respetar los >= 5.0 metros reglamentarios respecto al balón
@@ -1715,7 +1732,7 @@ func _finalizar_reanudacion() -> void:
 		var todos: Array[Node] = get_tree().get_nodes_in_group("jugadores_futsal")
 		for n: Node in todos:
 			var j: Jugador3D = n as Jugador3D
-			if j and is_instance_valid(j):
+			if j and is_instance_valid(j) and not j.esta_expulsado:
 				j.fijar_en_saque(false)
 				j.set_physics_process(true)
 				j.es_opcion_de_pase = true
@@ -1826,7 +1843,7 @@ func _obtener_portero(equipo_sac: int) -> Jugador3D:
 	var jugadores: Array[Node] = get_tree().get_nodes_in_group(grupo)
 	for n: Node in jugadores:
 		var jug: Jugador3D = n as Jugador3D
-		if jug and jug.posicion_tactica == "PORTERO":
+		if jug and jug.posicion_tactica == "PORTERO" and not jug.esta_expulsado:
 			return jug
 	return _obtener_sacador_campo(_pos_saque, equipo_sac)
 
@@ -1840,7 +1857,7 @@ func _obtener_sacador_campo(pos_balon: Vector3, equipo_sac: int) -> Jugador3D:
 	
 	for n: Node in jugadores:
 		var jug: Jugador3D = n as Jugador3D
-		if jug and jug.posicion_tactica != "PORTERO":
+		if jug and jug.posicion_tactica != "PORTERO" and not jug.esta_expulsado:
 			var d: float = jug.global_position.distance_to(pos_balon)
 			if d < min_dist:
 				min_dist = d
@@ -1855,7 +1872,7 @@ func _obtener_sacador_centro(equipo_sac: int) -> Jugador3D:
 	
 	for n: Node in jugadores:
 		var jug: Jugador3D = n as Jugador3D
-		if jug and jug.posicion_tactica == "PIVOT":
+		if jug and jug.posicion_tactica == "PIVOT" and not jug.esta_expulsado:
 			return jug
 	
 	return _obtener_sacador_campo(Vector3.ZERO, equipo_sac)
@@ -1910,7 +1927,7 @@ func _configurar_barrera_y_posicionamiento_tiro_libre(equipo_sacador_idx: int, p
 	var defensores_campo: Array[Jugador3D] = []
 	for n: Node in rivales:
 		var j: Jugador3D = n as Jugador3D
-		if j and j.posicion_tactica != "PORTERO":
+		if j and j.posicion_tactica != "PORTERO" and not j.esta_expulsado:
 			defensores_campo.append(j)
 
 	# Ordenar rivales por cercanía al punto de la barrera
@@ -1974,7 +1991,7 @@ func _configurar_barrera_y_posicionamiento_tiro_libre(equipo_sacador_idx: int, p
 	var idx_comp: int = 0
 	for n: Node in companeros:
 		var comp: Jugador3D = n as Jugador3D
-		if comp == null or comp == _sacador_actual or comp.posicion_tactica == "PORTERO":
+		if comp == null or comp == _sacador_actual or comp.posicion_tactica == "PORTERO" or comp.esta_expulsado:
 			continue
 		var diff_comp: Vector3 = comp.global_position - pos_balon
 		diff_comp.y = 0.0
