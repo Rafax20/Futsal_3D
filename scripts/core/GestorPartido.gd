@@ -85,10 +85,14 @@ var _figura_arbitro_instancia: Node3D = null
 var _replay_buffer = null
 var _datos_falta_pendiente: Dictionary = {}
 var _camara_referencia: CamaraTransmision = null
+var color_rect_fade: ColorRect = null
+var _canvas_layer_fade: CanvasLayer = null
+var _posicionamiento_falta_completado: bool = false
 
 
 func _ready() -> void:
 	add_to_group("gestor_partido")
+	_reiniciar_sanciones_2min()
 	_replay_buffer = ReplayBufferClass.new()
 	_inicializar_silbato_arbitral()
 	_conectar_balon()
@@ -100,6 +104,47 @@ func _ready() -> void:
 		estado = EstadoPartido.ENTRENAMIENTO
 		return
 	call_deferred("iniciar_entrada_equipos")
+
+
+func _reiniciar_sanciones_2min() -> void:
+	inferioridad_local_activa = false
+	tiempo_inferioridad_local = 0.0
+	jugador_expulsado_local = null
+	inferioridad_visitante_activa = false
+	tiempo_inferioridad_visitante = 0.0
+	jugador_expulsado_visitante = null
+	sancion_2min_actualizada.emit(0, 0.0, false)
+	sancion_2min_actualizada.emit(1, 0.0, false)
+
+
+func _obtener_o_crear_color_rect_fade() -> ColorRect:
+	if color_rect_fade != null and is_instance_valid(color_rect_fade):
+		return color_rect_fade
+	
+	var hud: HUDPartido = _obtener_hud_partido()
+	if hud != null and is_instance_valid(hud) and hud.fade_rect != null and is_instance_valid(hud.fade_rect):
+		color_rect_fade = hud.fade_rect
+		color_rect_fade.color = Color.BLACK
+		color_rect_fade.modulate.a = 0.0
+		color_rect_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		color_rect_fade.visible = true
+		return color_rect_fade
+	
+	if _canvas_layer_fade == null or not is_instance_valid(_canvas_layer_fade):
+		_canvas_layer_fade = CanvasLayer.new()
+		_canvas_layer_fade.name = "CanvasLayerFadeFalta"
+		_canvas_layer_fade.layer = 120
+		add_child(_canvas_layer_fade)
+	
+	color_rect_fade = ColorRect.new()
+	color_rect_fade.name = "ColorRectFadeFalta"
+	color_rect_fade.color = Color.BLACK
+	color_rect_fade.modulate.a = 0.0
+	color_rect_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	color_rect_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	color_rect_fade.visible = true
+	_canvas_layer_fade.add_child(color_rect_fade)
+	return color_rect_fade
 
 
 func _inicializar_silbato_arbitral() -> void:
@@ -355,6 +400,7 @@ func _verificar_uniformes_equipos() -> void:
 
 
 func iniciar_entrada_equipos() -> void:
+	_reiniciar_sanciones_2min()
 	if _balon == null:
 		_conectar_balon()
 	
@@ -620,14 +666,11 @@ func iniciar_reanudacion(tipo: EstadoPartido, pos: Vector3, equipo_sacador: int,
 	
 	await get_tree().create_timer(t_pausa_saque).timeout
 	
-	if estado == tipo:
+	if estado == tipo and not esperando_pitazo_arbitro and not _en_cinematica_falta:
 		for n: Node in todos:
 			var j: Jugador3D = n as Jugador3D
 			if j and is_instance_valid(j) and not j.esta_expulsado:
-				if esperando_pitazo_arbitro or _en_cinematica_falta:
-					j.set_congelado(true)
-				else:
-					j.set_congelado(false)
+				j.set_congelado(false)
 
 
 # ==============================================================================
@@ -940,12 +983,18 @@ func _iniciar_secuencia_presentacion_falta(
 	var pos_ref_infractor: Vector3 = infractor.global_position if infractor and is_instance_valid(infractor) else pos_falta
 	var pos_ref_victima: Vector3 = victima.global_position if victima and is_instance_valid(victima) else (pos_falta + Vector3(1.0, 0.0, 0.0))
 
+	var rect_fade: ColorRect = _obtener_o_crear_color_rect_fade()
+	if rect_fade:
+		rect_fade.modulate.a = 0.0
+		rect_fade.visible = true
+	_posicionamiento_falta_completado = false
+
 	if _tween_cinematica != null and _tween_cinematica.is_valid():
 		_tween_cinematica.kill()
 	if _tween_repeticion != null and _tween_repeticion.is_valid():
 		_tween_repeticion.kill()
 
-	# 1. Si la falta conlleva Tarjeta Amarilla o Roja: Árbitro 3D (1.6 s) + Repetición (1.5 s)
+	# 1. Si la falta conlleva Tarjeta Amarilla o Roja: Árbitro 3D (1.8 s) + Repetición (si hay frames)
 	if tipo_tarjeta != "":
 		_limpiar_figura_arbitro()
 		_figura_arbitro_instancia = FiguraArbitro3DClass.new()
@@ -964,9 +1013,9 @@ func _iniciar_secuencia_presentacion_falta(
 		if cam:
 			cam.activar_camara_cinematica_falta(pos_ref_infractor, _figura_arbitro_instancia.global_position, true)
 
-		# Árbitro 3D muestra la tarjeta durante 1.6 s
+		# Árbitro 3D muestra la tarjeta durante 1.8 s
 		_tween_cinematica = create_tween().set_ignore_time_scale(true)
-		_tween_cinematica.tween_interval(1.6)
+		_tween_cinematica.tween_interval(1.8)
 		_tween_cinematica.tween_callback(func() -> void:
 			_limpiar_figura_arbitro()
 			var frames_rep: Array = _replay_buffer.obtener_frames(1.5) if _replay_buffer else []
@@ -1031,16 +1080,20 @@ func omitir_secuencia_falta() -> void:
 	_limpiar_figura_arbitro()
 	Engine.time_scale = 1.0
 
-	if _transicion_fade_activa:
-		var hud: HUDPartido = _obtener_hud_partido()
-		if hud:
-			hud.cancelar_fade_transicion()
+	var rect_fade: ColorRect = _obtener_o_crear_color_rect_fade()
+	if rect_fade:
+		rect_fade.modulate.a = 0.0
+
+	var hud: HUDPartido = _obtener_hud_partido()
+	if hud:
+		hud.cancelar_fade_transicion()
+		hud.ocultar_placa_tarjeta()
+		hud.mostrar_indicador_repeticion(false)
+
+	if not _posicionamiento_falta_completado:
 		_on_fade_punto_negro()
-		_autorizar_saque_tiro_libre()
-	elif esperando_pitazo_arbitro and not _en_cinematica_falta:
-		_autorizar_saque_tiro_libre()
-	else:
-		_iniciar_transicion_fade_tiro_libre()
+
+	_autorizar_saque_tiro_libre()
 
 
 ## Finaliza la cinemática arbitral y ejecuta la expulsión diferida en el punto ciego del fade
@@ -1053,7 +1106,7 @@ func _finalizar_cinematica_y_pasar_a_pre_pitazo() -> void:
 		_procesar_expulsion(infractor_exp, doble_am, punt)
 
 
-## ETAPA 3: FADE OUT (1.0 s) -> REPOSICIONAMIENTO Y CÁMARA INTELIGENTE -> FADE IN (1.0 s)
+## ETAPA 3: FADE OUT (1.0 s) -> REPOSICIONAMIENTO Y CÁMARA INTELIGENTE -> FADE IN (1.0 s) -> VENTANA PRE-PITAZO (2.0 s) -> AUTORIZAR
 func _iniciar_transicion_fade_tiro_libre() -> void:
 	if _transicion_fade_activa:
 		return
@@ -1064,20 +1117,31 @@ func _iniciar_transicion_fade_tiro_libre() -> void:
 	if _tween_repeticion != null and _tween_repeticion.is_valid():
 		_tween_repeticion.kill()
 
-	var hud: HUDPartido = _obtener_hud_partido()
-	if hud:
-		hud.ejecutar_fade_transicion(
-			1.0,
-			1.0,
-			Callable(self, "_on_fade_punto_negro"),
-			Callable(self, "_on_fade_completado")
-		)
-	else:
-		_on_fade_punto_negro()
-		_on_fade_completado()
+	var rect_fade: ColorRect = _obtener_o_crear_color_rect_fade()
+	rect_fade.visible = true
+	rect_fade.modulate.a = 0.0
+
+	_tween_cinematica = create_tween().set_ignore_time_scale(true)
+
+	# Paso B: Fade Out (1.0 s)
+	_tween_cinematica.tween_property(rect_fade, "modulate:a", 1.0, 1.0).set_trans(Tween.TRANS_SINE)
+
+	# Paso C: Callback en punto negro
+	_tween_cinematica.tween_callback(Callable(self, "_on_fade_punto_negro"))
+
+	# Paso D: Fade In (1.0 s)
+	_tween_cinematica.tween_property(rect_fade, "modulate:a", 0.0, 1.0).set_trans(Tween.TRANS_SINE)
+
+	# Paso E: Ventana 100% visible (2.0 s)
+	_tween_cinematica.tween_callback(Callable(self, "_on_fade_completado"))
+	_tween_cinematica.tween_interval(2.0)
+
+	# Paso F: Pitazo de autorización
+	_tween_cinematica.tween_callback(Callable(self, "_autorizar_saque_tiro_libre"))
 
 
 func _on_fade_punto_negro() -> void:
+	_posicionamiento_falta_completado = true
 	_finalizar_cinematica_y_pasar_a_pre_pitazo()
 	_limpiar_figura_arbitro()
 
@@ -1147,6 +1211,9 @@ func _on_fade_punto_negro() -> void:
 
 func _on_fade_completado() -> void:
 	_transicion_fade_activa = false
+	var rect_fade: ColorRect = _obtener_o_crear_color_rect_fade()
+	if rect_fade:
+		rect_fade.modulate.a = 0.0
 
 	var hud: HUDPartido = _obtener_hud_partido()
 	if hud:
@@ -1158,16 +1225,6 @@ func _on_fade_completado() -> void:
 	esperando_pitazo_arbitro = true
 	_timer_timeout = 4.0
 	cuenta_regresiva_4s_actualizada.emit(4.0, false)
-
-	# Ventana pre-pitazo 100% visible durante exactamente 2.0 s
-	if _tween_cinematica != null and _tween_cinematica.is_valid():
-		_tween_cinematica.kill()
-
-	_tween_cinematica = create_tween().set_ignore_time_scale(true)
-	_tween_cinematica.tween_interval(2.0)
-	_tween_cinematica.tween_callback(func() -> void:
-		_autorizar_saque_tiro_libre()
-	)
 
 
 ## ETAPA 4: PITAZO DE AUTORIZACIÓN E INICIO DE LOS 4 SEGUNDOS REGLAMENTARIOS
@@ -1183,8 +1240,21 @@ func _autorizar_saque_tiro_libre() -> void:
 	if hud:
 		hud.mostrar_boton_omitir(false)
 
+	var todos: Array[Node] = get_tree().get_nodes_in_group("jugadores_futsal")
+	for n: Node in todos:
+		var j: Jugador3D = n as Jugador3D
+		if j and is_instance_valid(j) and not j.esta_expulsado:
+			j.set_congelado(false)
+
 	if estado != EstadoPartido.TIRO_LIBRE and estado != EstadoPartido.DOBLE_PENALTI:
 		return
+
+	if _sacador_actual != null and is_instance_valid(_sacador_actual):
+		_sacador_actual.set_congelado(false)
+		if _balon != null and is_instance_valid(_balon) and not _sacador_actual.tiene_posesion:
+			_sacador_actual.tomar_posesion(_balon)
+		if int(_sacador_actual.equipo) != 0:
+			_sacador_actual._cooldown_decision_ia = 0.45
 
 	_reproducir_pitido_arbitral()
 
@@ -1193,9 +1263,6 @@ func _autorizar_saque_tiro_libre() -> void:
 
 	_timer_timeout = 4.0
 	cuenta_regresiva_4s_actualizada.emit(4.0, true)
-
-	if _sacador_actual and is_instance_valid(_sacador_actual):
-		_sacador_actual.set_congelado(false)
 
 
 func _limpiar_figura_arbitro() -> void:
@@ -1229,7 +1296,7 @@ func _procesar_expulsion(infractor: Jugador3D, _por_doble_amarilla: bool, _punta
 
 ## Actualiza los cronómetros de las sanciones de 2 minutos durante el juego neto (EN_JUEGO)
 func _actualizar_sanciones_2min(delta: float) -> void:
-	if estado != EstadoPartido.EN_JUEGO:
+	if estado != EstadoPartido.EN_JUEGO or _en_cinematica_falta or esperando_pitazo_arbitro:
 		return
 	
 	if inferioridad_local_activa:
@@ -1266,6 +1333,22 @@ func _finalizar_inferioridad(equipo_sancionado: int, motivo: String) -> void:
 
 ## Gestiona el ingreso del sustituto desde el banquillo al expirar la sanción o tras gol concedido (FIFA Law 12)
 func _hacer_ingresar_sustituto(equipo_sancionado: int) -> void:
+	var grupo_eq: String = "equipo_local" if equipo_sancionado == 0 else "equipo_visitante"
+	var jugadores_activos: int = 0
+	for n: Node in get_tree().get_nodes_in_group(grupo_eq):
+		var j: Jugador3D = n as Jugador3D
+		if j and not j.esta_expulsado:
+			jugadores_activos += 1
+	if jugadores_activos >= 5:
+		print("[ARBITRO] El equipo ya cuenta con %d jugadores activos (máximo 5). No ingresa sustituto adicional." % jugadores_activos)
+		if equipo_sancionado == 0:
+			jugador_expulsado_local = null
+			inferioridad_local_activa = false
+		else:
+			jugador_expulsado_visitante = null
+			inferioridad_visitante_activa = false
+		return
+
 	var j_expulsado: Jugador3D = jugador_expulsado_local if equipo_sancionado == 0 else jugador_expulsado_visitante
 	var pos_tactica: String = "ALA_IZQ"
 	var pos_inicial: Vector3 = Vector3(-2.0 if equipo_sancionado == 0 else 2.0, 0.0, -3.0)

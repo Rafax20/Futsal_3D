@@ -503,9 +503,10 @@ func _limpiar_portadores_previos(excepto: Node3D = null) -> void:
 
 ## Pasa el balón al estado de posesión magnética con el jugador indicado
 func capturar_por(jugador: Node3D) -> void:
+	var es_sacador: bool = (sacador_autorizado != null and jugador == sacador_autorizado)
 	# Prohibición estricta de captura aérea: si el balón está por encima de 1.15m
 	# solo el portero con las manos dentro de su área puede tomarlo.
-	if global_position.y > 1.15:
+	if not es_sacador and global_position.y > 1.15:
 		var es_portero_manos: bool = false
 		if jugador != null:
 			if ("tiene_balon_en_manos" in jugador and bool(jugador.tiene_balon_en_manos)):
@@ -514,6 +515,9 @@ func capturar_por(jugador: Node3D) -> void:
 				es_portero_manos = true
 		if not es_portero_manos:
 			return
+
+	if es_sacador:
+		esta_fuera_de_juego = false
 
 	if jugador != null and jugador != ultimo_pasador and jugador != ultimo_ejecutor_saque:
 		if ultimo_pasador != null and is_instance_valid(ultimo_pasador) and ultimo_pasador.has_method("desbloquear_recaptura"):
@@ -601,6 +605,7 @@ func liberar(impulso: Vector3, equipo_origen: int = -1, es_pase_pie_companero: b
 		ultimo_ejecutor_saque = null
 	
 	sacador_autorizado = null
+	esta_fuera_de_juego = false
 	_gol_ya_notificado = false
 	registrar_toque_cesion_pie(es_pase_pie_companero, ultimo_toque_equipo)
 	_limpiar_portadores_previos(null)
@@ -785,6 +790,8 @@ func liberar_pase_raso(impulso: Vector3, equipo_origen: int = 0, es_pase_pie_com
 ##   el balón hasta que `toques_en_jugada >= 2` (tocado por otro jugador o arquero).
 ## - Cooldown estricto de auto-recepción del pasador (`_t_bloqueo_pasador > 0.0` y `ultimo_pasador`).
 func puede_ser_capturado_por(j: Jugador3D) -> bool:
+	if sacador_autorizado != null and j == sacador_autorizado:
+		return true
 	if not puede_ser_capturado():
 		return false
 	if sacador_autorizado != null and j != sacador_autorizado:

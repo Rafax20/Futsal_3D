@@ -1393,22 +1393,31 @@ func _asignar_grupos() -> void:
 
 ## Retorna true si el jugador está en condiciones físicas de controlar el balón
 func puede_tomar_balon() -> bool:
-	if _t_bloqueo_recaptura > 0.0 or _t_aturdimiento > 0.0 or _congelado or _en_entrada or en_pose_barrera:
+	var balon: Balon3D = _obtener_balon_juego()
+	var es_mi_saque: bool = false
+	if balon != null and is_instance_valid(balon):
+		if balon.sacador_autorizado == self or _en_posicion_saque:
+			es_mi_saque = true
+	elif _en_posicion_saque:
+		es_mi_saque = true
+
+	if _t_bloqueo_recaptura > 0.0 or _t_aturdimiento > 0.0 or _en_entrada or en_pose_barrera:
 		return false
+	if _congelado and not es_mi_saque:
+		return false
+
 	var gestor: Node = get_tree().get_first_node_in_group("gestor_partido")
-	if gestor != null:
+	if gestor != null and not es_mi_saque:
 		if "estado" in gestor and int(gestor.estado) != 2 and not ("modo_entrenamiento" in gestor and gestor.modo_entrenamiento):
 			return false
 		if ("esperando_pitazo_arbitro" in gestor and gestor.esperando_pitazo_arbitro) or ("_en_cinematica_falta" in gestor and gestor._en_cinematica_falta):
 			return false
-	if _en_posicion_saque:
-		var balon_saque: Balon3D = _obtener_balon_juego()
-		if balon_saque == null or balon_saque.sacador_autorizado != self:
-			return false
-	var balon: Balon3D = _obtener_balon_juego()
+
 	if balon == null or not is_instance_valid(balon):
 		return false
-	if balon.esta_fuera_de_juego or (balon.sacador_autorizado != null and balon.sacador_autorizado != self):
+	if balon.esta_fuera_de_juego and not es_mi_saque:
+		return false
+	if balon.sacador_autorizado != null and balon.sacador_autorizado != self:
 		return false
 	# Prohibición estricta de captura aérea: si el balón está por encima de 1.15m
 	# solo el portero con manos dentro de su área propia puede tomarlo.
@@ -1417,7 +1426,7 @@ func puede_tomar_balon() -> bool:
 			return false
 	if balon.has_method("puede_ser_capturado_por") and not balon.puede_ser_capturado_por(self):
 		return false
-	if balon.has_method("puede_ser_capturado") and not balon.puede_ser_capturado():
+	if balon.has_method("puede_ser_capturado") and not balon.puede_ser_capturado() and not es_mi_saque:
 		return false
 	return true
 
@@ -2094,6 +2103,11 @@ func accion_hueco_presionada(potencia: float = 0.5) -> void:
 ## - TipoTiro.COLOCADO (Swipe Down): Tiro de calidad con efecto Magnus (curva buscando el segundo poste, menor velocidad lineal y mayor precisión).
 ## - TipoTiro.VASELINA (Swipe Up): Picadita parabólica suave para superar al arquero en achiques.
 func ejecutar_tiro(potencia: float = 0.5, tipo_tiro: int = TipoTiro.NORMAL) -> void:
+	var gestor_bloqueo: Node = get_tree().get_first_node_in_group("gestor_partido")
+	if gestor_bloqueo != null:
+		if ("esperando_pitazo_arbitro" in gestor_bloqueo and gestor_bloqueo.esperando_pitazo_arbitro) or ("_en_cinematica_falta" in gestor_bloqueo and gestor_bloqueo._en_cinematica_falta):
+			return
+
 	var balon: Balon3D = _obtener_balon_juego()
 	var es_saque: bool = (balon != null and (balon.sacador_autorizado == self or _en_posicion_saque))
 	if es_saque and not tiene_posesion:
@@ -2253,6 +2267,11 @@ func _calcular_velocidad_pase_hueco(potencia_norm: float) -> float:
 ## - Activa automáticamente la mecánica "Pasa y Corre" (Give-and-Go / DESMARQUE_OFENSIVO) en el pasador.
 ## - Registra si es cesión con el pie de un jugador de campo (Regla Futsal: el portero no puede agarrarla con las manos).
 func ejecutar_pase(potencia: float = 0.5, tipo_pase: int = TipoPase.RASO) -> void:
+	var gestor_bloqueo: Node = get_tree().get_first_node_in_group("gestor_partido")
+	if gestor_bloqueo != null:
+		if ("esperando_pitazo_arbitro" in gestor_bloqueo and gestor_bloqueo.esperando_pitazo_arbitro) or ("_en_cinematica_falta" in gestor_bloqueo and gestor_bloqueo._en_cinematica_falta):
+			return
+
 	var b_saque: Balon3D = _obtener_balon_juego()
 	var es_saque: bool = (b_saque != null and (b_saque.sacador_autorizado == self or _en_posicion_saque))
 	if es_saque:
@@ -2496,6 +2515,11 @@ func _calcular_trayectoria_pasa_y_corre(dir_intencion: Vector3) -> Vector3:
 ## 3) Descarta trayectorias que intersecten con las áreas de intercepción de defensores rivales.
 ## 4) Ejecuta un impulso físico limpio (apply_central_impulse) con desaceleración orgánica de rodadura, sin frenazos artificiales.
 func ejecutar_pase_hueco(potencia: float = 0.5) -> void:
+	var gestor_bloqueo: Node = get_tree().get_first_node_in_group("gestor_partido")
+	if gestor_bloqueo != null:
+		if ("esperando_pitazo_arbitro" in gestor_bloqueo and gestor_bloqueo.esperando_pitazo_arbitro) or ("_en_cinematica_falta" in gestor_bloqueo and gestor_bloqueo._en_cinematica_falta):
+			return
+
 	var b_saque: Balon3D = _obtener_balon_juego()
 	var es_saque: bool = (b_saque != null and (b_saque.sacador_autorizado == self or _en_posicion_saque))
 	if es_saque:
@@ -2696,7 +2720,12 @@ func _calcular_mejor_punto_hueco_conos(origen: Vector3, companero: Jugador3D, t_
 
 ## Barrida defensiva deslizante para robar el balón
 func ejecutar_barrida() -> void:
-	if _en_barrida or tiene_posesion or _t_aturdimiento > 0.0 or _en_posicion_saque:
+	var gestor_bloqueo: Node = get_tree().get_first_node_in_group("gestor_partido")
+	if gestor_bloqueo != null:
+		if ("esperando_pitazo_arbitro" in gestor_bloqueo and gestor_bloqueo.esperando_pitazo_arbitro) or ("_en_cinematica_falta" in gestor_bloqueo and gestor_bloqueo._en_cinematica_falta):
+			return
+
+	if _congelado or _en_barrida or tiene_posesion or _t_aturdimiento > 0.0 or _en_posicion_saque:
 		return
 	
 	_en_barrida = true
