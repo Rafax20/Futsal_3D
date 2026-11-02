@@ -325,7 +325,8 @@ enum PoseArquero {
 	BLOQUEO_PECHO,
 	ESTIRADA_ALTA,
 	MANOS_SEGURAS,
-	CAIDA_LATERAL
+	CAIDA_LATERAL,
+	INCORPORACION_SUELO
 }
 
 var pose_arquero_actual: int = PoseArquero.GUARDIA_BAJA
@@ -632,7 +633,7 @@ func _arquero_en_compromiso_suelo() -> bool:
 		or _t_bloqueo_recuperacion_suelo > 0.0
 		or _tiempo_dive_activo > 0.0
 		or _en_achique_cruz_k
-		or pose_arquero_actual in [PoseArquero.LA_CRUZ, PoseArquero.DESPLIEGUE_L, PoseArquero.CAIDA_LATERAL]
+		or pose_arquero_actual in [PoseArquero.LA_CRUZ, PoseArquero.DESPLIEGUE_L, PoseArquero.CAIDA_LATERAL, PoseArquero.INCORPORACION_SUELO]
 	)
 
 
@@ -644,34 +645,63 @@ func _actualizar_pose_esqueleto_arquero(delta: float) -> void:
 	
 	if tiene_balon_en_manos or _estado == EstadoJugador.ESTADO_PORTERO_MANOS:
 		pose_arquero_actual = PoseArquero.MANOS_SEGURAS
+	elif _t_anim_atajada <= 0.20 and _t_bloqueo_recuperacion_suelo > 0.0 and (pose_arquero_actual in [PoseArquero.CAIDA_LATERAL, PoseArquero.DESPLIEGUE_L, PoseArquero.LA_CRUZ, PoseArquero.INCORPORACION_SUELO]):
+		pose_arquero_actual = PoseArquero.INCORPORACION_SUELO
 	elif _t_anim_atajada <= 0.0 and _t_bloqueo_recuperacion_suelo <= 0.0 and not _en_achique_cruz_k:
 		pose_arquero_actual = PoseArquero.GUARDIA_BAJA
 	elif _en_achique_cruz_k:
 		pose_arquero_actual = PoseArquero.LA_CRUZ
 	
-	# Transición rápida (slerp x2.5 más veloz) hacia poses reactivas de atajada (60.0 rad/s)
-	var vel_transicion: float = 60.0 if pose_arquero_actual != PoseArquero.GUARDIA_BAJA else 20.0
+	# Transición rápida hacia atajadas explosivas (60.0 rad/s) y progresiva hacia guardia baja / incorporación (24.0 rad/s)
+	var vel_transicion: float = 24.0 if pose_arquero_actual in [PoseArquero.GUARDIA_BAJA, PoseArquero.INCORPORACION_SUELO] else 60.0
 	var f: float = clampf(vel_transicion * delta, 0.0, 1.0)
 	
 	match pose_arquero_actual:
 		PoseArquero.GUARDIA_BAJA:
-			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.16, 0.0), f)
-			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3.ZERO, f)
-			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(deg_to_rad(12.0), 0.0, 0.0), f)
-			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3(deg_to_rad(8.0), 0.0, 0.0), f)
-			_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(-10.0), 0.0, 0.0), f)
-			
-			_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.20, 0.0, 0.22), f)
-			_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.20, 0.0, -0.22), f)
-			_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.38, 0.0, 0.0), f)
-			_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.38, 0.0, 0.0), f)
-			_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.18, 0.0, 0.0), f)
-			_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.18, 0.0, 0.0), f)
-			
-			_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.85, -0.15, 0.35), f)
-			_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.85, 0.15, -0.35), f)
-			_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.10, 0.0, 0.45), f)
-			_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.10, 0.0, -0.45), f)
+			var se_desplaza_lateral: bool = absf(velocity.z) > 0.25
+			if se_desplaza_lateral:
+				var onda_shuffle: float = sin(_fase_carrera * 1.6)
+				var hips_y: float = -0.16 + absf(onda_shuffle) * 0.045
+				var abduccion_l_z: float = 0.22 + 0.14 * onda_shuffle
+				var abduccion_r_z: float = -0.22 + 0.14 * onda_shuffle
+				var flex_rodillas: float = -0.38 - absf(onda_shuffle) * 0.10
+				
+				_aplicar_posicion_hips_lerp(Vector3(0.0, hips_y, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3(0.0, 0.0, 0.04 * onda_shuffle), f)
+				_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(deg_to_rad(12.0), 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3(deg_to_rad(8.0), 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(-10.0), 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.20, 0.0, abduccion_l_z), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.20, 0.0, abduccion_r_z), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(flex_rodillas, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(flex_rodillas, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.18, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.18, 0.0, 0.0), f)
+				
+				# Palmas abiertas al frente en guardia activa
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.85, -0.15, 0.35), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.85, 0.15, -0.35), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.10, 0.0, 0.45), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.10, 0.0, -0.45), f)
+			else:
+				_aplicar_posicion_hips_lerp(Vector3(0.0, -0.16, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3.ZERO, f)
+				_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(deg_to_rad(12.0), 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3(deg_to_rad(8.0), 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(-10.0), 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.20, 0.0, 0.22), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.20, 0.0, -0.22), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.38, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.38, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.18, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.18, 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.85, -0.15, 0.35), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.85, 0.15, -0.35), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.10, 0.0, 0.45), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.10, 0.0, -0.45), f)
 		
 		PoseArquero.LA_CRUZ:
 			var factor_k: float = clampf((gk_alcance_achique / 99.0) * 1.25, 0.85, 1.30)
@@ -704,7 +734,11 @@ func _actualizar_pose_esqueleto_arquero(delta: float) -> void:
 			_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.0, 0.0, -0.28), f)
 		
 		PoseArquero.DESPLIEGUE_L:
-			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.48, 0.0), f)
+			var b_act_l: Balon3D = _obtener_balon_juego()
+			var y_balon_l: float = clampf(b_act_l.global_position.y if (b_act_l and is_instance_valid(b_act_l)) else 0.25, 0.15, 1.35)
+			var factor_alt_brazo_l: float = (y_balon_l - 0.15) / 1.20
+			
+			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.50, 0.0), f)
 			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3(0.0, 0.0, 0.10 * _lado_pose_arquero), f)
 			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(0.05, 0.0, 0.20 * _lado_pose_arquero), f)
 			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3.ZERO, f)
@@ -718,7 +752,8 @@ func _actualizar_pose_esqueleto_arquero(delta: float) -> void:
 				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-1.30, 0.0, 0.0), f)
 				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(-0.10, 0.0, 0.0), f)
 				
-				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.80, 0.0, 0.60), f)
+				var rot_b_z: float = lerpf(0.60, 0.95, factor_alt_brazo_l)
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.80 - factor_alt_brazo_l * 0.35, 0.0, rot_b_z), f)
 				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.30, 0.0, -0.70), f)
 			else:
 				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.35, 0.0, -1.35), f)
@@ -729,7 +764,8 @@ func _actualizar_pose_esqueleto_arquero(delta: float) -> void:
 				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-1.30, 0.0, 0.0), f)
 				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(-0.10, 0.0, 0.0), f)
 				
-				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.80, 0.0, -0.60), f)
+				var rot_b_z: float = lerpf(-0.60, -0.95, factor_alt_brazo_l)
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.80 - factor_alt_brazo_l * 0.35, 0.0, rot_b_z), f)
 				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.30, 0.0, 0.70), f)
 			
 			_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.0, 0.0, 0.20), f)
@@ -827,16 +863,21 @@ func _actualizar_pose_esqueleto_arquero(delta: float) -> void:
 			_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.35, 0.0, -0.95), f)
 		
 		PoseArquero.CAIDA_LATERAL:
-			# Caída rasante al piso estilo Futsal: Hips desciende -0.52m, columna inclinada 55° (0.96 rad) hacia el balón
-			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.52, 0.0), f)
+			# Caída rasante al piso estilo Futsal: Hips desciende progresivamente a -0.50m
+			var b_act_c: Balon3D = _obtener_balon_juego()
+			var y_balon_c: float = clampf(b_act_c.global_position.y if (b_act_c and is_instance_valid(b_act_c)) else 0.30, 0.15, 1.35)
+			var factor_alt_c: float = (y_balon_c - 0.15) / 1.20
+			
+			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.50, 0.0), f)
 			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3(0.0, 0.0, deg_to_rad(25.0) * _lado_pose_arquero), f)
 			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(deg_to_rad(-5.0), 0.0, 0.96 * _lado_pose_arquero), f)
 			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3(0.0, 0.0, 0.20 * _lado_pose_arquero), f)
 			_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(10.0), 0.0, -0.30 * _lado_pose_arquero), f)
 			
 			if _lado_pose_arquero >= 0.0:
-				# Caída hacia la izquierda: brazo izquierdo estirado a ras de piso, piernas extendidas lateralmente
-				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.10, 0.0, 1.45), f)
+				var rot_b_z: float = lerpf(1.45, 1.70, factor_alt_c)
+				var rot_b_x: float = lerpf(0.10, -0.20, factor_alt_c)
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(rot_b_x, 0.0, rot_b_z), f)
 				_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.0, 0.0, 0.05), f)
 				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.35, 0.0, -0.65), f)
 				_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.0, 0.0, -0.20), f)
@@ -848,8 +889,9 @@ func _actualizar_pose_esqueleto_arquero(delta: float) -> void:
 				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-0.15, 0.0, 0.0), f)
 				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.10, 0.0, 0.0), f)
 			else:
-				# Caída hacia la derecha
-				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.10, 0.0, -1.45), f)
+				var rot_b_z: float = lerpf(-1.45, -1.70, factor_alt_c)
+				var rot_b_x: float = lerpf(0.10, -0.20, factor_alt_c)
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(rot_b_x, 0.0, rot_b_z), f)
 				_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.0, 0.0, -0.05), f)
 				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.35, 0.0, 0.65), f)
 				_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.0, 0.0, 0.20), f)
@@ -860,6 +902,45 @@ func _actualizar_pose_esqueleto_arquero(delta: float) -> void:
 				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.20, 0.0, -0.45), f)
 				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-0.15, 0.0, 0.0), f)
 				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.10, 0.0, 0.0), f)
+		
+		PoseArquero.INCORPORACION_SUELO:
+			# Fase intermedia de recuperación e incorporación apoyando rodilla y mano
+			_aplicar_posicion_hips_lerp(Vector3(0.0, -0.28, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_hips, _rest_hips, Vector3(deg_to_rad(8.0), 0.0, 0.08 * _lado_pose_arquero), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine, _rest_spine, Vector3(deg_to_rad(28.0), 0.0, 0.25 * _lado_pose_arquero), f)
+			_aplicar_rotacion_hueso_slerp(_idx_spine1, _rest_spine1, Vector3(deg_to_rad(6.0), 0.0, 0.0), f)
+			_aplicar_rotacion_hueso_slerp(_idx_head, _rest_head, Vector3(deg_to_rad(-12.0), 0.0, 0.0), f)
+			
+			if _lado_pose_arquero >= 0.0:
+				# Brazo izquierdo apoyado hacia el suelo empujando el cuerpo, brazo derecho equilibrando
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.38, 0.0, 0.28), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.20, 0.0, 0.25), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.65, 0.15, -0.32), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.15, 0.0, -0.40), f)
+				
+				# Una rodilla flexionada apoyada y la otra pierna plantada a 90° para empujar hacia arriba
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.65, 0.0, 0.35), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-1.35, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.20, 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.85, 0.0, -0.20), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-1.57, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.45, 0.0, 0.0), f)
+			else:
+				# Brazo derecho apoyado hacia el suelo empujando el cuerpo, brazo izquierdo equilibrando
+				_aplicar_rotacion_hueso_slerp(_idx_right_arm, _rest_right_arm, Vector3(0.38, 0.0, -0.28), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_forearm, _rest_right_forearm, Vector3(0.20, 0.0, -0.25), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_arm, _rest_left_arm, Vector3(0.65, -0.15, 0.32), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_forearm, _rest_left_forearm, Vector3(0.15, 0.0, 0.40), f)
+				
+				# Rodilla derecha apoyada y pierna izquierda plantada a 90°
+				_aplicar_rotacion_hueso_slerp(_idx_right_upleg, _rest_right_upleg, Vector3(0.65, 0.0, -0.35), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_leg, _rest_right_leg, Vector3(-1.35, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_right_foot, _rest_right_foot, Vector3(0.20, 0.0, 0.0), f)
+				
+				_aplicar_rotacion_hueso_slerp(_idx_left_upleg, _rest_left_upleg, Vector3(0.85, 0.0, 0.20), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_leg, _rest_left_leg, Vector3(-1.57, 0.0, 0.0), f)
+				_aplicar_rotacion_hueso_slerp(_idx_left_foot, _rest_left_foot, Vector3(0.45, 0.0, 0.0), f)
 	
 	# Mientras el arquero está en compromiso de suelo o estrella, la cabeza sigue visualmente el balón (±0.45 rad)
 	if _arquero_en_compromiso_suelo() and _idx_head >= 0:
@@ -4023,7 +4104,12 @@ func _aplicar_movimiento(delta: float) -> void:
 	
 	# Bloqueo total de movimiento y orientación cuando el arquero está en compromiso de suelo o estrella
 	if (posicion_tactica == "PORTERO" or es_arquero) and _arquero_en_compromiso_suelo() and _tiempo_dive_activo <= 0.0:
-		velocity = Vector3.ZERO
+		if pose_arquero_actual in [PoseArquero.CAIDA_LATERAL, PoseArquero.DESPLIEGUE_L, PoseArquero.LA_CRUZ, PoseArquero.INCORPORACION_SUELO]:
+			velocity.z = move_toward(velocity.z, 0.0, 14.0 * delta)
+			velocity.x = move_toward(velocity.x, 0.0, 14.0 * delta)
+			global_position.z = clampf(global_position.z, -1.85, 1.85)
+		else:
+			velocity = Vector3.ZERO
 		return
 	
 	# 2. BLOQUEO DE TRASLACIÓN EN SAQUE DE CENTRO Y REANUDACIONES DETENIDAS:
@@ -4055,9 +4141,9 @@ func _aplicar_movimiento(delta: float) -> void:
 		_tiempo_dive_activo -= delta
 		vel_max_efectiva = maxf(vel_max_efectiva, _velocidad_dive_actual)
 		
-		# Cancelar estirada al alcanzar target_z, rebasar 1.78m o si el balón rebotó/pasó
+		# Cancelar estirada al alcanzar target_z, rebasar 1.85m o si el balón rebotó/pasó
 		var paso_target: bool = (_lado_dive > 0.0 and global_position.z >= _target_z_dive) or (_lado_dive < 0.0 and global_position.z <= _target_z_dive)
-		var excedio_limite: bool = absf(global_position.z) >= 1.78
+		var excedio_limite: bool = absf(global_position.z) >= 1.85
 		var balon_paso_o_reboto: bool = false
 		var b_chk: Balon3D = _obtener_balon_juego()
 		if b_chk != null and is_instance_valid(b_chk):
@@ -4071,7 +4157,11 @@ func _aplicar_movimiento(delta: float) -> void:
 				balon_paso_o_reboto = true
 		
 		if paso_target or excedio_limite or balon_paso_o_reboto:
-			velocity.z = 0.0
+			if pose_arquero_actual in [PoseArquero.CAIDA_LATERAL, PoseArquero.DESPLIEGUE_L, PoseArquero.LA_CRUZ, PoseArquero.INCORPORACION_SUELO]:
+				velocity.z = move_toward(velocity.z, 0.0, 14.0 * delta)
+				global_position.z = clampf(global_position.z, -1.85, 1.85)
+			else:
+				velocity.z = 0.0
 			_velocidad_dive_actual = 0.0
 			_tiempo_dive_activo = 0.0
 	
@@ -4080,9 +4170,14 @@ func _aplicar_movimiento(delta: float) -> void:
 	if posicion_tactica == "PORTERO" and _tiempo_dive_activo > 0.0:
 		vel_horizontal.z = lerpf(vel_horizontal.z, _velocidad_dive_actual * _lado_dive, clampf(18.0 * delta, 0.0, 1.0))
 		vel_horizontal.x = vel_horizontal.x * 0.35
-		if absf(global_position.z) >= 1.78 or (_lado_dive > 0.0 and global_position.z >= _target_z_dive) or (_lado_dive < 0.0 and global_position.z <= _target_z_dive):
-			vel_horizontal.z = 0.0
-			velocity.z = 0.0
+		if absf(global_position.z) >= 1.85 or (_lado_dive > 0.0 and global_position.z >= _target_z_dive) or (_lado_dive < 0.0 and global_position.z <= _target_z_dive):
+			if pose_arquero_actual in [PoseArquero.CAIDA_LATERAL, PoseArquero.DESPLIEGUE_L, PoseArquero.LA_CRUZ, PoseArquero.INCORPORACION_SUELO]:
+				vel_horizontal.z = move_toward(vel_horizontal.z, 0.0, 14.0 * delta)
+				velocity.z = move_toward(velocity.z, 0.0, 14.0 * delta)
+				global_position.z = clampf(global_position.z, -1.85, 1.85)
+			else:
+				vel_horizontal.z = 0.0
+				velocity.z = 0.0
 			_tiempo_dive_activo = 0.0
 	elif _direccion_deseada.length_squared() > 0.01:
 		var vel_objetivo: Vector3 = _direccion_deseada * vel_max_efectiva
@@ -4260,9 +4355,9 @@ func _animar_extremidades(delta: float) -> void:
 				_ang_brazo_izq_z = lerpf(_ang_brazo_izq_z, 0.78, delta * 18.0)
 				_ang_brazo_der_z = lerpf(_ang_brazo_der_z, -0.78, delta * 18.0)
 				if visual:
-					var en_suelo: bool = (pose_arquero_actual == PoseArquero.CAIDA_LATERAL or pose_arquero_actual == PoseArquero.DESPLIEGUE_L or _t_bloqueo_recuperacion_suelo > 0.0)
-					var pos_y_suelo: float = -0.42 if en_suelo else -0.28
-					var rot_z_suelo: float = _lado_atajada * 0.42 if en_suelo else 0.0
+					var en_suelo: bool = (pose_arquero_actual in [PoseArquero.CAIDA_LATERAL, PoseArquero.DESPLIEGUE_L, PoseArquero.INCORPORACION_SUELO] or _t_bloqueo_recuperacion_suelo > 0.0)
+					var pos_y_suelo: float = -0.22 if pose_arquero_actual == PoseArquero.INCORPORACION_SUELO else (-0.42 if en_suelo else -0.28)
+					var rot_z_suelo: float = (_lado_atajada * 0.18) if pose_arquero_actual == PoseArquero.INCORPORACION_SUELO else (_lado_atajada * 0.42 if en_suelo else 0.0)
 					visual.rotation.x = lerpf(visual.rotation.x, -0.08, delta * 16.0)
 					visual.rotation.z = lerpf(visual.rotation.z, rot_z_suelo, delta * 18.0)
 					visual.position.y = lerpf(visual.position.y, pos_y_suelo, delta * 18.0)

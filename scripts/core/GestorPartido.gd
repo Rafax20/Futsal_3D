@@ -1299,8 +1299,11 @@ func _actualizar_sanciones_2min(delta: float) -> void:
 	if estado != EstadoPartido.EN_JUEGO or _en_cinematica_falta or esperando_pitazo_arbitro:
 		return
 	
+	var escala_reloj: float = GameManager.obtener_escala_reloj() if (GameManager and GameManager.has_method("obtener_escala_reloj")) else 6.6667
+	var delta_sancion: float = delta * escala_reloj
+
 	if inferioridad_local_activa:
-		tiempo_inferioridad_local -= delta
+		tiempo_inferioridad_local -= delta_sancion
 		if tiempo_inferioridad_local <= 0.0:
 			tiempo_inferioridad_local = 0.0
 			inferioridad_local_activa = false
@@ -1310,7 +1313,7 @@ func _actualizar_sanciones_2min(delta: float) -> void:
 			sancion_2min_actualizada.emit(0, tiempo_inferioridad_local, true)
 	
 	if inferioridad_visitante_activa:
-		tiempo_inferioridad_visitante -= delta
+		tiempo_inferioridad_visitante -= delta_sancion
 		if tiempo_inferioridad_visitante <= 0.0:
 			tiempo_inferioridad_visitante = 0.0
 			inferioridad_visitante_activa = false

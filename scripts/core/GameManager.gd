@@ -20,10 +20,11 @@ var goles_visitante: int = 0
 var periodo_actual: int = 1 ## 1 = Primer Tiempo, 2 = Segundo Tiempo
 var duracion_periodo_segundos: float = 1200.0 ## 20:00 minutos reglamentarios de reloj neto por tiempo
 var duracion_partido_segundos: float = 2400.0
+@export_range(2.0, 12.0, 1.0) var duracion_partido_minutos_reales: float = 6.0 ## Duración del partido completo en minutos reales (3 min reales por tiempo de 20:00)
 var tiempo_restante: float = 1200.0
 var partido_en_curso: bool = false
 var reloj_neto_activo: bool = false ## Solo avanza cuando el balón está en juego (EN_JUEGO)
-var dificultad_cpu: String = "MEDIA"
+@export_enum("AMATEUR", "REGULAR", "PROFESIONAL", "ESTRELLA", "SUPERESTRELLA", "LEYENDA") var dificultad_cpu: String = "PROFESIONAL"
 
 # Acumulación de faltas por tiempo (6ª falta = Doble Penalti desde 10m)
 var faltas_local: int = 0
@@ -34,13 +35,18 @@ var tiempo_muerto_usado_local: bool = false
 var tiempo_muerto_usado_visitante: bool = false
 
 
+## Retorna el factor multiplicador del reloj para acelerar el tiempo de 20:00 al tiempo real configurado
+func obtener_escala_reloj() -> float:
+	return duracion_periodo_segundos / maxf(30.0, (duracion_partido_minutos_reales * 0.5) * 60.0)
+
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
 
 func _process(delta: float) -> void:
 	if partido_en_curso and reloj_neto_activo and not get_tree().paused:
-		tiempo_restante -= delta
+		tiempo_restante -= delta * obtener_escala_reloj()
 		if tiempo_restante <= 0.0:
 			tiempo_restante = 0.0
 			reloj_neto_activo = false
