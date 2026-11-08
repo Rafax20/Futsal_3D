@@ -2081,8 +2081,33 @@ func _gestionar_conduccion_y_robos(delta: float) -> void:
 		_balon_referencia.conducir_hacia(pos_destino, delta, control_balon, self)
 
 
-## Obtiene el vector de dirección horizontal del usuario (joystick virtual o teclado WASD/flechas)
+## Obtiene el vector de dirección horizontal del usuario (joystick virtual, mando físico gamepad o teclado WASD/flechas)
 func _obtener_input_direccion_usuario() -> Vector3:
+	if direccion_virtual.length_squared() > 0.01:
+		return Vector3(direccion_virtual.x, 0.0, direccion_virtual.y).normalized()
+	
+	# Soporte directo analógico de Gamepad / Mando físico y D-Pad
+	var joy_vec: Vector2 = Vector2.ZERO
+	var dispositivos: Array[int] = Input.get_connected_joypads()
+	if dispositivos.is_empty():
+		dispositivos = [0]
+	for joy_id: int in dispositivos:
+		var jx: float = Input.get_joy_axis(joy_id, JOY_AXIS_LEFT_X)
+		var jy: float = Input.get_joy_axis(joy_id, JOY_AXIS_LEFT_Y)
+		var stick: Vector2 = Vector2(jx, jy)
+		if stick.length() > 0.15:
+			joy_vec = stick
+			break
+		if Input.is_joy_button_pressed(joy_id, JOY_BUTTON_DPAD_LEFT): joy_vec.x -= 1.0
+		if Input.is_joy_button_pressed(joy_id, JOY_BUTTON_DPAD_RIGHT): joy_vec.x += 1.0
+		if Input.is_joy_button_pressed(joy_id, JOY_BUTTON_DPAD_UP): joy_vec.y -= 1.0
+		if Input.is_joy_button_pressed(joy_id, JOY_BUTTON_DPAD_DOWN): joy_vec.y += 1.0
+		if joy_vec.length_squared() > 0.01:
+			break
+	if joy_vec.length_squared() > 0.01:
+		joy_vec = joy_vec.normalized()
+		return Vector3(joy_vec.x, 0.0, joy_vec.y)
+
 	var dx: float = 0.0
 	var dz: float = 0.0
 	
@@ -2095,8 +2120,6 @@ func _obtener_input_direccion_usuario() -> Vector3:
 	if Input.is_key_pressed(KEY_S) or Input.is_action_pressed("ui_down"):
 		dz += 1.0
 	
-	if direccion_virtual.length_squared() > 0.01:
-		return Vector3(direccion_virtual.x, 0.0, direccion_virtual.y).normalized()
 	var dir_plana: Vector2 = Vector2(dx, dz)
 	if dir_plana.length_squared() > 0.0:
 		dir_plana = dir_plana.normalized()
@@ -2105,7 +2128,16 @@ func _obtener_input_direccion_usuario() -> Vector3:
 
 
 func _procesar_input_jugador() -> void:
-	if Input.is_key_pressed(KEY_SHIFT):
+	var sprint_joy: bool = false
+	var dispositivos: Array[int] = Input.get_connected_joypads()
+	if dispositivos.is_empty():
+		dispositivos = [0]
+	for joy_id: int in dispositivos:
+		if Input.is_joy_button_pressed(joy_id, JOY_BUTTON_RIGHT_SHOULDER) or Input.get_joy_axis(joy_id, JOY_AXIS_TRIGGER_RIGHT) > 0.25:
+			sprint_joy = true
+			break
+
+	if Input.is_key_pressed(KEY_SHIFT) or sprint_joy:
 		sprint_activo = true
 	elif not _sprint_tactil_mantenido:
 		sprint_activo = false

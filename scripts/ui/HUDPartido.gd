@@ -308,12 +308,35 @@ func _on_tiempo_muerto_pressed() -> void:
 		_gestor_partido.solicitar_tiempo_muerto(0)
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton:
+		var jb: InputEventJoypadButton = event
+		if jb.pressed:
+			if jb.button_index == JOY_BUTTON_START:
+				if get_tree().paused:
+					_on_continuar_pressed()
+				else:
+					_on_pausa_pressed()
+				get_viewport().set_input_as_handled()
+				return
+			elif jb.button_index == JOY_BUTTON_B and get_tree().paused:
+				_on_continuar_pressed()
+				get_viewport().set_input_as_handled()
+				return
+			elif (jb.button_index == JOY_BUTTON_A or jb.button_index == JOY_BUTTON_X) and btn_omitir and btn_omitir.is_visible_in_tree():
+				_on_boton_omitir_pressed()
+				get_viewport().set_input_as_handled()
+				return
+
+
 # Handlers del menú de pausa
 func _on_pausa_pressed() -> void:
 	get_tree().paused = true
 	menu_pausa.visible = true
 	if touch_controls:
 		touch_controls.visible = false
+	if btn_continuar:
+		btn_continuar.grab_focus()
 
 
 func _on_continuar_pressed() -> void:

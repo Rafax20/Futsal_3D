@@ -120,6 +120,16 @@ var _tecla_espacio_mantenida: bool = false
 var _tecla_x_mantenida: bool = false
 var _tecla_c_mantenida: bool = false
 
+# Estado de soporte Gamepad / Mando físico
+var _gamepad_stick_activo: bool = false
+var _joy_btn_a_down: bool = false
+var _joy_btn_b_down: bool = false
+var _joy_btn_x_down: bool = false
+var _joy_btn_y_down: bool = false
+var _joy_sprint_down: bool = false
+var _joy_lb_down: bool = false
+var _joy_tl_tiro_cargando: bool = false
+
 # Estilos dinámicos (StyleBoxFlat) para transición visual Ataque vs. Defensa
 var _style_pase_ataque: StyleBoxFlat
 var _style_pase_defensa: StyleBoxFlat
@@ -245,13 +255,14 @@ func _draw() -> void:
 func _process(delta: float) -> void:
 	_procesar_carga_potencia(delta)
 	_procesar_input_teclado()
+	_procesar_input_gamepad(delta)
 
 
 func _physics_process(delta: float) -> void:
 	if _en_secuencia_carrera_tl:
 		_procesar_secuencia_carrera_tiro_libre(delta)
 		return
-	if _tocando_joystick:
+	if _tocando_joystick or _gamepad_stick_activo:
 		var jug_joy: Jugador3D = obtener_jugador_activo()
 		if jug_joy and is_instance_valid(jug_joy):
 			jug_joy.establecer_direccion_virtual(_direccion_joystick_actual)
@@ -859,6 +870,224 @@ func _procesar_input_teclado() -> void:
 		_on_hueco_up()
 
 
+func _procesar_input_gamepad(delta: float) -> void:
+	# Si el árbitro pitó falta o está en cinemática/pre-pitazo, bloquear acciones de juego
+	if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
+		return
+	
+	var dispositivos: Array[int] = Input.get_connected_joypads()
+	if dispositivos.is_empty():
+		dispositivos = [0]
+	
+	# 1. LECTURA DEL STICK ANALÓGICO IZQUIERDO Y D-PAD (DIRECCIÓN / MOVIMIENTO 360°)
+	var stick_input: Vector2 = Vector2.ZERO
+	for dev: int in dispositivos:
+		var sx: float = Input.get_joy_axis(dev, JOY_AXIS_LEFT_X)
+		var sy: float = Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y)
+		var s_vec: Vector2 = Vector2(sx, sy)
+		if s_vec.length() > 0.15:
+			stick_input = s_vec
+			break
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_DPAD_LEFT): stick_input.x -= 1.0
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_DPAD_RIGHT): stick_input.x += 1.0
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_DPAD_UP): stick_input.y -= 1.0
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_DPAD_DOWN): stick_input.y += 1.0
+		if stick_input.length_squared() > 0.01:
+			break
+	
+	if stick_input.length() > 1.0:
+		stick_input = stick_input.normalized()
+	
+	# 2. PROCESAMIENTO DIRECCIONAL (TIRO LIBRE VS JUEGO ABIERTO)
+	if _modo_tiro_libre_activo:
+		if _joy_tl_tiro_cargando:
+			# Si está cargando tiro libre con Botón B, el stick izquierdo añade efecto comba / curvatura lateral
+			_potencia_swipe_actual = clampf(_potencia_swipe_actual + delta * velocidad_carga_potencia, 0.20, 1.0)
+			if barra_potencia:
+				barra_potencia.value = _potencia_swipe_actual
+			if absf(stick_input.x) > 0.20:
+				_comba_swipe_actual = clampf(stick_input.x, -1.0, 1.0)
+		else:
+			# En tiro libre, el stick izquierdo o derecho realiza paneo suave de cámara para apuntar
+			var pan_x: float = 0.0
+			for dev: int in dispositivos:
+				var rx: float = Input.get_joy_axis(dev, JOY_AXIS_RIGHT_X)
+				if absf(rx) > 0.15:
+					pan_x = rx
+					break
+			if absf(pan_x) < 0.15 and absf(stick_input.x) > 0.15:
+				pan_x = stick_input.x
+			if absf(pan_x) > 0.15:
+				_ajustar_paneo_camara_por_angulo(-pan_x * delta * 1.6)
+	else:
+		if stick_input.length() > 0.15:
+			if not _tocando_joystick:
+				_gamepad_stick_activo = true
+				_actualizar_pomo(_centro_joystick + stick_input * _radio_maximo_joystick)
+		else:
+			if _gamepad_stick_activo and not _tocando_joystick:
+				_gamepad_stick_activo = false
+				_soltar_joystick()
+	
+	# 3. MODIFICADOR LB (LEFT SHOULDER - CAMBIO DE JUGADOR EN DEFENSA / VASELINA EN ATAQUE)
+	var lb_presionado: bool = false
+	for dev: int in dispositivos:
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_LEFT_SHOULDER):
+			lb_presionado = true
+			break
+	
+	if lb_presionado and not _joy_lb_down:
+		_joy_lb_down = true
+		if _modo_defensivo_actual:
+			var jug_lb: Jugador3D = obtener_jugador_activo()
+			if jug_lb and is_instance_valid(jug_lb):
+				jug_lb.cambiar_a_mas_cercano_al_balon()
+	elif not lb_presionado and _joy_lb_down:
+		_joy_lb_down = false
+	
+	# 4. SPRINT (RT / GATILLO DERECHO O RB / SHOULDER DERECHO)
+	var sprint_presionado: bool = false
+	for dev: int in dispositivos:
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_RIGHT_SHOULDER) or Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) > 0.25:
+			sprint_presionado = true
+			break
+	
+	if sprint_presionado and not _joy_sprint_down:
+		_joy_sprint_down = true
+		if btn_sprint:
+			btn_sprint.set_pressed_no_signal(true)
+		_on_sprint_down()
+	elif not sprint_presionado and _joy_sprint_down:
+		_joy_sprint_down = false
+		if btn_sprint:
+			btn_sprint.set_pressed_no_signal(false)
+		_on_sprint_up()
+	
+	# 5. BOTÓN A (PASE / CRUZ - INFERIOR)
+	var btn_a_presionado: bool = false
+	for dev: int in dispositivos:
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_A):
+			btn_a_presionado = true
+			break
+	
+	if btn_a_presionado and not _joy_btn_a_down:
+		_joy_btn_a_down = true
+		if btn_pase:
+			btn_pase.set_pressed_no_signal(true)
+		if _modo_tiro_libre_activo:
+			_on_btn_pase_corto_pressed()
+		else:
+			if _joy_lb_down:
+				_gesto_pase_detectado = Jugador3D.TipoPase.ELEVADO
+			else:
+				_gesto_pase_detectado = Jugador3D.TipoPase.RASO
+			_iniciar_toque_pase(-30, Vector2.ZERO)
+	elif not btn_a_presionado and _joy_btn_a_down:
+		_joy_btn_a_down = false
+		if btn_pase:
+			btn_pase.set_pressed_no_signal(false)
+		if not _modo_tiro_libre_activo:
+			_finalizar_toque_pase()
+	
+	# 6. BOTÓN B (TIRO / CÍRCULO - DERECHO)
+	var btn_b_presionado: bool = false
+	for dev: int in dispositivos:
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_B):
+			btn_b_presionado = true
+			break
+	
+	if btn_b_presionado and not _joy_btn_b_down:
+		_joy_btn_b_down = true
+		if btn_tiro:
+			btn_tiro.set_pressed_no_signal(true)
+		if _modo_tiro_libre_activo:
+			_iniciar_tiro_libre_gamepad()
+		else:
+			# Modificadores de tiro contextual:
+			# Vaselina: LB mantenido o stick derecho hacia arriba (ry < -0.45)
+			# Tiro colocado: RB / LT (> 0.25) o stick derecho hacia abajo (ry > 0.45)
+			var ry_mod: float = 0.0
+			var lt_mod: bool = false
+			for dev: int in dispositivos:
+				var val_ry: float = Input.get_joy_axis(dev, JOY_AXIS_RIGHT_Y)
+				if absf(val_ry) > 0.45:
+					ry_mod = val_ry
+					break
+				if Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT) > 0.25:
+					lt_mod = true
+			
+			if _joy_lb_down or ry_mod < -0.45:
+				_gesto_tiro_detectado = Jugador3D.TipoTiro.VASELINA
+			elif lt_mod or ry_mod > 0.45:
+				_gesto_tiro_detectado = Jugador3D.TipoTiro.COLOCADO
+			else:
+				_gesto_tiro_detectado = Jugador3D.TipoTiro.NORMAL
+			
+			_iniciar_toque_tiro(-31, Vector2.ZERO)
+			_resaltar_indicadores_swipe_tiro(_gesto_tiro_detectado)
+	elif not btn_b_presionado and _joy_btn_b_down:
+		_joy_btn_b_down = false
+		if btn_tiro:
+			btn_tiro.set_pressed_no_signal(false)
+		if _modo_tiro_libre_activo:
+			_ejecutar_tiro_libre_gamepad()
+		else:
+			_finalizar_toque_tiro()
+	
+	# 7. BOTÓN Y (PASE AL HUECO / TRIÁNGULO - SUPERIOR)
+	var btn_y_presionado: bool = false
+	for dev: int in dispositivos:
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_Y):
+			btn_y_presionado = true
+			break
+	
+	if btn_y_presionado and not _joy_btn_y_down:
+		_joy_btn_y_down = true
+		if btn_hueco:
+			btn_hueco.set_pressed_no_signal(true)
+		_on_hueco_down()
+	elif not btn_y_presionado and _joy_btn_y_down:
+		_joy_btn_y_down = false
+		if btn_hueco:
+			btn_hueco.set_pressed_no_signal(false)
+		_on_hueco_up()
+	
+	# 8. BOTÓN X (PASE CORTO EN SAQUES / PASE ELEVADO EN ATAQUE / CUADRADO - IZQUIERDO)
+	var btn_x_presionado: bool = false
+	for dev: int in dispositivos:
+		if Input.is_joy_button_pressed(dev, JOY_BUTTON_X):
+			btn_x_presionado = true
+			break
+	
+	if btn_x_presionado and not _joy_btn_x_down:
+		_joy_btn_x_down = true
+		var jugador_x: Jugador3D = obtener_jugador_activo()
+		var en_saque_centro: bool = (_gestor_partido != null and _gestor_partido.es_saque_centro_activo())
+		var en_pos_saque: bool = (jugador_x != null and is_instance_valid(jugador_x) and (jugador_x._en_posicion_saque or en_saque_centro))
+		
+		if _modo_tiro_libre_activo or en_pos_saque or _modo_actual == ModoHUD.SAQUE_PIE:
+			if btn_pase_corto:
+				btn_pase_corto.set_pressed_no_signal(true)
+			_on_btn_pase_corto_pressed()
+		elif _modo_defensivo_actual:
+			if jugador_x and is_instance_valid(jugador_x):
+				jugador_x.accion_principal_presionada(1.0, Jugador3D.TipoTiro.NORMAL)
+		else:
+			# En ataque abierto: Pase Elevado / Sombrerito directo
+			if btn_pase:
+				btn_pase.set_pressed_no_signal(true)
+			_gesto_pase_detectado = Jugador3D.TipoPase.ELEVADO
+			_iniciar_toque_pase(-32, Vector2.ZERO)
+	elif not btn_x_presionado and _joy_btn_x_down:
+		_joy_btn_x_down = false
+		if btn_pase_corto:
+			btn_pase_corto.set_pressed_no_signal(false)
+		if btn_pase:
+			btn_pase.set_pressed_no_signal(false)
+		if _accion_cargando == "PASE" and _pase_touch_id == -32:
+			_finalizar_toque_pase()
+
+
 # ==============================================================================
 # 4. JOYSTICK VIRTUAL Y REFERENCIA AL JUGADOR ACTIVO
 # ==============================================================================
@@ -1038,12 +1267,10 @@ func _iniciar_paneo_camara_tl(touch_id: int, pos: Vector2) -> void:
 	_pan_tiempo_inicio = Time.get_ticks_msec() / 1000.0
 
 
-func _actualizar_paneo_camara_tl(pos: Vector2) -> void:
-	var delta_x: float = pos.x - _pan_pos_previa.x
-	_pan_pos_previa = pos
+func _ajustar_paneo_camara_por_angulo(delta_angulo: float) -> void:
 	var camara: CamaraTransmision = _obtener_camara_transmision()
 	if camara != null:
-		camara.ajustar_paneo_tiro_libre(-delta_x * 0.0022)
+		camara.ajustar_paneo_tiro_libre(delta_angulo)
 		var dir_apuntado: Vector3 = camara.obtener_direccion_apuntado_tl()
 		var sacador: Jugador3D = _gestor_partido.obtener_sacador_actual() if _gestor_partido else obtener_jugador_activo()
 		var balon: Balon3D = obtener_balon()
@@ -1053,6 +1280,57 @@ func _actualizar_paneo_camara_tl(pos: Vector2) -> void:
 			pos_lanzador.y = 0.0
 			sacador.fijar_en_saque(true, pos_lanzador)
 			sacador.rotation.y = atan2(-dir_apuntado.x, -dir_apuntado.z)
+
+
+func _actualizar_paneo_camara_tl(pos: Vector2) -> void:
+	var delta_x: float = pos.x - _pan_pos_previa.x
+	_pan_pos_previa = pos
+	_ajustar_paneo_camara_por_angulo(-delta_x * 0.0022)
+
+
+func _iniciar_tiro_libre_gamepad() -> void:
+	if _en_secuencia_carrera_tl:
+		return
+	if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
+		return
+	_joy_tl_tiro_cargando = true
+	_potencia_swipe_actual = 0.20
+	_comba_swipe_actual = 0.0
+	if barra_potencia:
+		barra_potencia.visible = true
+		barra_potencia.value = _potencia_swipe_actual
+
+
+func _ejecutar_tiro_libre_gamepad() -> void:
+	if not _joy_tl_tiro_cargando:
+		return
+	_joy_tl_tiro_cargando = false
+	var pot_norm: float = clampf(_potencia_swipe_actual, 0.35, 1.0)
+	var rapidez_base: float = lerpf(14.5, 27.5, pot_norm)
+	
+	var camara: Camera3D = _obtener_camara_transmision()
+	if camara == null and get_viewport() != null:
+		camara = get_viewport().get_camera_3d()
+	var vector_frontal: Vector3 = Vector3(1.0, 0.0, 0.0)
+	var vector_lateral: Vector3 = Vector3(0.0, 0.0, 1.0)
+	if camara != null and is_instance_valid(camara):
+		var frente_cam: Vector3 = -camara.global_transform.basis.z
+		frente_cam.y = 0.0
+		if frente_cam.length_squared() > 0.001:
+			vector_frontal = frente_cam.normalized()
+		var lat_cam: Vector3 = camara.global_transform.basis.x
+		lat_cam.y = 0.0
+		if lat_cam.length_squared() > 0.001:
+			vector_lateral = lat_cam.normalized()
+	
+	var comp_vertical_y: float = lerpf(0.08, 0.24, pot_norm)
+	var dir_horiz: Vector3 = (vector_frontal - vector_lateral * (_comba_swipe_actual * 0.20)).normalized()
+	var dir_tiro_3d: Vector3 = Vector3(dir_horiz.x, comp_vertical_y, dir_horiz.z).normalized()
+	
+	_iniciar_secuencia_carrera_tiro_libre(dir_tiro_3d, rapidez_base, _comba_swipe_actual, false)
+	
+	if barra_potencia:
+		barra_potencia.visible = false
 
 
 func _finalizar_paneo_camara_tl(pos: Vector2 = Vector2.ZERO) -> void:
