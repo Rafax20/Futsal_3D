@@ -121,6 +121,7 @@ var _tecla_x_mantenida: bool = false
 var _tecla_c_mantenida: bool = false
 
 # Estado de soporte Gamepad / Mando físico
+@export var modo_mando_nintendo: bool = false
 var _gamepad_stick_activo: bool = false
 var _joy_btn_a_down: bool = false
 var _joy_btn_b_down: bool = false
@@ -146,6 +147,10 @@ func _ready() -> void:
 	_inicializar_estilos_botones()
 	_conectar_botones_respaldo()
 	_conectar_gestor_partido()
+	
+	if not Input.joy_connection_changed.is_connected(_on_joy_connection_changed):
+		Input.joy_connection_changed.connect(_on_joy_connection_changed)
+	_actualizar_tipo_mando_conectado()
 	
 	if btn_pase_corto and not btn_pase_corto.pressed.is_connected(_on_btn_pase_corto_pressed):
 		btn_pase_corto.pressed.connect(_on_btn_pase_corto_pressed)
@@ -499,6 +504,36 @@ func _asignar_estilo_boton(boton: Button, estilo: StyleBoxFlat) -> void:
 	boton.add_theme_stylebox_override("pressed", estilo)
 
 
+func _animar_boton_presionado(boton: Button, presionado: bool) -> void:
+	if boton == null or not is_instance_valid(boton):
+		return
+	boton.pivot_offset = boton.size * 0.5
+	if presionado:
+		boton.scale = Vector2(0.88, 0.88)
+		boton.modulate = Color(1.35, 1.35, 1.35, 1.0)
+	else:
+		boton.scale = Vector2(1.0, 1.0)
+		boton.modulate = Color(1.0, 1.0, 1.0, 1.0)
+
+
+func _on_joy_connection_changed(_device: int, _connected: bool) -> void:
+	_actualizar_tipo_mando_conectado()
+
+
+func _actualizar_tipo_mando_conectado() -> void:
+	var hay_nintendo: bool = false
+	for dev: int in Input.get_connected_joypads():
+		var nom: String = Input.get_joy_name(dev).to_lower()
+		print("[Futsal3D Gamepad] Mando detectado (ID %d): '%s'" % [dev, Input.get_joy_name(dev)])
+		if nom.contains("switch") or nom.contains("nintendo") or nom.contains("pro controller") or nom.contains("joy-con"):
+			hay_nintendo = true
+	modo_mando_nintendo = hay_nintendo
+	if modo_mando_nintendo:
+		print("[Futsal3D Gamepad] Configurado Modo Nintendo: A=Pase, B=Tiro, X=Corto/Elevado, Y=Hueco.")
+	else:
+		print("[Futsal3D Gamepad] Configurado Modo Estándar/Xbox: A=Pase, B=Tiro, X=Corto/Elevado, Y=Hueco.")
+
+
 # ==============================================================================
 # 2. DETECCIÓN DE GESTOS SWIPE / FLICK Y JOYSTICK MULTITÁCTIL
 # ==============================================================================
@@ -516,6 +551,10 @@ func _notification(what: int) -> void:
 
 func _input(event: InputEvent) -> void:
 	if not visible or not is_processing_input():
+		return
+	
+	if event is InputEventJoypadButton:
+		_procesar_evento_boton_gamepad(event as InputEventJoypadButton)
 		return
 	
 	# Si está activo el modo Tiro Libre, capturar exclusivamente el trazo táctil (Swipe) y botón Pase Corto
@@ -870,9 +909,162 @@ func _procesar_input_teclado() -> void:
 		_on_hueco_up()
 
 
+func _procesar_evento_boton_gamepad(jb: InputEventJoypadButton) -> void:
+	print("[Futsal3D Gamepad] Dispositivo %d ('%s') | Botón %d | %s" % [
+		jb.device,
+		Input.get_joy_name(jb.device),
+		jb.button_index,
+		"PRESIONADO" if jb.pressed else "SOLTADO"
+	])
+	
+	# Si está en cinemática arbitral de falta y se presiona un botón de acción o Start, omitir cinemática
+	if _gestor_partido and _gestor_partido._en_cinematica_falta:
+		if jb.pressed and (jb.button_index == JOY_BUTTON_A or jb.button_index == JOY_BUTTON_B or jb.button_index == JOY_BUTTON_X or jb.button_index == JOY_BUTTON_Y or jb.button_index == JOY_BUTTON_START):
+			var hud: HUDPartido = get_tree().get_first_node_in_group("hud_partido") as HUDPartido
+			if hud and hud.has_method("_on_boton_omitir_pressed"):
+				hud._on_boton_omitir_pressed()
+		return
+
+	# Determinar acción según el mapeo (Nintendo Switch vs Estándar / Xbox)
+	var es_pase: bool = false
+	var es_tiro: bool = false
+	var es_hueco: bool = false
+	var es_corto_elevado: bool = false
+	
+	if modo_mando_nintendo:
+		# Mando Nintendo Switch (Letras impresas en el mando):
+		# Botón A (físico DERECHA = JOY_BUTTON_B / Index 1): PASE
+		# Botón B (físico ABAJO = JOY_BUTTON_A / Index 0): TIRO
+		# Botón X (físico ARRIBA = JOY_BUTTON_Y / Index 3): PASE CORTO / BOMBEADO
+		# Botón Y (físico IZQUIERDA = JOY_BUTTON_X / Index 2): HUECO
+		if jb.button_index == JOY_BUTTON_B: es_pase = true
+		elif jb.button_index == JOY_BUTTON_A: es_tiro = true
+		elif jb.button_index == JOY_BUTTON_Y: es_corto_elevado = true
+		elif jb.button_index == JOY_BUTTON_X: es_hueco = true
+	else:
+		# Mando Estándar / Xbox (Posición física):
+		# Botón A (ABAJO = JOY_BUTTON_A / Index 0): PASE
+		# Botón B (DERECHA = JOY_BUTTON_B / Index 1): TIRO
+		# Botón Y (ARRIBA = JOY_BUTTON_Y / Index 3): HUECO
+		# Botón X (IZQUIERDA = JOY_BUTTON_X / Index 2): PASE CORTO / ELEVADO
+		if jb.button_index == JOY_BUTTON_A: es_pase = true
+		elif jb.button_index == JOY_BUTTON_B: es_tiro = true
+		elif jb.button_index == JOY_BUTTON_Y: es_hueco = true
+		elif jb.button_index == JOY_BUTTON_X: es_corto_elevado = true
+
+	# LB / L1 (Left Shoulder)
+	if jb.button_index == JOY_BUTTON_LEFT_SHOULDER:
+		_joy_lb_down = jb.pressed
+		if jb.pressed and _modo_defensivo_actual:
+			var jug_lb: Jugador3D = obtener_jugador_activo()
+			if jug_lb and is_instance_valid(jug_lb):
+				jug_lb.cambiar_a_mas_cercano_al_balon()
+		return
+
+	# RB / R1 (Right Shoulder) - Sprint
+	if jb.button_index == JOY_BUTTON_RIGHT_SHOULDER:
+		if jb.pressed and not _joy_sprint_down:
+			_joy_sprint_down = true
+			_animar_boton_presionado(btn_sprint, true)
+			_on_sprint_down()
+		elif not jb.pressed and _joy_sprint_down:
+			_joy_sprint_down = false
+			_animar_boton_presionado(btn_sprint, false)
+			_on_sprint_up()
+		return
+
+	# 1. ACCIÓN: PASE
+	if es_pase:
+		if jb.pressed:
+			_joy_btn_a_down = true
+			_animar_boton_presionado(btn_pase, true)
+			if _modo_tiro_libre_activo:
+				_on_btn_pase_corto_pressed()
+			else:
+				if _joy_lb_down:
+					_gesto_pase_detectado = Jugador3D.TipoPase.ELEVADO
+				else:
+					_gesto_pase_detectado = Jugador3D.TipoPase.RASO
+				_iniciar_toque_pase(-30, Vector2.ZERO)
+		else:
+			_joy_btn_a_down = false
+			_animar_boton_presionado(btn_pase, false)
+			if not _modo_tiro_libre_activo:
+				_finalizar_toque_pase()
+		return
+
+	# 2. ACCIÓN: TIRO
+	if es_tiro:
+		if jb.pressed:
+			_joy_btn_b_down = true
+			_animar_boton_presionado(btn_tiro, true)
+			if _modo_tiro_libre_activo:
+				_iniciar_tiro_libre_gamepad()
+			else:
+				var ry_mod: float = Input.get_joy_axis(jb.device, JOY_AXIS_RIGHT_Y)
+				var lt_mod: bool = Input.get_joy_axis(jb.device, JOY_AXIS_TRIGGER_LEFT) > 0.25
+				if _joy_lb_down or ry_mod < -0.45:
+					_gesto_tiro_detectado = Jugador3D.TipoTiro.VASELINA
+				elif lt_mod or ry_mod > 0.45:
+					_gesto_tiro_detectado = Jugador3D.TipoTiro.COLOCADO
+				else:
+					_gesto_tiro_detectado = Jugador3D.TipoTiro.NORMAL
+				
+				_iniciar_toque_tiro(-31, Vector2.ZERO)
+				_resaltar_indicadores_swipe_tiro(_gesto_tiro_detectado)
+		else:
+			_joy_btn_b_down = false
+			_animar_boton_presionado(btn_tiro, false)
+			if _modo_tiro_libre_activo:
+				_ejecutar_tiro_libre_gamepad()
+			else:
+				_finalizar_toque_tiro()
+		return
+
+	# 3. ACCIÓN: HUECO
+	if es_hueco:
+		if jb.pressed:
+			_joy_btn_y_down = true
+			_animar_boton_presionado(btn_hueco, true)
+			_on_hueco_down()
+		else:
+			_joy_btn_y_down = false
+			_animar_boton_presionado(btn_hueco, false)
+			_on_hueco_up()
+		return
+
+	# 4. ACCIÓN: CORTO / ELEVADO
+	if es_corto_elevado:
+		if jb.pressed:
+			_joy_btn_x_down = true
+			var jugador_x: Jugador3D = obtener_jugador_activo()
+			var en_saque_centro: bool = (_gestor_partido != null and _gestor_partido.es_saque_centro_activo())
+			var en_pos_saque: bool = (jugador_x != null and is_instance_valid(jugador_x) and (jugador_x._en_posicion_saque or en_saque_centro))
+			
+			if _modo_tiro_libre_activo or en_pos_saque or _modo_actual == ModoHUD.SAQUE_PIE:
+				_animar_boton_presionado(btn_pase_corto, true)
+				_animar_boton_presionado(btn_tiro, true)
+				_on_btn_pase_corto_pressed()
+			elif _modo_defensivo_actual:
+				_animar_boton_presionado(btn_tiro, true)
+				if jugador_x and is_instance_valid(jugador_x):
+					jugador_x.accion_principal_presionada(1.0, Jugador3D.TipoTiro.NORMAL)
+			else:
+				_animar_boton_presionado(btn_pase, true)
+				_gesto_pase_detectado = Jugador3D.TipoPase.ELEVADO
+				_iniciar_toque_pase(-32, Vector2.ZERO)
+		else:
+			_joy_btn_x_down = false
+			_animar_boton_presionado(btn_pase_corto, false)
+			_animar_boton_presionado(btn_tiro, false)
+			_animar_boton_presionado(btn_pase, false)
+			if _accion_cargando == "PASE" and _pase_touch_id == -32:
+				_finalizar_toque_pase()
+		return
+
+
 func _procesar_input_gamepad(delta: float) -> void:
-	# Si el árbitro pitó falta o está en cinemática/pre-pitazo, bloquear acciones de juego
-	if _gestor_partido and (_gestor_partido.esperando_pitazo_arbitro or _gestor_partido._en_cinematica_falta):
+	if _gestor_partido and _gestor_partido._en_cinematica_falta:
 		return
 	
 	var dispositivos: Array[int] = Input.get_connected_joypads()
@@ -901,7 +1093,7 @@ func _procesar_input_gamepad(delta: float) -> void:
 	# 2. PROCESAMIENTO DIRECCIONAL (TIRO LIBRE VS JUEGO ABIERTO)
 	if _modo_tiro_libre_activo:
 		if _joy_tl_tiro_cargando:
-			# Si está cargando tiro libre con Botón B, el stick izquierdo añade efecto comba / curvatura lateral
+			# Si está cargando tiro libre, el stick izquierdo añade comba / curvatura lateral
 			_potencia_swipe_actual = clampf(_potencia_swipe_actual + delta * velocidad_carga_potencia, 0.20, 1.0)
 			if barra_potencia:
 				barra_potencia.value = _potencia_swipe_actual
@@ -929,163 +1121,21 @@ func _procesar_input_gamepad(delta: float) -> void:
 				_gamepad_stick_activo = false
 				_soltar_joystick()
 	
-	# 3. MODIFICADOR LB (LEFT SHOULDER - CAMBIO DE JUGADOR EN DEFENSA / VASELINA EN ATAQUE)
-	var lb_presionado: bool = false
+	# 3. SPRINT ANALÓGICO POR GATILLO RT (TRIGGER RIGHT)
+	var rt_activo: bool = false
 	for dev: int in dispositivos:
-		if Input.is_joy_button_pressed(dev, JOY_BUTTON_LEFT_SHOULDER):
-			lb_presionado = true
+		if Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) > 0.25:
+			rt_activo = true
 			break
 	
-	if lb_presionado and not _joy_lb_down:
-		_joy_lb_down = true
-		if _modo_defensivo_actual:
-			var jug_lb: Jugador3D = obtener_jugador_activo()
-			if jug_lb and is_instance_valid(jug_lb):
-				jug_lb.cambiar_a_mas_cercano_al_balon()
-	elif not lb_presionado and _joy_lb_down:
-		_joy_lb_down = false
-	
-	# 4. SPRINT (RT / GATILLO DERECHO O RB / SHOULDER DERECHO)
-	var sprint_presionado: bool = false
-	for dev: int in dispositivos:
-		if Input.is_joy_button_pressed(dev, JOY_BUTTON_RIGHT_SHOULDER) or Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_RIGHT) > 0.25:
-			sprint_presionado = true
-			break
-	
-	if sprint_presionado and not _joy_sprint_down:
+	if rt_activo and not _joy_sprint_down:
 		_joy_sprint_down = true
-		if btn_sprint:
-			btn_sprint.set_pressed_no_signal(true)
+		_animar_boton_presionado(btn_sprint, true)
 		_on_sprint_down()
-	elif not sprint_presionado and _joy_sprint_down:
+	elif not rt_activo and _joy_sprint_down and not Input.is_joy_button_pressed(dispositivos[0], JOY_BUTTON_RIGHT_SHOULDER):
 		_joy_sprint_down = false
-		if btn_sprint:
-			btn_sprint.set_pressed_no_signal(false)
+		_animar_boton_presionado(btn_sprint, false)
 		_on_sprint_up()
-	
-	# 5. BOTÓN A (PASE / CRUZ - INFERIOR)
-	var btn_a_presionado: bool = false
-	for dev: int in dispositivos:
-		if Input.is_joy_button_pressed(dev, JOY_BUTTON_A):
-			btn_a_presionado = true
-			break
-	
-	if btn_a_presionado and not _joy_btn_a_down:
-		_joy_btn_a_down = true
-		if btn_pase:
-			btn_pase.set_pressed_no_signal(true)
-		if _modo_tiro_libre_activo:
-			_on_btn_pase_corto_pressed()
-		else:
-			if _joy_lb_down:
-				_gesto_pase_detectado = Jugador3D.TipoPase.ELEVADO
-			else:
-				_gesto_pase_detectado = Jugador3D.TipoPase.RASO
-			_iniciar_toque_pase(-30, Vector2.ZERO)
-	elif not btn_a_presionado and _joy_btn_a_down:
-		_joy_btn_a_down = false
-		if btn_pase:
-			btn_pase.set_pressed_no_signal(false)
-		if not _modo_tiro_libre_activo:
-			_finalizar_toque_pase()
-	
-	# 6. BOTÓN B (TIRO / CÍRCULO - DERECHO)
-	var btn_b_presionado: bool = false
-	for dev: int in dispositivos:
-		if Input.is_joy_button_pressed(dev, JOY_BUTTON_B):
-			btn_b_presionado = true
-			break
-	
-	if btn_b_presionado and not _joy_btn_b_down:
-		_joy_btn_b_down = true
-		if btn_tiro:
-			btn_tiro.set_pressed_no_signal(true)
-		if _modo_tiro_libre_activo:
-			_iniciar_tiro_libre_gamepad()
-		else:
-			# Modificadores de tiro contextual:
-			# Vaselina: LB mantenido o stick derecho hacia arriba (ry < -0.45)
-			# Tiro colocado: RB / LT (> 0.25) o stick derecho hacia abajo (ry > 0.45)
-			var ry_mod: float = 0.0
-			var lt_mod: bool = false
-			for dev: int in dispositivos:
-				var val_ry: float = Input.get_joy_axis(dev, JOY_AXIS_RIGHT_Y)
-				if absf(val_ry) > 0.45:
-					ry_mod = val_ry
-					break
-				if Input.get_joy_axis(dev, JOY_AXIS_TRIGGER_LEFT) > 0.25:
-					lt_mod = true
-			
-			if _joy_lb_down or ry_mod < -0.45:
-				_gesto_tiro_detectado = Jugador3D.TipoTiro.VASELINA
-			elif lt_mod or ry_mod > 0.45:
-				_gesto_tiro_detectado = Jugador3D.TipoTiro.COLOCADO
-			else:
-				_gesto_tiro_detectado = Jugador3D.TipoTiro.NORMAL
-			
-			_iniciar_toque_tiro(-31, Vector2.ZERO)
-			_resaltar_indicadores_swipe_tiro(_gesto_tiro_detectado)
-	elif not btn_b_presionado and _joy_btn_b_down:
-		_joy_btn_b_down = false
-		if btn_tiro:
-			btn_tiro.set_pressed_no_signal(false)
-		if _modo_tiro_libre_activo:
-			_ejecutar_tiro_libre_gamepad()
-		else:
-			_finalizar_toque_tiro()
-	
-	# 7. BOTÓN Y (PASE AL HUECO / TRIÁNGULO - SUPERIOR)
-	var btn_y_presionado: bool = false
-	for dev: int in dispositivos:
-		if Input.is_joy_button_pressed(dev, JOY_BUTTON_Y):
-			btn_y_presionado = true
-			break
-	
-	if btn_y_presionado and not _joy_btn_y_down:
-		_joy_btn_y_down = true
-		if btn_hueco:
-			btn_hueco.set_pressed_no_signal(true)
-		_on_hueco_down()
-	elif not btn_y_presionado and _joy_btn_y_down:
-		_joy_btn_y_down = false
-		if btn_hueco:
-			btn_hueco.set_pressed_no_signal(false)
-		_on_hueco_up()
-	
-	# 8. BOTÓN X (PASE CORTO EN SAQUES / PASE ELEVADO EN ATAQUE / CUADRADO - IZQUIERDO)
-	var btn_x_presionado: bool = false
-	for dev: int in dispositivos:
-		if Input.is_joy_button_pressed(dev, JOY_BUTTON_X):
-			btn_x_presionado = true
-			break
-	
-	if btn_x_presionado and not _joy_btn_x_down:
-		_joy_btn_x_down = true
-		var jugador_x: Jugador3D = obtener_jugador_activo()
-		var en_saque_centro: bool = (_gestor_partido != null and _gestor_partido.es_saque_centro_activo())
-		var en_pos_saque: bool = (jugador_x != null and is_instance_valid(jugador_x) and (jugador_x._en_posicion_saque or en_saque_centro))
-		
-		if _modo_tiro_libre_activo or en_pos_saque or _modo_actual == ModoHUD.SAQUE_PIE:
-			if btn_pase_corto:
-				btn_pase_corto.set_pressed_no_signal(true)
-			_on_btn_pase_corto_pressed()
-		elif _modo_defensivo_actual:
-			if jugador_x and is_instance_valid(jugador_x):
-				jugador_x.accion_principal_presionada(1.0, Jugador3D.TipoTiro.NORMAL)
-		else:
-			# En ataque abierto: Pase Elevado / Sombrerito directo
-			if btn_pase:
-				btn_pase.set_pressed_no_signal(true)
-			_gesto_pase_detectado = Jugador3D.TipoPase.ELEVADO
-			_iniciar_toque_pase(-32, Vector2.ZERO)
-	elif not btn_x_presionado and _joy_btn_x_down:
-		_joy_btn_x_down = false
-		if btn_pase_corto:
-			btn_pase_corto.set_pressed_no_signal(false)
-		if btn_pase:
-			btn_pase.set_pressed_no_signal(false)
-		if _accion_cargando == "PASE" and _pase_touch_id == -32:
-			_finalizar_toque_pase()
 
 
 # ==============================================================================
