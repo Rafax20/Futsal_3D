@@ -22,6 +22,7 @@ extends CanvasLayer
 @onready var label_periodo: Label = get_node_or_null("MarcadorSuperior/PanelContenedor/ContenedorMarcador/LabelPeriodo") as Label
 @onready var label_tiempo: Label = $MarcadorSuperior/PanelContenedor/ContenedorMarcador/LabelTiempo
 @onready var label_cuenta_4s: Label = get_node_or_null("MarcadorSuperior/PanelContenedor/ContenedorMarcador/LabelCuenta4s") as Label
+@onready var label_sancion_2min: Label = get_node_or_null("MarcadorSuperior/PanelContenedor/ContenedorMarcador/LabelSancion2Min") as Label
 @onready var label_jugador_activo: Label = get_node_or_null("PanelFichaJugador/LabelJugadorActivo") as Label
 @onready var btn_tiempo_muerto: Button = get_node_or_null("BotonTiempoMuerto") as Button
 @onready var btn_pausa: Button = $BotonPausa
@@ -34,9 +35,25 @@ extends CanvasLayer
 @onready var btn_reiniciar: Button = $MenuPausaModal/PanelModal/VBoxBotones/BotonReiniciar
 @onready var btn_salir: Button = $MenuPausaModal/PanelModal/VBoxBotones/BotonSalir
 
+signal omitir_cinematica_solicitada
+
+# Elementos dinámicos de cinemática de faltas, repetición y botón omitir
+var btn_omitir: Button = null
+var panel_tarjeta: PanelContainer = null
+var label_titulo_tarjeta: Label = null
+var label_jugador_tarjeta: Label = null
+var label_motivo_tarjeta: Label = null
+var badge_repeticion: PanelContainer = null
+var fade_rect: ColorRect = null
+var _tween_fade: Tween = null
+
 var _jugador_referencia: Jugador3D = null
 var _gestor_partido: GestorPartido = null
 var _tiempo_anuncio: float = 0.0
+var _sancion_activa_loc: bool = false
+var _tiempo_sancion_loc: float = 0.0
+var _sancion_activa_vis: bool = false
+var _tiempo_sancion_vis: float = 0.0
 
 
 func _ready() -> void:
@@ -48,8 +65,10 @@ func _ready() -> void:
 	
 	_configurar_info_equipos_futsal_3d()
 	_conectar_botones_superiores()
+	_inicializar_ui_cinematica_falta()
 	_conectar_game_manager()
 	_conectar_gestor_partido()
+	_conectar_eventos_atajadas()
 	
 	menu_pausa.visible = false
 	if banner_anuncio:
@@ -175,8 +194,11 @@ func _conectar_game_manager() -> void:
 
 func _conectar_gestor_partido() -> void:
 	_gestor_partido = get_tree().get_first_node_in_group("gestor_partido") as GestorPartido
-	if _gestor_partido and not _gestor_partido.cuenta_regresiva_4s_actualizada.is_connected(_on_cuenta_4s_actualizada):
-		_gestor_partido.cuenta_regresiva_4s_actualizada.connect(_on_cuenta_4s_actualizada)
+	if _gestor_partido:
+		if not _gestor_partido.cuenta_regresiva_4s_actualizada.is_connected(_on_cuenta_4s_actualizada):
+			_gestor_partido.cuenta_regresiva_4s_actualizada.connect(_on_cuenta_4s_actualizada)
+		if not _gestor_partido.sancion_2min_actualizada.is_connected(_on_sancion_2min_actualizada):
+			_gestor_partido.sancion_2min_actualizada.connect(_on_sancion_2min_actualizada)
 
 
 # Handlers de marcador, tiempo neto, faltas acumuladas, periodo y 4 segundos
@@ -211,11 +233,100 @@ func _on_cuenta_4s_actualizada(segundos_restantes: float, activa: bool) -> void:
 			label_cuenta_4s.text = "[%.1fs]" % segundos_restantes
 
 
+func _on_sancion_2min_actualizada(equipo_sancionado: int, segundos_restantes: float, activa: bool) -> void:
+	if equipo_sancionado == 0:
+		_sancion_activa_loc = activa
+		_tiempo_sancion_loc = segundos_restantes
+	else:
+		_sancion_activa_vis = activa
+		_tiempo_sancion_vis = segundos_restantes
+	
+	if label_sancion_2min == null:
+		var contenedor_marcador: Node = get_node_or_null("MarcadorSuperior/PanelContenedor/ContenedorMarcador")
+		if contenedor_marcador:
+			label_sancion_2min = Label.new()
+			label_sancion_2min.name = "LabelSancion2Min"
+			label_sancion_2min.visible = false
+			label_sancion_2min.add_theme_color_override("font_color", Color(1.0, 0.28, 0.28, 1.0))
+			label_sancion_2min.add_theme_font_size_override("font_size", 13)
+			contenedor_marcador.add_child(label_sancion_2min)
+	
+	if label_sancion_2min == null:
+		return
+	
+	if _sancion_activa_loc and _sancion_activa_vis:
+		label_sancion_2min.visible = true
+		var mins_l: int = int(_tiempo_sancion_loc) / 60
+		var segs_l: int = int(_tiempo_sancion_loc) % 60
+		var mins_v: int = int(_tiempo_sancion_vis) / 60
+		var segs_v: int = int(_tiempo_sancion_vis) % 60
+		label_sancion_2min.text = "[4v4 L:%02d:%02d V:%02d:%02d]" % [mins_l, segs_l, mins_v, segs_v]
+	elif _sancion_activa_loc:
+		label_sancion_2min.visible = true
+		var mins: int = int(_tiempo_sancion_loc) / 60
+		var segs: int = int(_tiempo_sancion_loc) % 60
+		label_sancion_2min.text = "[4v5 LOC %02d:%02d]" % [mins, segs]
+	elif _sancion_activa_vis:
+		label_sancion_2min.visible = true
+		var mins: int = int(_tiempo_sancion_vis) / 60
+		var segs: int = int(_tiempo_sancion_vis) % 60
+		label_sancion_2min.text = "[4v5 VIS %02d:%02d]" % [mins, segs]
+	else:
+		label_sancion_2min.visible = false
+
+
+func _conectar_eventos_atajadas() -> void:
+	var balones: Array[Node] = get_tree().get_nodes_in_group("balon")
+	if not balones.is_empty():
+		var b: Balon3D = balones[0] as Balon3D
+		if b and not b.atajada_realizada.is_connected(_on_atajada_realizada):
+			b.atajada_realizada.connect(_on_atajada_realizada)
+
+
+func _on_atajada_realizada(zona: String, nombre_arquero: String) -> void:
+	var mensaje: String = ""
+	match zona:
+		"atrapada":
+			mensaje = "¡PARADÓN Y BALÓN ASEGURADO!"
+		"manos", "antebrazos":
+			mensaje = "¡DESVÍO CON LA MANO DE %s!" % nombre_arquero
+		"pecho", "cabeza":
+			mensaje = "¡BLOQUEO DE PECHO DE %s!" % nombre_arquero
+		"cruz":
+			mensaje = "¡ACHIQUE EN CRUZ DE %s!" % nombre_arquero
+		"piernas":
+			mensaje = "¡PARADA CON EL PIE DE %s!" % nombre_arquero
+		_:
+			mensaje = "¡DESVÍO DEL ARQUERO!"
+	mostrar_anuncio(mensaje, 2.0)
+
+
 func _on_tiempo_muerto_pressed() -> void:
 	if _gestor_partido == null:
 		_gestor_partido = get_tree().get_first_node_in_group("gestor_partido") as GestorPartido
 	if _gestor_partido:
 		_gestor_partido.solicitar_tiempo_muerto(0)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton:
+		var jb: InputEventJoypadButton = event
+		if jb.pressed:
+			if jb.button_index == JOY_BUTTON_START:
+				if get_tree().paused:
+					_on_continuar_pressed()
+				else:
+					_on_pausa_pressed()
+				get_viewport().set_input_as_handled()
+				return
+			elif jb.button_index == JOY_BUTTON_B and get_tree().paused:
+				_on_continuar_pressed()
+				get_viewport().set_input_as_handled()
+				return
+			elif (jb.button_index == JOY_BUTTON_A or jb.button_index == JOY_BUTTON_X) and btn_omitir and btn_omitir.is_visible_in_tree():
+				_on_boton_omitir_pressed()
+				get_viewport().set_input_as_handled()
+				return
 
 
 # Handlers del menú de pausa
@@ -224,6 +335,8 @@ func _on_pausa_pressed() -> void:
 	menu_pausa.visible = true
 	if touch_controls:
 		touch_controls.visible = false
+	if btn_continuar:
+		btn_continuar.grab_focus()
 
 
 func _on_continuar_pressed() -> void:
@@ -241,3 +354,268 @@ func _on_reiniciar_pressed() -> void:
 func _on_salir_pressed() -> void:
 	menu_pausa.visible = false
 	GameManager.ir_al_menu_principal()
+
+
+# ==============================================================================
+# UI DE CINEMÁTICA DE FALTAS, TARJETAS, REPETICIÓN Y BOTÓN OMITIR
+# ==============================================================================
+
+func _inicializar_ui_cinematica_falta() -> void:
+	# 1. Botón "OMITIR ⏭" táctil estilo eFootball
+	btn_omitir = Button.new()
+	btn_omitir.name = "BotonOmitirCinematica"
+	btn_omitir.text = "OMITIR ⏭"
+	btn_omitir.visible = false
+	btn_omitir.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	btn_omitir.anchor_left = 1.0
+	btn_omitir.anchor_top = 1.0
+	btn_omitir.anchor_right = 1.0
+	btn_omitir.anchor_bottom = 1.0
+	btn_omitir.offset_left = -175.0
+	btn_omitir.offset_top = -80.0
+	btn_omitir.offset_right = -25.0
+	btn_omitir.offset_bottom = -30.0
+	
+	var style_omitir: StyleBoxFlat = StyleBoxFlat.new()
+	style_omitir.bg_color = Color(0.08, 0.12, 0.18, 0.90)
+	style_omitir.border_width_left = 2
+	style_omitir.border_width_top = 2
+	style_omitir.border_width_right = 2
+	style_omitir.border_width_bottom = 2
+	style_omitir.border_color = Color(0.25, 0.75, 1.0, 0.85)
+	style_omitir.corner_radius_top_left = 20
+	style_omitir.corner_radius_top_right = 20
+	style_omitir.corner_radius_bottom_right = 20
+	style_omitir.corner_radius_bottom_left = 20
+	btn_omitir.add_theme_stylebox_override("normal", style_omitir)
+	btn_omitir.add_theme_stylebox_override("hover", style_omitir)
+	btn_omitir.add_theme_stylebox_override("pressed", style_omitir)
+	btn_omitir.add_theme_font_size_override("font_size", 14)
+	btn_omitir.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.95))
+	btn_omitir.pressed.connect(_on_boton_omitir_pressed)
+	add_child(btn_omitir)
+
+	# 2. Placa de Amonestación / Sanción Disciplinaria (Tarjeta Amarilla / Roja)
+	panel_tarjeta = PanelContainer.new()
+	panel_tarjeta.name = "PanelTarjetaCinematica"
+	panel_tarjeta.visible = false
+	panel_tarjeta.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	panel_tarjeta.anchor_left = 0.5
+	panel_tarjeta.anchor_right = 0.5
+	panel_tarjeta.anchor_top = 0.14
+	panel_tarjeta.anchor_bottom = 0.14
+	panel_tarjeta.offset_left = -220.0
+	panel_tarjeta.offset_top = 0.0
+	panel_tarjeta.offset_right = 220.0
+	panel_tarjeta.offset_bottom = 90.0
+
+	var style_tarjeta: StyleBoxFlat = StyleBoxFlat.new()
+	style_tarjeta.bg_color = Color(0.06, 0.08, 0.12, 0.94)
+	style_tarjeta.border_width_left = 2
+	style_tarjeta.border_width_top = 2
+	style_tarjeta.border_width_right = 2
+	style_tarjeta.border_width_bottom = 2
+	style_tarjeta.border_color = Color(0.35, 0.45, 0.65, 0.90)
+	style_tarjeta.corner_radius_top_left = 12
+	style_tarjeta.corner_radius_top_right = 12
+	style_tarjeta.corner_radius_bottom_right = 12
+	style_tarjeta.corner_radius_bottom_left = 12
+	style_tarjeta.content_margin_left = 16.0
+	style_tarjeta.content_margin_right = 16.0
+	style_tarjeta.content_margin_top = 8.0
+	style_tarjeta.content_margin_bottom = 8.0
+	panel_tarjeta.add_theme_stylebox_override("panel", style_tarjeta)
+
+	var vbox_t: VBoxContainer = VBoxContainer.new()
+	vbox_t.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox_t.add_theme_constant_override("separation", 2)
+	panel_tarjeta.add_child(vbox_t)
+
+	label_titulo_tarjeta = Label.new()
+	label_titulo_tarjeta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label_titulo_tarjeta.add_theme_font_size_override("font_size", 16)
+	label_titulo_tarjeta.add_theme_color_override("font_color", Color(1.0, 0.85, 0.1))
+	vbox_t.add_child(label_titulo_tarjeta)
+
+	label_jugador_tarjeta = Label.new()
+	label_jugador_tarjeta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label_jugador_tarjeta.add_theme_font_size_override("font_size", 14)
+	label_jugador_tarjeta.add_theme_color_override("font_color", Color(0.96, 0.96, 0.96))
+	vbox_t.add_child(label_jugador_tarjeta)
+
+	label_motivo_tarjeta = Label.new()
+	label_motivo_tarjeta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label_motivo_tarjeta.add_theme_font_size_override("font_size", 12)
+	label_motivo_tarjeta.add_theme_color_override("font_color", Color(0.72, 0.78, 0.88))
+	vbox_t.add_child(label_motivo_tarjeta)
+
+	add_child(panel_tarjeta)
+
+	# 3. Insignia sutil de Repetición (Badge REPLAY)
+	badge_repeticion = PanelContainer.new()
+	badge_repeticion.name = "BadgeRepeticion"
+	badge_repeticion.visible = false
+	badge_repeticion.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	badge_repeticion.anchor_left = 0.0
+	badge_repeticion.anchor_top = 0.075
+	badge_repeticion.anchor_right = 0.0
+	badge_repeticion.anchor_bottom = 0.075
+	badge_repeticion.offset_left = 24.0
+	badge_repeticion.offset_top = 0.0
+	badge_repeticion.offset_right = 160.0
+	badge_repeticion.offset_bottom = 32.0
+
+	var style_rep: StyleBoxFlat = StyleBoxFlat.new()
+	style_rep.bg_color = Color(0.85, 0.15, 0.15, 0.88)
+	style_rep.corner_radius_top_left = 8
+	style_rep.corner_radius_top_right = 8
+	style_rep.corner_radius_bottom_right = 8
+	style_rep.corner_radius_bottom_left = 8
+	style_rep.content_margin_left = 10.0
+	style_rep.content_margin_right = 10.0
+	style_rep.content_margin_top = 4.0
+	style_rep.content_margin_bottom = 4.0
+	badge_repeticion.add_theme_stylebox_override("panel", style_rep)
+
+	var lbl_rep: Label = Label.new()
+	lbl_rep.text = "▶ REPETICIÓN"
+	lbl_rep.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_rep.add_theme_font_size_override("font_size", 13)
+	lbl_rep.add_theme_color_override("font_color", Color.WHITE)
+	badge_repeticion.add_child(lbl_rep)
+	add_child(badge_repeticion)
+
+	# 4. Rectángulo negro de pantalla completa para transiciones Fade Out / Fade In (2.0 s)
+	fade_rect = ColorRect.new()
+	fade_rect.name = "FadeTransicionRect"
+	fade_rect.color = Color(0.0, 0.0, 0.0, 0.0)
+	fade_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fade_rect.visible = false
+	add_child(fade_rect)
+
+
+## Ejecuta una transición cinematográfica suave con Fade Out -> Fade In de pantalla completa
+func ejecutar_fade_transicion(
+	duracion_out: float,
+	duracion_in: float,
+	callback_punto_negro: Callable,
+	callback_completado: Callable = Callable()
+) -> void:
+	if fade_rect == null:
+		if callback_punto_negro.is_valid():
+			callback_punto_negro.call()
+		if callback_completado.is_valid():
+			callback_completado.call()
+		return
+	
+	if _tween_fade != null and _tween_fade.is_valid():
+		_tween_fade.kill()
+	
+	fade_rect.visible = true
+	fade_rect.color = Color(0.0, 0.0, 0.0, 0.0)
+	
+	_tween_fade = create_tween().set_ignore_time_scale(true)
+	# Fade Out: opacidad de 0.0 a 1.0
+	_tween_fade.tween_property(fade_rect, "color:a", 1.0, duracion_out).set_trans(Tween.TRANS_SINE)
+	# En punto negro:
+	_tween_fade.tween_callback(func() -> void:
+		if callback_punto_negro.is_valid():
+			callback_punto_negro.call()
+	)
+	# Fade In: opacidad de 1.0 a 0.0
+	_tween_fade.tween_property(fade_rect, "color:a", 0.0, duracion_in).set_trans(Tween.TRANS_SINE)
+	_tween_fade.tween_callback(func() -> void:
+		if fade_rect:
+			fade_rect.visible = false
+		if callback_completado.is_valid():
+			callback_completado.call()
+	)
+
+
+## Cancela la transición de pantalla negra
+func cancelar_fade_transicion() -> void:
+	if _tween_fade != null and _tween_fade.is_valid():
+		_tween_fade.kill()
+	if fade_rect:
+		fade_rect.visible = false
+		fade_rect.color = Color(0.0, 0.0, 0.0, 0.0)
+
+
+## Muestra u oculta el botón "OMITIR ⏭"
+func mostrar_boton_omitir(mostrar: bool) -> void:
+	if btn_omitir:
+		btn_omitir.visible = mostrar
+
+
+## Muestra la placa de sanción con los datos del jugador amonestado
+func mostrar_placa_tarjeta(
+	infractor: Jugador3D,
+	tipo_tarjeta: String,
+	puntaje: float,
+	desglose: Array = []
+) -> void:
+	if panel_tarjeta == null:
+		return
+	
+	var titulo_texto: String = "¡TARJETA AMARILLA!"
+	var col_titulo: Color = Color(1.0, 0.85, 0.1)
+	if tipo_tarjeta == "ROJA_DIRECTA":
+		titulo_texto = "¡TARJETA ROJA DIRECTA! — EXPULSIÓN"
+		col_titulo = Color(0.95, 0.15, 0.15)
+	elif tipo_tarjeta == "SEGUNDA_AMARILLA":
+		titulo_texto = "¡SEGUNDA AMARILLA! — EXPULSIÓN"
+		col_titulo = Color(0.95, 0.35, 0.15)
+	
+	var nombre: String = "Jugador"
+	var dorsal_j: int = 10
+	var siglas: String = "RFC"
+	var pos_tac: String = "PIVOT"
+	if infractor != null:
+		nombre = infractor.nombre_jugador if infractor.nombre_jugador != "" else infractor.posicion_tactica
+		dorsal_j = infractor.dorsal
+		siglas = infractor.siglas_equipo
+		pos_tac = infractor.posicion_tactica
+	
+	var detalle_motivo: String = "Infracción reglamentaria (Severidad: %.1f)" % puntaje
+	if not desglose.is_empty():
+		detalle_motivo = "%s (Severidad: %.1f)" % [str(desglose[0]), puntaje]
+	
+	if label_titulo_tarjeta:
+		label_titulo_tarjeta.text = titulo_texto
+		label_titulo_tarjeta.add_theme_color_override("font_color", col_titulo)
+	if label_jugador_tarjeta:
+		label_jugador_tarjeta.text = "#%d %s [%s] • %s" % [dorsal_j, nombre, siglas, pos_tac]
+	if label_motivo_tarjeta:
+		label_motivo_tarjeta.text = detalle_motivo
+	
+	panel_tarjeta.visible = true
+	panel_tarjeta.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	var tw: Tween = create_tween().set_ignore_time_scale(true)
+	tw.tween_property(panel_tarjeta, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_SINE)
+
+
+## Oculta la placa de amonestación
+func ocultar_placa_tarjeta() -> void:
+	if panel_tarjeta and panel_tarjeta.visible:
+		var tw: Tween = create_tween().set_ignore_time_scale(true)
+		tw.tween_property(panel_tarjeta, "modulate:a", 0.0, 0.18).set_trans(Tween.TRANS_SINE)
+		tw.tween_callback(func() -> void:
+			if panel_tarjeta:
+				panel_tarjeta.visible = false
+		)
+
+
+## Muestra u oculta la insignia de repetición en pantalla
+func mostrar_indicador_repeticion(mostrar: bool) -> void:
+	if badge_repeticion:
+		badge_repeticion.visible = mostrar
+
+
+func _on_boton_omitir_pressed() -> void:
+	omitir_cinematica_solicitada.emit()
+	if _gestor_partido == null:
+		_gestor_partido = get_tree().get_first_node_in_group("gestor_partido") as GestorPartido
+	if _gestor_partido and _gestor_partido.has_method("omitir_secuencia_falta"):
+		_gestor_partido.call("omitir_secuencia_falta")
+

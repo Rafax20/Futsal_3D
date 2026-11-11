@@ -6,8 +6,8 @@ extends Node3D
 ## Delega las reanudaciones y flujo de juego a GestorPartido.
 
 @onready var balon: Balon3D = $Balon3D
-@onready var area_gol_izq: Area3D = $AreaGolIzquierda
-@onready var area_gol_der: Area3D = $AreaGolDerecha
+@onready var area_gol_izq: Area3D = ($PorteriaIzquierda/GoalTrigger if has_node("PorteriaIzquierda/GoalTrigger") else get_node_or_null("AreaGolIzquierda")) as Area3D
+@onready var area_gol_der: Area3D = ($PorteriaDerecha/GoalTrigger if has_node("PorteriaDerecha/GoalTrigger") else get_node_or_null("AreaGolDerecha")) as Area3D
 @onready var gestor: GestorPartido = $GestorPartido
 @onready var contenedor_jugadores: Node3D = $Jugadores
 
@@ -18,6 +18,17 @@ func _ready() -> void:
 		area_gol_izq.body_entered.connect(_on_gol_arco_izquierdo)
 	if area_gol_der:
 		area_gol_der.body_entered.connect(_on_gol_arco_derecho)
+	if balon and not balon.gol_detectado.is_connected(_on_balon_gol_detectado):
+		balon.gol_detectado.connect(_on_balon_gol_detectado)
+
+
+func _on_balon_gol_detectado(es_arco_derecho: bool) -> void:
+	if gestor and gestor.estado != GestorPartido.EstadoPartido.EN_JUEGO:
+		return
+	if es_arco_derecho:
+		_on_gol_arco_derecho(balon)
+	else:
+		_on_gol_arco_izquierdo(balon)
 
 
 ## Verifica y asigna la paleta de materiales StandardMaterial3D a los 10 jugadores en cancha:
@@ -51,15 +62,24 @@ func _physics_process(_delta: float) -> void:
 	
 	var pos: Vector3 = balon.global_position
 	
-	# 1. Comprobación de líneas de banda laterales (|Z| > 10.08 m dentro del largo |X| <= 20.0 m)
-	if abs(pos.z) > 10.08 and abs(pos.x) <= 20.0:
+	# 1. Comprobación de líneas de banda laterales (|Z| > 10.05 m dentro del largo |X| <= 20.0 m)
+	if abs(pos.z) > 10.05 and abs(pos.x) <= 20.0:
 		_procesar_saque_de_banda(pos)
 		return
 	
-	# 2. Comprobación de líneas de fondo / meta (|X| > 20.08 m y fuera de la boca del arco de 3.7m |Z| > 1.90 m)
-	if abs(pos.x) > 20.08 and abs(pos.z) > 1.90:
-		_procesar_saque_fondo(pos)
-		return
+	# 2. Comprobación de líneas de fondo / meta (|X| >= 20.05 m)
+	if abs(pos.x) >= 20.05:
+		if balon._gol_ya_notificado:
+			return
+		var es_derecho: bool = pos.x > 0.0
+		if balon.es_gol_valido_posicional(es_derecho):
+			_on_balon_gol_detectado(es_derecho)
+			return
+		var dentro_marco: bool = (abs(pos.z) <= 1.82 and pos.y <= 2.15 and pos.y >= -0.05)
+		if not dentro_marco:
+			balon.esta_fuera_de_juego = true
+			_procesar_saque_fondo(pos)
+			return
 
 
 func _procesar_saque_de_banda(pos_salida: Vector3) -> void:
@@ -131,6 +151,10 @@ func _on_gol_arco_izquierdo(body: Node3D) -> void:
 		var portador: Jugador3D = balon.portador_actual as Jugador3D
 		if portador and (portador.posicion_tactica == "PORTERO" or portador.tiene_balon_en_manos):
 			return
+	if balon.has_method("es_gol_valido_posicional") and not balon.es_gol_valido_posicional(false):
+		return
+	if gestor and not gestor.validar_y_procesar_gol(1):
+		return
 	
 	var nombre_vis: String = str(Futsal_3D.obtener_info_equipo(false).get("nombre", "VISITANTE")).to_upper()
 	_emitir_anuncio("¡¡GOOOOL DE %s!!" % nombre_vis)
@@ -149,6 +173,10 @@ func _on_gol_arco_derecho(body: Node3D) -> void:
 		var portador: Jugador3D = balon.portador_actual as Jugador3D
 		if portador and (portador.posicion_tactica == "PORTERO" or portador.tiene_balon_en_manos):
 			return
+	if balon.has_method("es_gol_valido_posicional") and not balon.es_gol_valido_posicional(true):
+		return
+	if gestor and not gestor.validar_y_procesar_gol(0):
+		return
 	
 	var nombre_loc: String = str(Futsal_3D.obtener_info_equipo(true).get("nombre", "LOCAL")).to_upper()
 	_emitir_anuncio("¡¡GOOOOL DE %s!!" % nombre_loc)
